@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,8 +18,8 @@ type API struct {
 	url string
 }
 
-type ServerList struct {
-	Servers []string `json:"servers"`
+type Config struct {
+	Samples int `json:"samples"`
 }
 
 var client http.Client
@@ -58,7 +57,7 @@ func (api *API) newRequest() (*http.Request, error) {
 	return req, nil
 }
 
-func (api *API) GetServerList() ([]net.IP, error) {
+func (api *API) GetServerList() (*ServerList, error) {
 
 	req, err := api.newRequest()
 	if err != nil {
@@ -81,16 +80,7 @@ func (api *API) GetServerList() ([]net.IP, error) {
 		return nil, fmt.Errorf("json %s", err)
 	}
 
-	servers := []net.IP{}
-	for _, s := range serverlist.Servers {
-		sip := net.ParseIP(s)
-		if sip == nil {
-			log.Printf("invalid IP %q", s)
-			continue
-		}
-		servers = append(servers, sip)
-	}
-	return servers, nil
+	return serverlist, nil
 }
 
 type nopCloser struct {

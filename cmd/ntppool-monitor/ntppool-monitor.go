@@ -75,9 +75,15 @@ func main() {
 
 func run(api *monitor.API) bool {
 
-	servers, err := api.GetServerList()
+	serverlist, err := api.GetServerList()
 	if err != nil {
 		log.Printf("getting server list: %s", err)
+		return false
+	}
+
+	servers, err := serverlist.IPs()
+	if err != nil {
+		log.Printf("bad IPs in server list: %s", err)
 		return false
 	}
 
@@ -96,7 +102,7 @@ func run(api *monitor.API) bool {
 
 	for _, s := range servers {
 
-		status, err := CheckHost(s.String(), 2)
+		status, err := CheckHost(s.String(), serverlist.Config.Samples)
 		if err != nil {
 			log.Printf("Error checking %q: %s", s, err)
 		}
@@ -137,16 +143,24 @@ func referenceIDString(refid uint32) string {
 
 func CheckHost(host string, samples int) (*monitor.ServerStatus, error) {
 
+	if samples == 0 {
+		samples = 1
+	}
+
+	opts := ntp.QueryOptions{
+		Timeout: 3 * time.Second,
+	}
+
 	statuses := []*monitor.ServerStatus{}
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < samples; i++ {
 
 		ips, err := net.LookupIP(host)
 		if err != nil {
 			return nil, err
 		}
 
-		resp, err := ntp.Query(ips[0].String())
+		resp, err := ntp.QueryWithOptions(ips[0].String(), opts)
 		if err != nil {
 			return nil, err
 		}

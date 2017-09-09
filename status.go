@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+type ServerList struct {
+	Config  Config   `json:"config"`
+	Servers []string `json:"servers"`
+}
+
 type ServerStatus struct {
 	TS         time.Time     `json:"ts"`
 	Server     net.IP        `json:"server"`
@@ -42,4 +47,17 @@ func (s *ServerStatus) MarshalJSON() ([]byte, error) {
 		Leap:       s.Leap,
 		NoResponse: s.NoResponse,
 	})
+}
+
+func (sl *ServerList) IPs() ([]net.IP, error) {
+	servers := []net.IP{}
+
+	for _, s := range sl.Servers {
+		sip := net.ParseIP(s)
+		if sip == nil {
+			return nil, fmt.Errorf("invalid IP %q", s)
+		}
+		servers = append(servers, sip)
+	}
+	return servers, nil
 }
