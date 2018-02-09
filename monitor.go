@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,7 +20,8 @@ type API struct {
 }
 
 type Config struct {
-	Samples int `json:"samples"`
+	Samples int    `json:"samples"`
+	IP      net.IP `json:"ip"`
 }
 
 var client http.Client
@@ -48,8 +50,20 @@ func NewAPI(apiURL, apiKey string) (*API, error) {
 
 }
 
-func (api *API) newRequest() (*http.Request, error) {
-	req, err := http.NewRequest("GET", api.url, nil)
+func (api *API) newRequest(path string) (*http.Request, error) {
+	switch {
+	case len(path) > 0:
+		u, err := url.Parse(api.url)
+		if err != nil {
+			return nil, err
+		}
+		u.Path = u.Path + "/" + path
+		path = u.String()
+	default:
+		path = api.url
+	}
+
+	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -57,30 +71,40 @@ func (api *API) newRequest() (*http.Request, error) {
 	return req, nil
 }
 
-func (api *API) GetServerList() (*ServerList, error) {
+func (api *API) GetConfig() (*Config, error) {
+	resp := struct{ Config *Config }{}
+	err := api.getAPI("config", &resp)
+	return resp.Config, err
+}
 
-	req, err := api.newRequest()
+func (api *API) GetServerList() (*ServerList, error) {
+	serverlist := &ServerList{}
+	err := api.getAPI("", serverlist)
+	return serverlist, err
+}
+
+func (api *API) getAPI(path string, val interface{}) error {
+
+	req, err := api.newRequest(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected API status code: %d", resp.StatusCode)
+		return fmt.Errorf("unexpected API status code: %d", resp.StatusCode)
 	}
-
-	serverlist := &ServerList{}
 
 	dec := json.NewDecoder(resp.Body)
-	err = dec.Decode(&serverlist)
+	err = dec.Decode(val)
 	if err != nil {
-		return nil, fmt.Errorf("json %s", err)
+		return fmt.Errorf("json %s", err)
 	}
 
-	return serverlist, nil
+	return nil
 }
 
 type nopCloser struct {
@@ -93,7 +117,7 @@ func (api *API) PostStatuses(statuses []*ServerStatus) error {
 
 	log.Printf("Posting statuses!")
 
-	req, err := api.newRequest()
+	req, err := api.newRequest("")
 	if err != nil {
 		return err
 	}
@@ -104,7 +128,7 @@ func (api *API) PostStatuses(statuses []*ServerStatus) error {
 		Servers: statuses,
 	}
 
-	b, err := json.Marshal(&feedback)
+	b, err := json.MarshalIndent(&feedback, "", "  ")
 	if err != nil {
 		return err
 	}

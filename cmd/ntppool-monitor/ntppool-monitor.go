@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/beevik/ntp"
@@ -16,10 +17,11 @@ import (
 // Todo:
 //   - Check status.Leap != ntp.LeapNotInSync
 
-const SLEEP_TIME = 120
+const sleepTime = 120
 
 var (
-	onceFlag = flag.Bool("once", false, "Only run once instead of forever")
+	onceFlag       = flag.Bool("once", false, "Only run once instead of forever")
+	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
 )
 
 func main() {
@@ -46,7 +48,25 @@ func main() {
 		log.Fatalf("creating API: %s", err)
 	}
 
-	localOK := LocalOK{}
+	cfg, err := api.GetConfig()
+	if err != nil {
+		log.Fatalf("Could not get config: %s", err)
+	}
+
+	log.Printf("Config: %+v", cfg)
+
+	localOK := NewLocalOK(cfg)
+
+	if *sanityOnlyFlag {
+		ok := localOK.Check()
+		if ok {
+			log.Printf("Local clock ok")
+			os.Exit(0)
+		} else {
+			log.Printf("Local clock not ok")
+			os.Exit(2)
+		}
+	}
 
 	i := 0
 
@@ -60,7 +80,7 @@ func main() {
 
 		if !run(api) {
 			log.Printf("Got no work, sleeping.")
-			time.Sleep(SLEEP_TIME * time.Second)
+			time.Sleep(sleepTime * time.Second)
 			continue
 		}
 
@@ -87,6 +107,8 @@ func run(api *monitor.API) bool {
 		return false
 	}
 
+	log.Printf("CONFIG: %+v", serverlist.Config)
+
 	if len(servers) == 0 {
 		return false
 	}
@@ -102,12 +124,24 @@ func run(api *monitor.API) bool {
 
 	for _, s := range servers {
 
-		status, err := CheckHost(s.String(), serverlist.Config.Samples)
+		status, err := CheckHost(s, serverlist.Config)
+		if status == nil {
+			status = &monitor.ServerStatus{
+				Server:     s,
+				NoResponse: true,
+			}
+		}
 		if err != nil {
 			log.Printf("Error checking %q: %s", s, err)
-		}
-		if status == nil {
-			status = &monitor.ServerStatus{Server: s, NoResponse: true}
+			status.Error = err.Error()
+			if strings.HasPrefix(status.Error, "read udp") {
+				idx := strings.LastIndex(status.Error, ":")
+				// ": " == two characters
+				if len(status.Error) > idx+2 {
+					idx = idx + 2
+				}
+				status.Error = status.Error[idx:]
+			}
 		}
 		status.TS = time.Now()
 		statuses = append(statuses, status)
@@ -141,37 +175,47 @@ func referenceIDString(refid uint32) string {
 	return string(b)
 }
 
-func CheckHost(host string, samples int) (*monitor.ServerStatus, error) {
+func CheckHost(ip *net.IP, cfg *monitor.Config) (*monitor.ServerStatus, error) {
 
-	if samples == 0 {
-		samples = 1
+	if cfg.Samples == 0 {
+		cfg.Samples = 1
 	}
 
 	opts := ntp.QueryOptions{
 		Timeout: 3 * time.Second,
 	}
 
+	if cfg.IP != nil {
+		opts.LocalAddress = cfg.IP.String()
+	}
+
 	statuses := []*monitor.ServerStatus{}
 
-	for i := 0; i < samples; i++ {
+	for i := 0; i < cfg.Samples; i++ {
 
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, err
-		}
+		// why lookup the IP here, just to get it deterministic? Log it?
+		// maybe CheckHost should require an IP and checkLocal does the IP
+		// lookup? (It'd need to have the monitor.cfg, too..)
+		// ips, err := net.LookupIP(host)
+		// if err != nil {
+		// 	return nil, err
+		// }
 
-		resp, err := ntp.QueryWithOptions(ips[0].String(), opts)
+		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
 			return nil, err
 		}
 
 		status := ntpResponseToStatus(resp)
-		status.Server = ips[0]
+		status.Server = ip
 
 		// log.Printf("Query %d for %q: RTT: %s, Offset: %s", i, host, resp.RTT, resp.ClockOffset)
 
 		if resp.Stratum == 0 || resp.Stratum == 16 {
-			// todo: interpret reference ID
+			if len(resp.KissCode) > 0 {
+				return status, fmt.Errorf("%s", resp.KissCode)
+			}
+
 			return status,
 				fmt.Errorf("bad stratum %d (referenceID: %#x, %s)",
 					resp.Stratum, resp.ReferenceID, referenceIDString(resp.ReferenceID))
