@@ -22,12 +22,12 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["bpf","internal/iana","internal/socket","ipv4"]
-  revision = "5ccada7d0a7ba9aeb5d3aca8d3501b4c2a509fec"
+  packages = ["bpf","context","internal/iana","internal/socket","ipv4"]
+  revision = "f5dfe339be1d06f81b22525fe34671ee7d2c8904"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9e47f7eeda5dfa3fa8d568e202578ca84a432732199a630127aae2592ae7c792"
+  inputs-digest = "f19e395f8db2473cccae7331d833f0602e850b7b1e4dba1e8909731853662cec"
   solver-name = "gps-cdcl"
   solver-version = 1

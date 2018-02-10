@@ -331,7 +331,11 @@ func getTime(host string, opt QueryOptions) (*msg, ntpTime, error) {
 		return nil, 0, errors.New("invalid protocol version requested")
 	}
 
-	var err error
+	// Resolve the remote NTP server address.
+	raddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, "123"))
+	if err != nil {
+		return nil, 0, err
+	}
 
 	// Resolve the local address if specified as an option.
 	var laddr *net.UDPAddr
@@ -342,33 +346,13 @@ func getTime(host string, opt QueryOptions) (*msg, ntpTime, error) {
 		}
 	}
 
-	network := "udp"
-
-	if laddr != nil {
-		if laddr.IP.To4() != nil {
-			network = "udp4"
-		} else {
-			network = "udp6"
-		}
-	}
-
-	// log.Printf("network '%s'", network)
-
-	// Resolve the remote NTP server address.
-	raddr, err := net.ResolveUDPAddr(network, net.JoinHostPort(host, "123"))
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// log.Printf("raddr for '%s': '%s'", host, raddr.IP.String())
-
 	// Override the port if requested.
 	if opt.Port != 0 {
 		raddr.Port = opt.Port
 	}
 
 	// Prepare a "connection" to the remote server.
-	con, err := net.DialUDP(network, laddr, raddr)
+	con, err := net.DialUDP("udp", laddr, raddr)
 	if err != nil {
 		return nil, 0, err
 	}
