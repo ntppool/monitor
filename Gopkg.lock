@@ -8,6 +8,12 @@
   revision = "68f85807c2ee1e34097f9fcce627f020607be19d"
 
 [[projects]]
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  revision = "61153c768f31ee5f130071d08fc82b85208528de"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/kr/text"
   packages = ["."]

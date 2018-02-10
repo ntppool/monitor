@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/beevik/ntp"
+	"github.com/cenkalti/backoff"
 	"github.com/ntppool/monitor"
 )
 
@@ -72,16 +73,27 @@ func main() {
 
 	for {
 
-		if !localOK.Check() {
-			log.Printf("Local clock might not be okay, sleeping 90 seconds")
-			time.Sleep(90 * time.Second)
-			continue
-		}
+		boff := backoff.NewExponentialBackOff()
+		boff.InitialInterval = 5 * time.Second
+		boff.MaxInterval = 90 * time.Second
 
-		if !run(api) {
-			log.Printf("Got no work, sleeping.")
-			time.Sleep(sleepTime * time.Second)
-			continue
+		err := backoff.Retry(func() error {
+
+			if !localOK.Check() {
+				log.Printf("Local clock might not be okay, waiting a bit")
+				return fmt.Errorf("local clock")
+			}
+
+			if !run(api) {
+				log.Printf("Got no work, sleeping.")
+				return fmt.Errorf("no work")
+			}
+			boff.Reset()
+			return nil
+		}, boff)
+
+		if err != nil {
+			log.Printf("backoff error: %s", err)
 		}
 
 		i++
@@ -96,6 +108,7 @@ func main() {
 func run(api *monitor.API) bool {
 
 	serverlist, err := api.GetServerList()
+
 	if err != nil {
 		log.Printf("getting server list: %s", err)
 		return false
