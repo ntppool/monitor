@@ -19,6 +19,7 @@ type LocalOK struct {
 }
 
 const localCacheSeconds = 60
+const maxOffset = 2 * time.Millisecond
 
 func NewLocalOK(cfg *monitor.Config) *LocalOK {
 	var isv4 bool
@@ -66,7 +67,12 @@ func (l *LocalOK) update() bool {
 		"ntp.se",
 	}
 
-	hosts := []string{}
+	type namedIP struct {
+		Name string
+		IP   *net.IP
+	}
+
+	hosts := []namedIP{}
 
 	fails := 0
 
@@ -104,16 +110,40 @@ func (l *LocalOK) update() bool {
 			continue
 		}
 
-		hosts = append(hosts, h)
-
-		ok, err := l.sanityCheckHost(h, ip)
-		if err != nil {
-			log.Printf("Checking %q %q: %s", h, ip.String(), err)
-		}
-		if !ok {
-			fails++
-		}
+		hosts = append(hosts, namedIP{Name: h, IP: ip})
 	}
+
+	wg := sync.WaitGroup{}
+	results := make(chan bool)
+
+	go func() {
+		for ok := range results {
+			if !ok {
+				fails++
+			}
+		}
+	}()
+
+	for i, h := range hosts {
+		wg.Add(1)
+
+		if i > 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		go func(h namedIP) {
+			ok, err := l.sanityCheckHost(h.Name, h.IP)
+			if err != nil {
+				log.Printf("Checking %q %q: %s", h.Name, h.IP.String(), err)
+			}
+			results <- ok
+			wg.Done()
+		}(h)
+	}
+
+	wg.Wait()
+
+	close(results)
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
 	log.Printf("failures: %d, threshold: %d, hosts: %d", fails, failureThreshold, len(hosts))
@@ -139,7 +169,7 @@ func (l *LocalOK) sanityCheckHost(name string, ip *net.IP) (bool, error) {
 
 	log.Printf("offset for %s (%s): %s", name, ip, status.Offset)
 
-	if offset > (time.Millisecond * 2) {
+	if offset > maxOffset {
 		return false, fmt.Errorf("offset too large: %s", status.Offset)
 	}
 
