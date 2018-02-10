@@ -193,6 +193,11 @@ func CheckHost(ip *net.IP, cfg *monitor.Config) (*monitor.ServerStatus, error) {
 
 	for i := 0; i < cfg.Samples; i++ {
 
+		if i > 0 {
+			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
+			time.Sleep(2 * time.Second)
+		}
+
 		// why lookup the IP here, just to get it deterministic? Log it?
 		// maybe CheckHost should require an IP and checkLocal does the IP
 		// lookup? (It'd need to have the monitor.cfg, too..)
