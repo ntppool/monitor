@@ -18,8 +18,6 @@ import (
 // Todo:
 //   - Check status.Leap != ntp.LeapNotInSync
 
-const sleepTime = 120
-
 var (
 	onceFlag       = flag.Bool("once", false, "Only run once instead of forever")
 	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
@@ -120,7 +118,7 @@ func run(api *monitor.API) bool {
 		return false
 	}
 
-	log.Printf("CONFIG: %+v", serverlist.Config)
+	log.Printf("Servers: %d, Config: %+v", len(servers), serverlist.Config)
 
 	if len(servers) == 0 {
 		return false
