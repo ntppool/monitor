@@ -26,7 +26,6 @@ var (
 func main() {
 	flag.Parse()
 	args := flag.Args()
-	log.Printf("OS ARGS: %q", args)
 	if len(args) < 1 {
 		exe, err := os.Executable()
 		if err != nil {

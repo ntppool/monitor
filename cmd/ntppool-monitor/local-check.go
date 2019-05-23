@@ -54,16 +54,16 @@ func (l *LocalOK) update() bool {
 	allHosts := []string{
 		// "localhost",
 		"time-macos.apple.com",
-		"tock.phyber.com",
-		"ntp0.us.grundclock.com",
-		"ntp.ubuntu.com",
+		// "ntp.ubuntu.com",
 		// "time.google.com",
 		"tock.ucla.edu",
-		"time-d-b.nist.gov",
+		// "time-d-b.nist.gov",
 		"ntp.inet.tele.dk",
-		"ussjc2-ntp-001.aaplimg.com",
 		"uslax1-ntp-001.aaplimg.com",
+		"defra1-ntp-002.aaplimg.com",
+		"uklon5-ntp-001.aaplimg.com",
 		"ntp.stupi.se",
+		"ntp4.sptime.se",
 		"ntp.se",
 	}
 

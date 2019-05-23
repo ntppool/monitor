@@ -74,6 +74,9 @@ func (api *API) newRequest(path string) (*http.Request, error) {
 func (api *API) GetConfig() (*Config, error) {
 	resp := struct{ Config *Config }{}
 	err := api.getAPI("config", &resp)
+	if resp.Config == nil {
+		return nil, fmt.Errorf("empty configuration")
+	}
 	return resp.Config, err
 }
 

@@ -49,3 +49,12 @@ nfpms:
     replacements:
       386: i686
       amd64: x86_64
+    dependencies:
+      - ntp
+    bindir: /usr/bin
+    files:
+      "scripts/ntppool-monitor@.service": "/etc/systemd/system/ntppool-monitor@.service"
+    config_files:
+      "scripts/defaults": "/etc/default/ntppool-monitor.sample"
+    scripts:
+      postinstall: scripts/postinstall.sh
