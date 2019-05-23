@@ -1,0 +1,51 @@
+project_name: ntppool-monitor
+before:
+  hooks:
+    # you may remove this if you don't use vgo
+    #- go mod download
+    # you may remove this if you don't need go generate
+    #- go generate ./...
+builds:
+-
+  main: ./cmd/ntppool-monitor/
+  env:
+  - CGO_ENABLED=0
+  goos:
+  - freebsd
+  - linux
+archives:
+- replacements:
+    #darwin: Darwin
+    #linux: Linux
+    386: i386
+    amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+
+nfpms:
+  -
+    # ID of the nfpm config, must be unique.
+    # Defaults to "default".
+    id: ntppool-monitor
+    # You can change the name of the package.
+    # Default: `{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}`
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: NTP Pool Project
+    homepage: https://www.ntppool.org/
+    maintainer: Ask Bjørn Hansen <ask@develooper.com>
+    description: Monitoring daemon for the NTP Pool
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    replacements:
+      386: i686
+      amd64: x86_64

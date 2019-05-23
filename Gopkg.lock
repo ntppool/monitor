@@ -3,31 +3,67 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:05c6d1a4ab9c71e7d671b1137965f1c9318bb4fcc918d231e74892812653f065"
   name = "github.com/beevik/ntp"
   packages = ["."]
-  revision = "68f85807c2ee1e34097f9fcce627f020607be19d"
+  pruneopts = ""
+  revision = "53ffc1864695f04a9261eaaba263b1e85e5795f3"
 
 [[projects]]
+  digest = "1:8561fc011218ed9821f6d73057154e692cdfd0f37e929ef6c4a574b6299136cb"
   name = "github.com/cenkalti/backoff"
   packages = ["."]
-  revision = "61153c768f31ee5f130071d08fc82b85208528de"
-  version = "v1.1.0"
+  pruneopts = ""
+  revision = "4b4cebaf850ec58f1bb1fec5bdebdf8501c2bc3f"
+  version = "v3.0.0"
 
 [[projects]]
-  branch = "master"
+  digest = "1:3108ec0946181c60040ff51b811908f89d03e521e2b4ade5ef5c65b3c0e911ae"
+  name = "github.com/kr/pretty"
+  packages = ["."]
+  pruneopts = ""
+  revision = "73f6ac0b30a98e433b289500d779f50c1a6f0712"
+  version = "v0.1.0"
+
+[[projects]]
+  digest = "1:11b056b4421396ab14e384ab8ab8c2079b03f1e51aa5eb4d9b81f9e0d1aa8fbf"
   name = "github.com/kr/text"
   packages = ["."]
-  revision = "7cafcd837844e784b526369c9bce262804aebc60"
+  pruneopts = ""
+  revision = "e2ffdb16a802fe2bb95e2e35ff34f0e53aeef34f"
+  version = "v0.1.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:3fcc745bd071aa073bd666e01ff8df5fc72ab15f493ae7246710c66c738aab45"
   name = "golang.org/x/net"
-  packages = ["bpf","context","internal/iana","internal/socket","ipv4"]
-  revision = "f5dfe339be1d06f81b22525fe34671ee7d2c8904"
+  packages = [
+    "bpf",
+    "internal/iana",
+    "internal/socket",
+    "ipv4",
+  ]
+  pruneopts = ""
+  revision = "f3200d17e092c607f615320ecaad13d87ad9a2b3"
+
+[[projects]]
+  branch = "master"
+  digest = "1:7e620260ab84d4b1f0dcff40e77ddce874c3969dada44d1f1ba58b27f24530ac"
+  name = "golang.org/x/sys"
+  packages = [
+    "unix",
+    "windows",
+  ]
+  pruneopts = ""
+  revision = "8097e1b27ff5e40620836729a9584e91b094b062"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f19e395f8db2473cccae7331d833f0602e850b7b1e4dba1e8909731853662cec"
+  input-imports = [
+    "github.com/beevik/ntp",
+    "github.com/cenkalti/backoff",
+    "github.com/kr/pretty",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
