@@ -12,7 +12,7 @@ import (
 
 	"github.com/beevik/ntp"
 	"github.com/cenkalti/backoff"
-	"github.com/ntppool/monitor"
+	"go.ntppool.org/monitor"
 )
 
 // Todo:

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ntppool/monitor"
+	"go.ntppool.org/monitor"
 )
 
 type LocalOK struct {
