@@ -1,0 +1,14 @@
+[Unit]
+Description=NTP Pool Monitor (%i)
+After=ntp.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/ntppool-monitor
+ExecStart=/usr/bin/ntppool-monitor ${%i_key} ${%i_url}
+Restart=always
+TimeoutStartSec=10
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
