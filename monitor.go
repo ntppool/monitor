@@ -1,164 +1,109 @@
 package monitor
 
 import (
-	"bytes"
-	"encoding/json"
+	"encoding/binary"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"log"
 	"net"
-	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/beevik/ntp"
 )
 
-const VERSION = "2.1"
+func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 
-type API struct {
-	url string
-}
-
-type Config struct {
-	Samples int    `json:"samples"`
-	IP      net.IP `json:"ip"`
-}
-
-var client http.Client
-
-func init() {
-	client = http.Client{
-		Timeout: 15 * time.Second,
-	}
-}
-
-func NewAPI(apiURL, apiKey string) (*API, error) {
-	apiurl, err := url.Parse(apiURL)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid url %q: %s", apiURL, err)
+	if cfg.Samples == 0 {
+		cfg.Samples = 1
 	}
 
-	urlq := apiurl.Query()
-	urlq.Set("api_key", apiKey)
-	apiurl.RawQuery = urlq.Encode()
+	opts := ntp.QueryOptions{
+		Timeout: 3 * time.Second,
+	}
 
-	log.Printf("API: %s", apiurl.String())
+	if cfg.IP != nil {
+		opts.LocalAddress = cfg.IP.String()
+	}
 
-	return &API{
-		url: apiurl.String(),
-	}, nil
+	statuses := []*ServerStatus{}
 
-}
+	for i := 0; i < cfg.Samples; i++ {
 
-func (api *API) newRequest(path string) (*http.Request, error) {
-	switch {
-	case len(path) > 0:
-		u, err := url.Parse(api.url)
+		if i > 0 {
+			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
+			time.Sleep(2 * time.Second)
+		}
+
+		// why lookup the IP here, just to get it deterministic? Log it?
+		// maybe CheckHost should require an IP and checkLocal does the IP
+		// lookup? (It'd need to have the monitor.cfg, too..)
+		// ips, err := net.LookupIP(host)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
+			// todo: add error to status and continue instead of returning
 			return nil, err
 		}
-		u.Path = u.Path + "/" + path
-		path = u.String()
-	default:
-		path = api.url
+
+		status := ntpResponseToStatus(resp)
+		status.Server = ip
+
+		// log.Printf("Query %d for %q: RTT: %s, Offset: %s", i, host, resp.RTT, resp.ClockOffset)
+
+		if resp.Stratum == 0 || resp.Stratum == 16 {
+			if len(resp.KissCode) > 0 {
+				return status, fmt.Errorf("%s", resp.KissCode)
+			}
+
+			return status,
+				fmt.Errorf("bad stratum %d (referenceID: %#x, %s)",
+					resp.Stratum, resp.ReferenceID, referenceIDString(resp.ReferenceID))
+		}
+
+		if resp.Stratum > 6 {
+			return status, fmt.Errorf("bad stratum %d", resp.Stratum)
+		}
+
+		statuses = append(statuses, status)
 	}
 
-	req, err := http.NewRequest("GET", path, nil)
-	if err != nil {
-		return nil, err
+	var best *ServerStatus
+
+	for _, status := range statuses {
+
+		if best == nil {
+			best = status
+			continue
+		}
+
+		// todo: ... and it's otherwise a valid response
+		if status.RTT < best.RTT {
+			best = status
+		}
 	}
-	req.Header.Set("User-Agent", "ntppool-monitor/"+VERSION)
-	return req, nil
+
+	// todo: if no good responses, return the error from the last sample
+
+	// log.Printf("Got good response %q", best)
+
+	return best, nil
 }
 
-func (api *API) GetConfig() (*Config, error) {
-	resp := struct{ Config *Config }{}
-	err := api.getAPI("config", &resp)
-	if resp.Config == nil {
-		return nil, fmt.Errorf("empty configuration")
+func ntpResponseToStatus(resp *ntp.Response) *ServerStatus {
+	status := &ServerStatus{
+		TS:         time.Now(),
+		Offset:     resp.ClockOffset,
+		Stratum:    resp.Stratum,
+		Leap:       uint8(resp.Leap),
+		RTT:        resp.RTT,
+		NoResponse: false,
 	}
-	return resp.Config, err
+	return status
 }
 
-func (api *API) GetServerList() (*ServerList, error) {
-	serverlist := &ServerList{}
-	err := api.getAPI("", serverlist)
-	return serverlist, err
-}
-
-func (api *API) getAPI(path string, val interface{}) error {
-
-	req, err := api.newRequest(path)
-	if err != nil {
-		return err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("unexpected API status code: %d", resp.StatusCode)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-	err = dec.Decode(val)
-	if err != nil {
-		return fmt.Errorf("json %s", err)
-	}
-
-	return nil
-}
-
-type nopCloser struct {
-	io.Reader
-}
-
-func (nopCloser) Close() error { return nil }
-
-func (api *API) PostStatuses(statuses []*ServerStatus) error {
-
-	log.Printf("Posting statuses!")
-
-	req, err := api.newRequest("")
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	feedback := MonitorFeedback{
-		Version: 1,
-		Servers: statuses,
-	}
-
-	b, err := json.MarshalIndent(&feedback, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Feedback %s\n", b)
-
-	r := bytes.NewBuffer(b)
-	req.Method = "POST"
-	req.Body = nopCloser{r}
-
-	// pretty.Print(req)
-	// log.Printf("post request: %s", req)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("unexpected API status code: %d", resp.StatusCode)
-	}
-
-	content, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	log.Printf("Response: %s", content)
-
-	return nil
-
+func referenceIDString(refid uint32) string {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b[0:], uint32(refid))
+	return string(b)
 }

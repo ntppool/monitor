@@ -1,16 +1,13 @@
 package main
 
 import (
-	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/beevik/ntp"
 	"github.com/cenkalti/backoff"
 	"go.ntppool.org/monitor"
 )
@@ -134,7 +131,7 @@ func run(api *monitor.API) bool {
 
 	for _, s := range servers {
 
-		status, err := CheckHost(s, serverlist.Config)
+		status, err := monitor.CheckHost(s, serverlist.Config)
 		if status == nil {
 			status = &monitor.ServerStatus{
 				Server:     s,
@@ -165,99 +162,4 @@ func run(api *monitor.API) bool {
 
 	return true
 
-}
-
-func ntpResponseToStatus(resp *ntp.Response) *monitor.ServerStatus {
-	status := &monitor.ServerStatus{
-		TS:         time.Now(),
-		Offset:     resp.ClockOffset,
-		Stratum:    resp.Stratum,
-		Leap:       uint8(resp.Leap),
-		RTT:        resp.RTT,
-		NoResponse: false,
-	}
-	return status
-}
-
-func referenceIDString(refid uint32) string {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b[0:], uint32(refid))
-	return string(b)
-}
-
-func CheckHost(ip *net.IP, cfg *monitor.Config) (*monitor.ServerStatus, error) {
-
-	if cfg.Samples == 0 {
-		cfg.Samples = 1
-	}
-
-	opts := ntp.QueryOptions{
-		Timeout: 3 * time.Second,
-	}
-
-	if cfg.IP != nil {
-		opts.LocalAddress = cfg.IP.String()
-	}
-
-	statuses := []*monitor.ServerStatus{}
-
-	for i := 0; i < cfg.Samples; i++ {
-
-		if i > 0 {
-			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
-			time.Sleep(2 * time.Second)
-		}
-
-		// why lookup the IP here, just to get it deterministic? Log it?
-		// maybe CheckHost should require an IP and checkLocal does the IP
-		// lookup? (It'd need to have the monitor.cfg, too..)
-		// ips, err := net.LookupIP(host)
-		// if err != nil {
-		// 	return nil, err
-		// }
-
-		resp, err := ntp.QueryWithOptions(ip.String(), opts)
-		if err != nil {
-			return nil, err
-		}
-
-		status := ntpResponseToStatus(resp)
-		status.Server = ip
-
-		// log.Printf("Query %d for %q: RTT: %s, Offset: %s", i, host, resp.RTT, resp.ClockOffset)
-
-		if resp.Stratum == 0 || resp.Stratum == 16 {
-			if len(resp.KissCode) > 0 {
-				return status, fmt.Errorf("%s", resp.KissCode)
-			}
-
-			return status,
-				fmt.Errorf("bad stratum %d (referenceID: %#x, %s)",
-					resp.Stratum, resp.ReferenceID, referenceIDString(resp.ReferenceID))
-		}
-
-		if resp.Stratum > 6 {
-			return status, fmt.Errorf("bad stratum %d", resp.Stratum)
-		}
-
-		statuses = append(statuses, status)
-	}
-
-	var best *monitor.ServerStatus
-
-	for _, status := range statuses {
-
-		if best == nil {
-			best = status
-			continue
-		}
-
-		if status.RTT < best.RTT {
-			best = status
-		}
-	}
-
-	// log.Printf("Got good response %q", best)
-
-	return best, nil
 }

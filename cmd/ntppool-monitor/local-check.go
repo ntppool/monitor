@@ -157,7 +157,7 @@ func (l *LocalOK) update() bool {
 }
 
 func (l *LocalOK) sanityCheckHost(name string, ip *net.IP) (bool, error) {
-	status, err := CheckHost(ip, l.cfg)
+	status, err := monitor.CheckHost(ip, l.cfg)
 	if err != nil {
 		return false, err
 	}
