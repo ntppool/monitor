@@ -3,16 +3,21 @@ package monitor
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
 	"github.com/beevik/ntp"
 )
 
+// VERSION is the current version of the software
+const VERSION = "2.2"
+
+// CheckHost runs the configured queries to the IP and returns one ServerStatus
 func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 
 	if cfg.Samples == 0 {
-		cfg.Samples = 1
+		cfg.Samples = 3
 	}
 
 	opts := ntp.QueryOptions{
@@ -31,26 +36,24 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
 			time.Sleep(2 * time.Second)
 		}
-
-		// why lookup the IP here, just to get it deterministic? Log it?
-		// maybe CheckHost should require an IP and checkLocal does the IP
-		// lookup? (It'd need to have the monitor.cfg, too..)
-		// ips, err := net.LookupIP(host)
-		// if err != nil {
-		// 	return nil, err
-		// }
+		log.Printf("try #%d %s ...", i, ip.String())
 
 		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
-			// todo: add error to status and continue instead of returning
-			return nil, err
+			status := &ServerStatus{Server: ip}
+			if resp != nil {
+				status = ntpResponseToStatus(ip, resp)
+			}
+			status.Error = err.Error()
+			statuses = append(statuses, status)
+			continue
 		}
 
-		status := ntpResponseToStatus(resp)
-		status.Server = ip
+		status := ntpResponseToStatus(ip, resp)
 
 		// log.Printf("Query %d for %q: RTT: %s, Offset: %s", i, host, resp.RTT, resp.ClockOffset)
 
+		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {
 			if len(resp.KissCode) > 0 {
 				return status, fmt.Errorf("%s", resp.KissCode)
@@ -70,6 +73,8 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 
 	var best *ServerStatus
 
+	log.Printf("reviewing %d statuses for %s", len(statuses), ip)
+
 	for _, status := range statuses {
 
 		if best == nil {
@@ -83,14 +88,14 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 		}
 	}
 
-	// todo: if no good responses, return the error from the last sample
-
-	// log.Printf("Got good response %q", best)
+	if len(best.Error) > 0 {
+		return best, fmt.Errorf("%s", best.Error)
+	}
 
 	return best, nil
 }
 
-func ntpResponseToStatus(resp *ntp.Response) *ServerStatus {
+func ntpResponseToStatus(ip *net.IP, resp *ntp.Response) *ServerStatus {
 	status := &ServerStatus{
 		TS:         time.Now(),
 		Offset:     resp.ClockOffset,
@@ -99,6 +104,7 @@ func ntpResponseToStatus(resp *ntp.Response) *ServerStatus {
 		RTT:        resp.RTT,
 		NoResponse: false,
 	}
+	status.Server = ip
 	return status
 }
 

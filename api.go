@@ -13,12 +13,12 @@ import (
 	"time"
 )
 
-const VERSION = "2.2"
-
+// API contains the methods to talk to the NTP Pool management API
 type API struct {
 	url string
 }
 
+// Config sets how many samples to do on each server (and which local IP to use)
 type Config struct {
 	Samples int    `json:"samples"`
 	IP      net.IP `json:"ip"`
@@ -32,6 +32,7 @@ func init() {
 	}
 }
 
+// NewAPI configures an API for the specified API endpoint and key
 func NewAPI(apiURL, apiKey string) (*API, error) {
 	apiurl, err := url.Parse(apiURL)
 	if err != nil {
@@ -71,6 +72,7 @@ func (api *API) newRequest(path string) (*http.Request, error) {
 	return req, nil
 }
 
+// GetConfig gets a Config from the API server
 func (api *API) GetConfig() (*Config, error) {
 	resp := struct{ Config *Config }{}
 	err := api.getAPI("config", &resp)
@@ -80,6 +82,7 @@ func (api *API) GetConfig() (*Config, error) {
 	return resp.Config, err
 }
 
+// GetServerList fetches servers to check
 func (api *API) GetServerList() (*ServerList, error) {
 	serverlist := &ServerList{}
 	err := api.getAPI("", serverlist)
@@ -116,6 +119,7 @@ type nopCloser struct {
 
 func (nopCloser) Close() error { return nil }
 
+// PostStatuses returns the specified list ServerStatus to the monitoring server
 func (api *API) PostStatuses(statuses []*ServerStatus) error {
 
 	log.Printf("Posting statuses!")
@@ -126,7 +130,7 @@ func (api *API) PostStatuses(statuses []*ServerStatus) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	feedback := MonitorFeedback{
+	feedback := Feedback{
 		Version: 1,
 		Servers: statuses,
 	}

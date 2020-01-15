@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
+// ServerList has a list of servers to check and the Config to use
 type ServerList struct {
 	Config  *Config  `json:"config"`
 	Servers []string `json:"servers"`
 }
 
+// ServerStatus ...
 type ServerStatus struct {
 	TS         time.Time     `json:"ts"`
 	Server     *net.IP       `json:"server"`
@@ -23,11 +25,14 @@ type ServerStatus struct {
 	NoResponse bool          `json:"no_response"`
 }
 
-type MonitorFeedback struct {
+// Feedback ...
+type Feedback struct {
 	Version int             `json:"version"`
 	Servers []*ServerStatus `json:"servers"`
 }
 
+// MarshalJSON encodes ServerStatus to JSON as expected by
+// the pool API
 func (s *ServerStatus) MarshalJSON() ([]byte, error) {
 	if s.TS.IsZero() {
 		return nil, fmt.Errorf("TS is zero")
@@ -53,6 +58,7 @@ func (s *ServerStatus) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// IPs returns the IPs of the servers in a ServerList
 func (sl *ServerList) IPs() ([]*net.IP, error) {
 	servers := []*net.IP{}
 
