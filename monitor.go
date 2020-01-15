@@ -3,7 +3,6 @@ package monitor
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
@@ -36,7 +35,6 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
 			time.Sleep(2 * time.Second)
 		}
-		log.Printf("try #%d %s ...", i, ip.String())
 
 		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
@@ -72,8 +70,6 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 	}
 
 	var best *ServerStatus
-
-	log.Printf("reviewing %d statuses for %s", len(statuses), ip)
 
 	for _, status := range statuses {
 
