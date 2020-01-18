@@ -87,7 +87,7 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 		}
 
 		// todo: ... and it's otherwise a valid response
-		if status.RTT < best.RTT {
+		if len(status.Error) == 0 && (len(best.Error) > 0 || status.RTT < best.RTT) {
 			best = status
 		}
 	}
