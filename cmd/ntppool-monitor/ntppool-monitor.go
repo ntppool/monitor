@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -129,30 +131,39 @@ func run(api *monitor.API) bool {
 
 	statuses := []*monitor.ServerStatus{}
 
-	for _, s := range servers {
+	wg := sync.WaitGroup{}
 
-		status, err := monitor.CheckHost(s, serverlist.Config)
-		if status == nil {
-			status = &monitor.ServerStatus{
-				Server:     s,
-				NoResponse: true,
-			}
-		}
-		if err != nil {
-			log.Printf("Error checking %q: %s", s, err)
-			status.Error = err.Error()
-			if strings.HasPrefix(status.Error, "read udp") {
-				idx := strings.LastIndex(status.Error, ":")
-				// ": " == two characters
-				if len(status.Error) > idx+2 {
-					idx = idx + 2
+	for _, ip := range servers {
+
+		wg.Add(1)
+
+		go func(s *net.IP) {
+			status, err := monitor.CheckHost(s, serverlist.Config)
+			if status == nil {
+				status = &monitor.ServerStatus{
+					Server:     s,
+					NoResponse: true,
 				}
-				status.Error = status.Error[idx:]
 			}
-		}
-		status.TS = time.Now()
-		statuses = append(statuses, status)
+			if err != nil {
+				log.Printf("Error checking %q: %s", s, err)
+				status.Error = err.Error()
+				if strings.HasPrefix(status.Error, "read udp") {
+					idx := strings.LastIndex(status.Error, ":")
+					// ": " == two characters
+					if len(status.Error) > idx+2 {
+						idx = idx + 2
+					}
+					status.Error = status.Error[idx:]
+				}
+			}
+			status.TS = time.Now()
+			statuses = append(statuses, status)
+			wg.Done()
+		}(ip)
 	}
+
+	wg.Wait()
 
 	err = api.PostStatuses(statuses)
 	if err != nil {

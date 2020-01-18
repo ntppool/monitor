@@ -11,7 +11,7 @@ import (
 )
 
 // VERSION is the current version of the software
-const VERSION = "2.2"
+const VERSION = "2.3"
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
 func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
