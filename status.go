@@ -41,7 +41,7 @@ func (s *ServerStatus) MarshalJSON() ([]byte, error) {
 		TS         int64   `json:"ts"`
 		Server     string  `json:"server"`
 		Offset     float64 `json:"offset"`
-		RTT        float64 `json:"rtt,omitempty"`
+		RTT        int64   `json:"rtt,omitempty"`
 		Stratum    uint8   `json:"stratum"`
 		Leap       uint8   `json:"leap"`
 		Error      string  `json:"error,omitempty"`
@@ -50,7 +50,7 @@ func (s *ServerStatus) MarshalJSON() ([]byte, error) {
 		TS:         s.TS.Unix(),
 		Server:     s.Server.String(),
 		Offset:     float64(s.Offset) / float64(time.Second),
-		RTT:        float64(s.RTT) / float64(time.Second),
+		RTT:        int64(s.RTT / time.Microsecond),
 		Stratum:    s.Stratum,
 		Leap:       s.Leap,
 		Error:      s.Error,
