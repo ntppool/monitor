@@ -3,6 +3,7 @@ package monitor
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -71,7 +72,14 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 
 	var best *ServerStatus
 
-	for _, status := range statuses {
+	log.Printf("for %s have %d samples", ip.String(), len(statuses))
+
+	// todo: if there are more than 2 (3?) samples with an offset, throw
+	// away the offset outlier(s)
+
+	for i, status := range statuses {
+
+		log.Printf("status for %s / %d: offset: %s rtt: %s err: %q", ip.String(), i, status.Offset, status.RTT, status.Error)
 
 		if best == nil {
 			best = status
@@ -83,6 +91,9 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 			best = status
 		}
 	}
+
+	log.Printf("best   for %s   :  offset: %s rtt: %s err: %q",
+		ip.String(), best.Offset, best.RTT, best.Error)
 
 	if len(best.Error) > 0 {
 		return best, fmt.Errorf("%s", best.Error)
