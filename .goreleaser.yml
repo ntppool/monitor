@@ -1,24 +1,27 @@
-project_name: ntppool-monitor
+# This is an example .goreleaser.yml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
 before:
   hooks:
-    # you may remove this if you don't use vgo
-    #- go mod download
+    # You may remove this if you don't use go modules.
+    - go mod tidy
     # you may remove this if you don't need go generate
-    #- go generate ./...
+    - go generate ./...
 builds:
--
-  main: ./cmd/ntppool-monitor/
-  env:
-  - CGO_ENABLED=0
-  goos:
-  - freebsd
-  - linux
+  - main: ./cmd/ntppool-monitor/
+    id: ntppool-monitor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - freebsd
+      - darwin
 archives:
-- replacements:
-    #darwin: Darwin
-    #linux: Linux
-    386: i386
-    amd64: x86_64
+  - replacements:
+      #darwin: Darwin
+      #linux: Linux
+      #windows: Windows
+      #386: i386
+      #amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -27,17 +30,21 @@ changelog:
   sort: asc
   filters:
     exclude:
-    - '^docs:'
-    - '^test:'
+      - '^docs:'
+      - '^test:'
 
 nfpms:
   -
-    # ID of the nfpm config, must be unique.
-    # Defaults to "default".
     id: ntppool-monitor
-    # You can change the name of the package.
-    # Default: `{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}`
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+    # Name of the package.
+    # Defaults to `ProjectName`.
+    package_name: ntppool-monitor
+
+    # You can change the file name of the package.
+    # Default: `{{ .PackageName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}`
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
     vendor: NTP Pool Project
     homepage: https://www.ntppool.org/
     maintainer: Ask Bjørn Hansen <ask@develooper.com>
@@ -46,15 +53,20 @@ nfpms:
     formats:
       - deb
       - rpm
+      - apk
     replacements:
       386: i686
       amd64: x86_64
     dependencies:
       - ntp
     bindir: /usr/bin
-    files:
-      "scripts/ntppool-monitor@.service": "/etc/systemd/system/ntppool-monitor@.service"
-    config_files:
-      "scripts/defaults": "/etc/default/ntppool-monitor.sample"
+    contents:
+      - src: "scripts/ntppool-monitor@.service"
+        dst: "/etc/systemd/system/ntppool-monitor@.service"
+
+      - src: "scripts/defaults"
+        dst: "/etc/default/ntppool-monitor.sample"
+        type: config
+
     scripts:
       postinstall: scripts/postinstall.sh
