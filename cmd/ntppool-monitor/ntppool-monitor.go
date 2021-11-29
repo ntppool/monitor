@@ -12,6 +12,7 @@ import (
 
 	"github.com/cenkalti/backoff"
 	"go.ntppool.org/monitor"
+	"go.ntppool.org/monitor/api/pb"
 )
 
 // Todo:
@@ -30,19 +31,19 @@ func main() {
 		if err != nil {
 			log.Printf("Could not get executable name: %s", err)
 		}
-		fmt.Printf("%s [api_key] [pool-server]\n", exe)
+		fmt.Printf("%s [pool-server]\n", exe)
 		os.Exit(2)
 	}
 
-	apiKey := args[0]
-	apiURLStr := "http://www.pool.ntp.org/monitor"
-	if len(args) > 1 {
-		apiURLStr = args[1]
-	}
+	// apiURLStr := "http://www.pool.ntp.org/monitor"
+	// if len(args) > 0 {
+	// 	apiURLStr = args[0]
+	// }
 
-	api, err := monitor.NewAPI(apiURLStr, apiKey)
+	api, err := grpcClient()
 	if err != nil {
 		log.Fatalf("creating API: %s", err)
+
 	}
 
 	cfg, err := api.GetConfig()
@@ -101,9 +102,9 @@ func main() {
 
 }
 
-func run(api *monitor.API) bool {
+func run(api *pb.MonitorClient) bool {
 
-	serverlist, err := api.GetServerList()
+	serverlist, err := api.GetServers()
 
 	if err != nil {
 		log.Printf("getting server list: %s", err)

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+option go_package = "./pb";
+
+package api;
+
+import "timestamp.proto";
+import "duration.proto";
+// import "ip.proto";
+
+service Monitor {
+  rpc GetConfig(GetConfigParams) returns (Config) {}
+
+  rpc GetServers(GetServersParams) returns (ServerList) {}
+}
+
+message GetConfigParams {}
+message GetServersParams {}
+
+// Config is the server set configuration for the monitoring agent
+message Config {
+  int32  Samples = 1;
+  bytes  IP = 2;
+}
+
+message ServerList {
+  Config config  = 1;
+  repeated bytes IP = 2;
+}
+
+message ServerStatus {
+  google.protobuf.Timestamp  TS = 1;
+  bytes IP = 2;
+  google.protobuf.Duration Offset = 3;
+  google.protobuf.Duration RTT = 4;
+  int32 Stratum = 5;
+  sint32 Leap = 6;
+  string Error = 7;
+  bool  NoResponse = 8;
+}

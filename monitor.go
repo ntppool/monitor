@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/beevik/ntp"
+	"go.ntppool.org/monitor/api/pb"
 )
 
 // VERSION is the current version of the software
 const VERSION = "2.3"
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
+func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
@@ -25,12 +26,12 @@ func CheckHost(ip *net.IP, cfg *Config) (*ServerStatus, error) {
 	}
 
 	if cfg.IP != nil {
-		opts.LocalAddress = cfg.IP.String()
+		opts.LocalAddress = cfg.IP.IP.String()
 	}
 
 	statuses := []*ServerStatus{}
 
-	for i := 0; i < cfg.Samples; i++ {
+	for i := int32(0); i < cfg.Samples; i++ {
 
 		if i > 0 {
 			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html

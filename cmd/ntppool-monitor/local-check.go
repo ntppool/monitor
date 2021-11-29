@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"go.ntppool.org/monitor/api/pb"
+
 	"go.ntppool.org/monitor"
 )
 
 type LocalOK struct {
-	cfg        *monitor.Config
+	cfg        *pb.Config
 	isv4       bool
 	lastCheck  time.Time
 	lastStatus bool
@@ -21,7 +23,7 @@ type LocalOK struct {
 const localCacheSeconds = 60
 const maxOffset = 2 * time.Millisecond
 
-func NewLocalOK(cfg *monitor.Config) *LocalOK {
+func NewLocalOK(cfg *pb.Config) *LocalOK {
 	var isv4 bool
 	if cfg.IP.To4() != nil {
 		isv4 = true

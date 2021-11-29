@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package ntppool.protobuf;
+
+option go_package = "go.ntppool.org/monitor/api/pb/types/ippb";
+
+message IP {
+    bytes IP = 1;
+}
