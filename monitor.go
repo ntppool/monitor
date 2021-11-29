@@ -4,18 +4,17 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"net"
 	"time"
 
 	"github.com/beevik/ntp"
 	"go.ntppool.org/monitor/api/pb"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"inet.af/netaddr"
 )
 
-// VERSION is the current version of the software
-const VERSION = "2.3"
-
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
+func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
@@ -25,11 +24,14 @@ func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 		Timeout: 3 * time.Second,
 	}
 
-	if cfg.IP != nil {
-		opts.LocalAddress = cfg.IP.IP.String()
+	configIP := cfg.GetIP()
+	if configIP != nil && configIP.IsValid() {
+		opts.LocalAddress = configIP.String()
+	} else {
+		log.Printf("Did not get valid local configuration IP: %+v", configIP)
 	}
 
-	statuses := []*ServerStatus{}
+	statuses := []*pb.ServerStatus{}
 
 	for i := int32(0); i < cfg.Samples; i++ {
 
@@ -40,7 +42,8 @@ func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 
 		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
-			status := &ServerStatus{Server: ip}
+			status := &pb.ServerStatus{}
+			status.SetIP(ip)
 			if resp != nil {
 				status = ntpResponseToStatus(ip, resp)
 			}
@@ -71,16 +74,16 @@ func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 		statuses = append(statuses, status)
 	}
 
-	var best *ServerStatus
+	var best *pb.ServerStatus
 
 	log.Printf("for %s have %d samples", ip.String(), len(statuses))
 
 	// todo: if there are more than 2 (3?) samples with an offset, throw
 	// away the offset outlier(s)
 
-	for i, status := range statuses {
+	for _, status := range statuses {
 
-		log.Printf("status for %s / %d: offset: %s rtt: %s err: %q", ip.String(), i, status.Offset, status.RTT, status.Error)
+		// log.Printf("status for %s / %d: offset: %s rtt: %s err: %q", ip.String(), i, status.Offset.AsDuration(), status.RTT.AsDuration(), status.Error)
 
 		if best == nil {
 			best = status
@@ -88,13 +91,14 @@ func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 		}
 
 		// todo: ... and it's otherwise a valid response
-		if len(status.Error) == 0 && (len(best.Error) > 0 || status.RTT < best.RTT) {
+
+		if len(status.Error) == 0 && (len(best.Error) > 0 || (status.RTT.AsDuration() < best.RTT.AsDuration())) {
 			best = status
 		}
 	}
 
 	log.Printf("best   for %s   :  offset: %s rtt: %s err: %q",
-		ip.String(), best.Offset, best.RTT, best.Error)
+		ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), best.Error)
 
 	if len(best.Error) > 0 {
 		return best, fmt.Errorf("%s", best.Error)
@@ -103,16 +107,16 @@ func CheckHost(ip *net.IP, cfg *pb.Config) (*ServerStatus, error) {
 	return best, nil
 }
 
-func ntpResponseToStatus(ip *net.IP, resp *ntp.Response) *ServerStatus {
-	status := &ServerStatus{
-		TS:         time.Now(),
-		Offset:     resp.ClockOffset,
-		Stratum:    resp.Stratum,
-		Leap:       uint8(resp.Leap),
-		RTT:        resp.RTT,
+func ntpResponseToStatus(ip *netaddr.IP, resp *ntp.Response) *pb.ServerStatus {
+	status := &pb.ServerStatus{
+		TS:         timestamppb.Now(),
+		Offset:     durationpb.New(resp.ClockOffset),
+		Stratum:    int32(resp.Stratum),
+		Leap:       int32(resp.Leap),
+		RTT:        durationpb.New(resp.RTT),
 		NoResponse: false,
 	}
-	status.Server = ip
+	status.SetIP(ip)
 	return status
 }
 

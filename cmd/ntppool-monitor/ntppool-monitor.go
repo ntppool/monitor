@@ -1,18 +1,23 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/spf13/cobra"
 	"go.ntppool.org/monitor"
+	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
+	apitls "go.ntppool.org/monitor/api/tls"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"inet.af/netaddr"
 )
 
 // Todo:
@@ -23,35 +28,44 @@ var (
 	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
 )
 
+var rootCmd = &cobra.Command{
+	Use:   "ntppool-monitor",
+	Short: "Monitoring daemon for the NTP Pool system",
+	Run:   root,
+}
+
+func init() {
+	rootCmd.Flags().String("key", "/etc/tls/server.key", "Server key path")
+	rootCmd.Flags().String("cert", "/etc/tls/server.crt", "Server certificate path")
+
+}
+
 func main() {
-	flag.Parse()
-	args := flag.Args()
-	if len(args) < 1 {
-		exe, err := os.Executable()
-		if err != nil {
-			log.Printf("Could not get executable name: %s", err)
-		}
-		fmt.Printf("%s [pool-server]\n", exe)
-		os.Exit(2)
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
 
-	// apiURLStr := "http://www.pool.ntp.org/monitor"
-	// if len(args) > 0 {
-	// 	apiURLStr = args[0]
-	// }
+}
 
-	api, err := grpcClient()
+func root(cmd *cobra.Command, args []string) {
+	ctx := context.Background()
+
+	cm, err := apitls.GetCertman(cmd)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	api, err := api.Client(ctx, cm)
 	if err != nil {
 		log.Fatalf("creating API: %s", err)
-
 	}
 
-	cfg, err := api.GetConfig()
+	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
 		log.Fatalf("Could not get config: %s", err)
 	}
 
-	log.Printf("Config: %+v", cfg)
+	log.Printf("Config: Samples: %d, IP: %s", cfg.Samples, cfg.IP().String())
 
 	localOK := NewLocalOK(cfg)
 
@@ -102,9 +116,11 @@ func main() {
 
 }
 
-func run(api *pb.MonitorClient) bool {
+func run(api pb.Monitor) bool {
 
-	serverlist, err := api.GetServers()
+	ctx := context.Background()
+
+	serverlist, err := api.GetServers(ctx, &pb.GetServersParams{})
 
 	if err != nil {
 		log.Printf("getting server list: %s", err)
@@ -130,7 +146,7 @@ func run(api *pb.MonitorClient) bool {
 		}
 	}
 
-	statuses := []*monitor.ServerStatus{}
+	statuses := []*pb.ServerStatus{}
 
 	wg := sync.WaitGroup{}
 
@@ -138,13 +154,13 @@ func run(api *pb.MonitorClient) bool {
 
 		wg.Add(1)
 
-		go func(s *net.IP) {
+		go func(s *netaddr.IP) {
 			status, err := monitor.CheckHost(s, serverlist.Config)
 			if status == nil {
-				status = &monitor.ServerStatus{
-					Server:     s,
+				status = &pb.ServerStatus{
 					NoResponse: true,
 				}
+				status.SetIP(s)
 			}
 			if err != nil {
 				log.Printf("Error checking %q: %s", s, err)
@@ -158,7 +174,7 @@ func run(api *pb.MonitorClient) bool {
 					status.Error = status.Error[idx:]
 				}
 			}
-			status.TS = time.Now()
+			status.TS = timestamppb.Now()
 			statuses = append(statuses, status)
 			wg.Done()
 		}(ip)
@@ -166,9 +182,17 @@ func run(api *pb.MonitorClient) bool {
 
 	wg.Wait()
 
-	err = api.PostStatuses(statuses)
+	list := &pb.ServerStatusList{
+		List: statuses,
+	}
+
+	r, err := api.SubmitResults(ctx, list)
 	if err != nil {
-		log.Printf("Post status error: %s", err)
+		log.Printf("SubmitResults error: %s", err)
+		return false
+	}
+	if !r.Ok {
+		log.Printf("SubmitResults did not return okay")
 		return false
 	}
 

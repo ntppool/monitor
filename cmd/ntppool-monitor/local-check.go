@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.ntppool.org/monitor/api/pb"
+	"inet.af/netaddr"
 
 	"go.ntppool.org/monitor"
 )
@@ -20,12 +21,13 @@ type LocalOK struct {
 	mu         sync.RWMutex
 }
 
-const localCacheSeconds = 60
-const maxOffset = 2 * time.Millisecond
+const localCacheSeconds = 120
+const maxOffset = 2500 * time.Microsecond
 
 func NewLocalOK(cfg *pb.Config) *LocalOK {
 	var isv4 bool
-	if cfg.IP.To4() != nil {
+
+	if cfg.IP().Is4() {
 		isv4 = true
 	} else {
 		isv4 = false
@@ -54,24 +56,25 @@ func (l *LocalOK) update() bool {
 
 	// todo: get this from server config ...
 	allHosts := []string{
-		// "localhost",
-		"time-macos.apple.com",
+		"time.apple.com",
 		// "ntp.ubuntu.com",
 		// "time.google.com",
+		"ntp1.net.berkeley.edu",
 		"tock.ucla.edu",
-		// "time-d-b.nist.gov",
 		"ntp.inet.tele.dk",
 		"uslax1-ntp-001.aaplimg.com",
 		"defra1-ntp-002.aaplimg.com",
 		"uklon5-ntp-001.aaplimg.com",
 		"ntp.stupi.se",
-		"ntp4.sptime.se",
 		"ntp.se",
+		"ntp.nict.jp",
+		"ntp.ripe.net",
+		"time.fu-berlin.de",
 	}
 
 	type namedIP struct {
 		Name string
-		IP   *net.IP
+		IP   *netaddr.IP
 	}
 
 	hosts := []namedIP{}
@@ -87,22 +90,22 @@ func (l *LocalOK) update() bool {
 			log.Printf("dns lookup for '%s': %s", h, err)
 			continue
 		}
-		var ip *net.IP
+		var ip *netaddr.IP
 
 		// log.Printf("got IPs for %s: %s", h, ips)
 
-		for _, i := range ips {
-			switch i.To4() != nil {
-			case true:
-				if l.isv4 {
-					ip = &i
-				}
-			case false:
-				if !l.isv4 {
-					ip = &i
-				}
+		for _, dnsIP := range ips {
+			i, ok := netaddr.FromStdIP(dnsIP)
+			if !ok {
+				continue
 			}
-			if ip != nil {
+			if i.Is4() && l.isv4 {
+				ip = &i
+			}
+			if i.Is6() && !l.isv4 {
+				ip = &i
+			}
+			if ip != nil && ip.IsValid() {
 				break
 			}
 		}
@@ -136,7 +139,7 @@ func (l *LocalOK) update() bool {
 		go func(h namedIP) {
 			ok, err := l.sanityCheckHost(h.Name, h.IP)
 			if err != nil {
-				log.Printf("Checking %q %q: %s", h.Name, h.IP.String(), err)
+				log.Printf("Failure for %q %q: %s", h.Name, h.IP.String(), err)
 			}
 			results <- ok
 			wg.Done()
@@ -158,21 +161,18 @@ func (l *LocalOK) update() bool {
 	return true
 }
 
-func (l *LocalOK) sanityCheckHost(name string, ip *net.IP) (bool, error) {
+func (l *LocalOK) sanityCheckHost(name string, ip *netaddr.IP) (bool, error) {
 	status, err := monitor.CheckHost(ip, l.cfg)
 	if err != nil {
 		return false, err
 	}
 
-	offset := status.Offset
-	if offset < 0 {
-		offset = offset * -1
-	}
+	offset := status.AbsoluteOffset()
 
-	log.Printf("offset for %s (%s): %s", name, ip, status.Offset)
+	log.Printf("offset for %s (%s): %s", name, ip, status.Offset.AsDuration())
 
-	if offset > maxOffset {
-		return false, fmt.Errorf("offset too large: %s", status.Offset)
+	if *offset > maxOffset || *offset < maxOffset*-1 {
+		return false, fmt.Errorf("offset too large: %s", status.Offset.AsDuration().String())
 	}
 
 	if status.Leap == 3 {

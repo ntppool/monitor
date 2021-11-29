@@ -1,0 +1,8 @@
+version: 1
+packages:
+  - path: "db"
+    name: "db"
+    engine: "mysql"
+    schema: "schema.sql"
+    queries: "query.sql"
+    emit_json_tags: true

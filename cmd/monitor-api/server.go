@@ -2,7 +2,9 @@ package main
 
 import (
 	"log"
+	"os"
 
+	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/server"
 
 	"github.com/spf13/cobra"
@@ -19,12 +21,16 @@ var serverCmd = &cobra.Command{
 			log.Fatalf("invalid listen parameter: %s", err)
 		}
 
-		tlsconfig := server.TLSConfig{}
-		tlsconfig.CAFile, _ = cmd.Flags().GetString("cacert")
+		cm, err := apitls.GetCertman(cmd)
+		if err != nil {
+			log.Fatal(err)
+			os.Exit(2)
+
+		}
 
 		cfg := server.Config{
-			Listen:    listen,
-			TLSConfig: tlsconfig,
+			Listen:       listen,
+			CertProvider: cm,
 		}
 
 		srv, err := server.NewServer(cfg)
@@ -40,8 +46,7 @@ var serverCmd = &cobra.Command{
 
 func init() {
 	serverCmd.Flags().String("listen", ":8000", "Listen address")
-	serverCmd.Flags().String("cacert", "", "CA certificate path")
-	serverCmd.Flags().String("key", "", "Server key path")
-	serverCmd.Flags().String("cert", "", "Server certificate path")
+	serverCmd.Flags().String("key", "/etc/tls/server.key", "Server key path")
+	serverCmd.Flags().String("cert", "/etc/tls/server.crt", "Server certificate path")
 	rootCmd.AddCommand(serverCmd)
 }
