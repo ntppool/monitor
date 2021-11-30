@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"unicode/utf8"
 
 	"github.com/beevik/ntp"
 	"go.ntppool.org/monitor/api/pb"
@@ -62,9 +63,16 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 				return status, fmt.Errorf("%s", resp.KissCode)
 			}
 
+			refText := fmt.Sprintf("%#x", resp.ReferenceID)
+
+			refIDStr := referenceIDString(resp.ReferenceID)
+			if utf8.Valid([]byte(refIDStr)) {
+				refText = refText + ", " + refIDStr
+			}
+
 			return status,
-				fmt.Errorf("bad stratum %d (referenceID: %#x, %s)",
-					resp.Stratum, resp.ReferenceID, referenceIDString(resp.ReferenceID))
+				fmt.Errorf("bad stratum %d (referenceID: %s)",
+					resp.Stratum, refText)
 		}
 
 		if resp.Stratum > 6 {
@@ -108,6 +116,7 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 }
 
 func ntpResponseToStatus(ip *netaddr.IP, resp *ntp.Response) *pb.ServerStatus {
+	log.Printf("Leap: %d", resp.Leap)
 	status := &pb.ServerStatus{
 		TS:         timestamppb.Now(),
 		Offset:     durationpb.New(resp.ClockOffset),

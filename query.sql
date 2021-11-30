@@ -6,6 +6,45 @@ WHERE api_key = ? LIMIT 1;
 SELECT * FROM monitors
 ORDER BY name;
 
+-- name: GetServer :one
+SELECT * FROM servers WHERE id=?;
+
+-- name: GetServerIP :one
+SELECT * FROM servers WHERE ip=?;
+
+-- name: GetServerScore :one
+SELECT * FROM server_scores
+  WHERE
+    server_id=? AND
+    monitor_id=?;
+
+-- name: UpdateServerScore :exec
+UPDATE server_scores
+  SET score_ts  = ?,
+      score_raw = ?
+  WHERE id = ?;
+
+-- name: UpdateServerScoreStratum :exec
+UPDATE server_scores
+  SET stratum  = ?
+  WHERE id = ?;
+
+-- name: UpdateServer :exec
+UPDATE servers
+  SET score_ts  = ?,
+      score_raw = ?
+  WHERE id = ?;
+
+-- name: UpdateServerStratum :exec
+UPDATE servers
+  SET stratum = ?
+  WHERE id = ?;
+
+-- name: InsertLogScore :exec
+INSERT INTO log_scores
+  (server_id, monitor_id, ts, score, step, offset, rtt, attributes)
+  values (?, ?, ?, ?, ?, ?, ?, ?);
+
 -- name: GetServers :many
 SELECT s.*
     FROM servers s

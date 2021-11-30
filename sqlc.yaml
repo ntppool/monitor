@@ -1,7 +1,7 @@
 version: 1
 packages:
-  - path: "db"
-    name: "db"
+  - path: "ntpdb"
+    name: "ntpdb"
     engine: "mysql"
     schema: "schema.sql"
     queries: "query.sql"

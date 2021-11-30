@@ -46,7 +46,11 @@ func Client(ctx context.Context, cm apitls.CertificateProvider) (pb.Monitor, err
 	if err != nil {
 		return nil, err
 	}
-	client := pb.NewMonitorProtobufClient("https://monitor-api-dev.ntppool.net:8000", httpClient)
+	client := pb.NewMonitorProtobufClient(
+		"https://monitor-api-dev.ntppool.net:8000",
+		httpClient,
+		twirp.WithClientPathPrefix("/api/v1"),
+	)
 
 	hdr := make(http.Header)
 	hdr.Set("User-Agent", "ntppool-monitor/"+VERSION)

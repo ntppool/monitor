@@ -183,7 +183,8 @@ func run(api pb.Monitor) bool {
 	wg.Wait()
 
 	list := &pb.ServerStatusList{
-		List: statuses,
+		Version: 2,
+		List:    statuses,
 	}
 
 	r, err := api.SubmitResults(ctx, list)

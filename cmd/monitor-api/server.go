@@ -3,6 +3,11 @@ package main
 import (
 	"log"
 	"os"
+	"time"
+
+	"database/sql"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/server"
@@ -28,12 +33,32 @@ var serverCmd = &cobra.Command{
 
 		}
 
+		dsn := os.Getenv("DATABASE_DSN")
+		if len(dsn) == 0 {
+			log.Printf("DATABASE_DSN environment variable required")
+			os.Exit(2)
+		}
+		dbconn, err := sql.Open("mysql", dsn)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		dbconn.SetConnMaxLifetime(time.Minute * 3)
+		dbconn.SetMaxOpenConns(10)
+		dbconn.SetMaxIdleConns(5)
+
+		err = dbconn.Ping()
+		if err != nil {
+			log.Printf("Could not connect to database: %s", err)
+			os.Exit(2)
+		}
+
 		cfg := server.Config{
 			Listen:       listen,
 			CertProvider: cm,
 		}
 
-		srv, err := server.NewServer(cfg)
+		srv, err := server.NewServer(cfg, dbconn)
 		if err != nil {
 			log.Fatalf("srv setup: %s", err)
 		}

@@ -1,6 +1,10 @@
 package pb
 
-import "time"
+import (
+	"time"
+
+	"inet.af/netaddr"
+)
 
 func (ss *ServerStatus) AbsoluteOffset() *time.Duration {
 	offset := ss.Offset.AsDuration()
@@ -8,4 +12,8 @@ func (ss *ServerStatus) AbsoluteOffset() *time.Duration {
 		offset = offset * -1
 	}
 	return &offset
+}
+
+func (ss *ServerStatus) GetIP() *netaddr.IP {
+	return bytesToIP(ss.IPBytes)
 }

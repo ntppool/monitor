@@ -15,9 +15,9 @@ func (cfg *Config) GetIP() *netaddr.IP {
 }
 
 func (sl *ServerList) IPs() ([]*netaddr.IP, error) {
-	ips := make([]*netaddr.IP, len(sl.IPBytes))
-	for i, b := range sl.IPBytes {
-		ips[i] = bytesToIP(b)
+	ips := make([]*netaddr.IP, len(sl.Servers))
+	for i, s := range sl.Servers {
+		ips[i] = bytesToIP(s.IPBytes)
 	}
 	return ips, nil
 }

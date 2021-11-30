@@ -27,13 +27,19 @@ message Config {
   bytes  IPBytes = 2;
 }
 
+message Server {
+  bytes  IPBytes = 1;
+  bytes  Ticket = 2;
+}
+
 message ServerList {
   Config config  = 1;
-  repeated bytes IPBytes = 2;
+  repeated Server Servers = 2;
 }
 
 message ServerStatusList {
-  repeated ServerStatus List = 1;
+  int32 Version = 1;
+  repeated ServerStatus List = 2;
 }
 
 message ServerStatusResult {
@@ -41,12 +47,13 @@ message ServerStatusResult {
 }
 
 message ServerStatus {
-  google.protobuf.Timestamp  TS = 1;
-  bytes IPBytes = 2;
-  google.protobuf.Duration Offset = 3;
-  google.protobuf.Duration RTT = 4;
-  int32 Stratum = 5;
-  sint32 Leap = 6;
-  string Error = 7;
-  bool  NoResponse = 8;
+  bytes  Ticket = 1;
+  bytes  IPBytes = 2;
+  google.protobuf.Timestamp  TS = 3;
+  google.protobuf.Duration   Offset = 4;
+  google.protobuf.Duration   RTT = 5;
+  int32  Stratum = 6;
+  sint32 Leap = 7;
+  string Error = 8;
+  bool   NoResponse = 9;
 }
