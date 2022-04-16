@@ -8,7 +8,6 @@ import (
 	"log"
 
 	"github.com/dyson/certman"
-	"github.com/spf13/cobra"
 )
 
 //go:embed ca.pem
@@ -28,15 +27,9 @@ func CAPool() (*x509.CertPool, error) {
 	return capool, nil
 }
 
-func GetCertman(cmd *cobra.Command) (*certman.CertMan, error) {
-	keyFile, err := cmd.Flags().GetString("key")
-	if err != nil {
-		return nil, err
-	}
-	certFile, err := cmd.Flags().GetString("cert")
-	if err != nil {
-		return nil, err
-	}
+// GetCertman sets up certman for the specified cert / key pair. It is
+// used in the monitor-api and (for now) in the client
+func GetCertman(certFile, keyFile string) (*certman.CertMan, error) {
 
 	cm, err := certman.New(certFile, keyFile)
 	if err != nil {

@@ -24,7 +24,7 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
 	cn := getCertificateName(ctx)
 	log.Printf("cn: %+v", cn)
 
-	monitor, err := srv.db.GetMonitorAPIKey(ctx, cn)
+	monitor, err := srv.db.GetMonitorTLSName(ctx, sql.NullString{String: cn, Valid: true})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, twirp.NotFoundError("no such monitor")
@@ -52,8 +52,8 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	p := ntpdb.GetServersParams{
 		MonitorID:          monitor.ID,
 		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion),
-		IntervalMinutes:    12,
-		IntervalMinutesAll: 4,
+		IntervalMinutes:    8,
+		IntervalMinutesAll: 3,
 		Limit:              10,
 		Offset:             0,
 	}
@@ -78,7 +78,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 			return nil, err
 		}
 		pServer.IPBytes, _ = ip.MarshalBinary()
-		pServer.Token = []byte("foo") // todo: crypto
+		pServer.Ticket = []byte("foo") // todo: crypto
 
 		pServers = append(pServers, pServer)
 	}

@@ -1,4 +1,4 @@
-package main
+package localok
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ type LocalOK struct {
 }
 
 const localCacheSeconds = 120
-const maxOffset = 2500 * time.Microsecond
+const maxOffset = 3500 * time.Microsecond
 
 func NewLocalOK(cfg *pb.Config) *LocalOK {
 	var isv4 bool
@@ -66,7 +66,7 @@ func (l *LocalOK) update() bool {
 		"defra1-ntp-002.aaplimg.com",
 		"uklon5-ntp-001.aaplimg.com",
 		"ntp.stupi.se",
-		"ntp.se",
+		// "ntp.se",
 		"ntp.nict.jp",
 		"ntp.ripe.net",
 		"time.fu-berlin.de",

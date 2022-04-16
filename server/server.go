@@ -45,10 +45,7 @@ func (srv *Server) getVerifiedCert(verifiedChains [][]*x509.Certificate) (*x509.
 			for _, name := range cert.DNSNames {
 				// log.Printf("verified cert, dns name: %+v", cert.DNSNames)
 				// log.Printf("issuer: %s", cert.Issuer)
-				if name == "monitor-api-dev.ntppool.net" {
-					return cert, name
-				}
-				if strings.HasSuffix(name, ".mon.ntppool.net") {
+				if strings.HasSuffix(name, ".mon.ntppool.dev") {
 					return cert, name
 				}
 			}

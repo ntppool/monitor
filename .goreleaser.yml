@@ -1,13 +1,10 @@
-# This is an example .goreleaser.yml file with some sane defaults.
-# Make sure to check the documentation at http://goreleaser.com
 before:
-  hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
+  # we don't want this in the CI environment
+  #hooks:
+  #  - go mod tidy
+  #  - go generate ./...
 builds:
-  - main: ./cmd/ntppool-monitor/
+  - main: ./client/cmd/ntppool-monitor/
     id: ntppool-monitor
     env:
       - CGO_ENABLED=0
@@ -15,7 +12,32 @@ builds:
       - linux
       - freebsd
       - darwin
+    ldflags:
+      - -s -w
+      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
+      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
+      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+
+  - main: ./server/cmd/monitor-api/
+    id: monitor-api
+    binary: monitor-api
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - freebsd
+      - darwin
+    ldflags:
+      - -s -w
+      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
+      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
+      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+
 archives:
+  # - files:
+  #     - LICENSE.txt
+  #     - ./client/cmd/ntppool-monitor/README.md
+
   - replacements:
       #darwin: Darwin
       #linux: Linux
@@ -23,19 +45,18 @@ archives:
       #386: i386
       #amd64: x86_64
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  name_template: '{{ .Tag }}{{ if index .Env "DRONE_BUILD_NUMBER" }}-{{ .Env.DRONE_BUILD_NUMBER }}{{ else }}-next{{ end }}'
 changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - "^docs:"
+      - "^test:"
 
 nfpms:
-  -
-    id: ntppool-monitor
+  - id: ntppool-monitor
 
     # Name of the package.
     # Defaults to `ProjectName`.

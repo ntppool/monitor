@@ -40,14 +40,15 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 	return client, nil
 }
 
-func Client(ctx context.Context, cm apitls.CertificateProvider) (pb.Monitor, error) {
+func Client(ctx context.Context, cp apitls.CertificateProvider) (pb.Monitor, error) {
 
-	httpClient, err := httpClient(cm)
+	httpClient, err := httpClient(cp)
 	if err != nil {
 		return nil, err
 	}
 	client := pb.NewMonitorProtobufClient(
-		"https://monitor-api-dev.ntppool.net:8000",
+//		"https://monitor-api-dev.ntppool.net:8000",
+		"https://api.devel.mon.ntppool.dev",
 		httpClient,
 		twirp.WithClientPathPrefix("/api/v1"),
 	)

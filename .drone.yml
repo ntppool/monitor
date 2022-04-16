@@ -1,0 +1,164 @@
+---
+kind: pipeline
+type: kubernetes
+name: default
+
+environment:
+  GOCACHE: /cache/pkg/cache
+  GOMODCACHE: /cache/pkg/mod
+
+steps:
+  - name: fetch-tags
+    image: alpine/git
+    commands:
+      - git fetch --tags
+    resources:
+      requests:
+        cpu: 250
+        memory: 50MiB
+      limits:
+        cpu: 250
+        memory: 100MiB
+
+  - name: test
+    image: golang:1.18.1
+    volumes:
+      - name: go
+        path: /go
+      - name: gopkg
+        path: /cache
+    commands:
+      - go test -v ./...
+      - go build ./...
+    resources:
+      requests:
+        cpu: 1000
+        memory: 128MiB
+      limits:
+        cpu: 2000
+        memory: 2GiB
+
+  - name: goreleaser
+    image: golang:1.18.1
+    resources:
+      requests:
+        cpu: 4000
+        memory: 512MiB
+      limits:
+        cpu: 10000
+        memory: 2048MiB
+    volumes:
+      - name: go
+        path: /go
+      - name: gopkg
+        path: /cache
+    commands:
+      - ./scripts/run-goreleaser
+      - echo Done
+    when:
+      ref:
+        - refs/heads/main
+        - refs/heads/drone-test
+        - refs/tags/**
+    depends_on: [test]
+
+  - name: upload
+    image: plugins/s3
+    resources:
+      requests:
+        cpu: 250
+        memory: 64MiB
+      limits:
+        cpu: 250
+        memory: 256MiB
+    settings:
+      access_key:
+        from_secret: s3_access_key
+      secret_key:
+        from_secret: s3_secret_key
+      bucket: geodns
+      target: /monitor/builds/${DRONE_BUILD_NUMBER}
+      source: dist/*
+      strip_prefix: dist/
+      endpoint: https://minio-ewr1.develooper.com/
+      path_style: true
+    depends_on: [goreleaser]
+
+  - name: fury-publish
+    image: golang:1.17.8
+    resources:
+      requests:
+        cpu: 250
+        memory: 64MiB
+      limits:
+        cpu: 250
+        memory: 256MiB
+    environment:
+      FURY_TOKEN:
+        from_secret: fury_test_token
+    commands:
+      - ./scripts/fury-publish ntppool-test
+    when:
+      ref:
+        - refs/heads/main
+        - refs/heads/drone-test
+        - refs/tags/**
+    depends_on: [goreleaser]
+
+volumes:
+  - name: go
+    temp: {}
+  - name: gopkg
+    claim:
+      name: go-pkg
+
+trigger:
+  event:
+    - push
+    - tag
+    - pull_request
+
+---
+kind: pipeline
+type: kubernetes
+name: publish-production
+
+steps:
+  - name: download
+    image: golang:1.18.1
+    commands:
+      - ./scripts/download-release ${DRONE_BUILD_PARENT} dist/
+    resources:
+      requests:
+        cpu: 250
+        memory: 64MiB
+      limits:
+        cpu: 250
+        memory: 256MiB
+
+  - name: fury-publish
+    image: golang:1.18.1
+    resources:
+      requests:
+        cpu: 250
+        memory: 64MiB
+      limits:
+        cpu: 250
+        memory: 256MiB
+    environment:
+      FURY_TOKEN:
+        from_secret: fury_token
+    commands:
+      - ./scripts/fury-publish ntppool
+    depends_on: ["download"]
+
+trigger:
+  event:
+    - promote
+  target:
+    - publish
+---
+kind: signature
+hmac: cf0fc3a9caf1c219edcbc468d9d0b2291444decce93f9326d00d19133c057d37
+
+...

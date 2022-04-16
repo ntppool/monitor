@@ -84,7 +84,7 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 
 	var best *pb.ServerStatus
 
-	log.Printf("for %s have %d samples", ip.String(), len(statuses))
+	// log.Printf("for %s we collected %d samples, now find the best result", ip.String(), len(statuses))
 
 	// todo: if there are more than 2 (3?) samples with an offset, throw
 	// away the offset outlier(s)
@@ -116,7 +116,7 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 }
 
 func ntpResponseToStatus(ip *netaddr.IP, resp *ntp.Response) *pb.ServerStatus {
-	log.Printf("Leap: %d", resp.Leap)
+	//log.Printf("Leap: %d", resp.Leap)
 	status := &pb.ServerStatus{
 		TS:         timestamppb.Now(),
 		Offset:     durationpb.New(resp.ClockOffset),

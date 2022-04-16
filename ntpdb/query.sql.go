@@ -9,21 +9,25 @@ import (
 	"time"
 )
 
-const getMonitorAPIKey = `-- name: GetMonitorAPIKey :one
-SELECT id, user_id, name, ip, ip_version, api_key, config, last_seen, created_on FROM monitors
-WHERE api_key = ? LIMIT 1
+const getMonitorTLSName = `-- name: GetMonitorTLSName :one
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, created_on FROM monitors
+WHERE tls_name = ? LIMIT 1
 `
 
-func (q *Queries) GetMonitorAPIKey(ctx context.Context, apiKey string) (Monitor, error) {
-	row := q.db.QueryRowContext(ctx, getMonitorAPIKey, apiKey)
+func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString) (Monitor, error) {
+	row := q.db.QueryRowContext(ctx, getMonitorTLSName, tlsName)
 	var i Monitor
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
+		&i.AccountID,
 		&i.Name,
+		&i.Location,
 		&i.Ip,
 		&i.IpVersion,
+		&i.TlsName,
 		&i.ApiKey,
+		&i.Status,
 		&i.Config,
 		&i.LastSeen,
 		&i.CreatedOn,
@@ -219,7 +223,7 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT id, user_id, name, ip, ip_version, api_key, config, last_seen, created_on FROM monitors
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, created_on FROM monitors
 ORDER BY name
 `
 
@@ -235,10 +239,14 @@ func (q *Queries) ListMonitors(ctx context.Context) ([]Monitor, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.AccountID,
 			&i.Name,
+			&i.Location,
 			&i.Ip,
 			&i.IpVersion,
+			&i.TlsName,
 			&i.ApiKey,
+			&i.Status,
 			&i.Config,
 			&i.LastSeen,
 			&i.CreatedOn,

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -13,9 +13,8 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/spf13/cobra"
 	"go.ntppool.org/monitor"
-	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
-	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/client/localok"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"inet.af/netaddr"
 )
@@ -28,36 +27,40 @@ var (
 	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "ntppool-monitor",
-	Short: "Monitoring daemon for the NTP Pool system",
-	Run:   root,
+func (cli *CLI) monitorCmd() *cobra.Command {
+
+	monitorCmd := &cobra.Command{
+		Use:   "monitor",
+		Short: "Run monitor",
+		Long:  ``,
+		RunE:  cli.Run(cli.startMonitor),
+	}
+	monitorCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+
+	return monitorCmd
 }
 
-func init() {
-	rootCmd.Flags().String("key", "/etc/tls/server.key", "Server key path")
-	rootCmd.Flags().String("cert", "/etc/tls/server.crt", "Server certificate path")
+func (cli *CLI) startMonitor(cmd *cobra.Command) error {
+	ctx, cancelMonitor := context.WithCancel(context.Background())
+	defer cancelMonitor()
 
-}
-
-func main() {
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	cauth, err := cli.ClientAuth(ctx)
+	if err != nil {
+		log.Fatalf("auth error: %s", err)
 	}
 
-}
+	go cauth.Manager()
 
-func root(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
-
-	cm, err := apitls.GetCertman(cmd)
+	// block until we have a valid certificate
+	err = cauth.WaitUntilReady()
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Printf("Failed waiting for authentication to be ready: %s", err)
+		os.Exit(2)
 	}
 
-	api, err := api.Client(ctx, cm)
+	api, err := setupAPI(ctx, cauth)
 	if err != nil {
-		log.Fatalf("creating API: %s", err)
+		log.Fatalf("Could not setup API: %s", err)
 	}
 
 	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
@@ -67,16 +70,16 @@ func root(cmd *cobra.Command, args []string) {
 
 	log.Printf("Config: Samples: %d, IP: %s", cfg.Samples, cfg.IP().String())
 
-	localOK := NewLocalOK(cfg)
+	localOK := localok.NewLocalOK(cfg)
 
 	if *sanityOnlyFlag {
 		ok := localOK.Check()
 		if ok {
 			log.Printf("Local clock ok")
-			os.Exit(0)
+			return nil
 		} else {
 			log.Printf("Local clock not ok")
-			os.Exit(2)
+			return fmt.Errorf("health check failed")
 		}
 	}
 
@@ -113,6 +116,8 @@ func root(cmd *cobra.Command, args []string) {
 			break
 		}
 	}
+
+	return nil
 
 }
 

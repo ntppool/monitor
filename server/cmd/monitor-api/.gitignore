@@ -1,0 +1,8 @@
+monitor-api
+
+# Ignore DevSpace cache and log folder
+.devspace/
+devel
+k8s
+run
+

@@ -1,6 +1,6 @@
--- name: GetMonitorAPIKey :one
+-- name: GetMonitorTLSName :one
 SELECT * FROM monitors
-WHERE api_key = ? LIMIT 1;
+WHERE tls_name = ? LIMIT 1;
 
 -- name: ListMonitors :many
 SELECT * FROM monitors
@@ -54,7 +54,7 @@ WHERE (monitor_id = sqlc.arg('monitor_id')
     AND s.ip_version = sqlc.arg('ip_version')
     AND (ss.score_ts IS NULL OR
           (ss.score_raw > -90 AND ss.score_ts <
-            DATE_SUB( NOW(), INTERVAL sqlc.arg(interval_minutes) minute)
+            DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes') minute)
             OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 65 minute)) ) )
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes_all') minute) ))

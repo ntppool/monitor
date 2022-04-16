@@ -1,4 +1,10 @@
+.vscode
+.devspace
 *~
 /ntppool-monitor
-/cmd/ntppool-monitor/ntppool-monitor
+/client/cmd/ntppool-monitor/ntppool-monitor
+/monitor-api
+/server/cmd/monitor-api/monitor-api
 dist/
+vendor/
+devel/

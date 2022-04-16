@@ -38,6 +38,7 @@ const (
 	AccountSubscriptionsStatusPastDue           AccountSubscriptionsStatus = "past_due"
 	AccountSubscriptionsStatusCanceled          AccountSubscriptionsStatus = "canceled"
 	AccountSubscriptionsStatusUnpaid            AccountSubscriptionsStatus = "unpaid"
+	AccountSubscriptionsStatusEnded             AccountSubscriptionsStatus = "ended"
 )
 
 func (e *AccountSubscriptionsStatus) Scan(src interface{}) error {
@@ -67,6 +68,28 @@ func (e *MonitorsIpVersion) Scan(src interface{}) error {
 		*e = MonitorsIpVersion(s)
 	default:
 		return fmt.Errorf("unsupported scan type for MonitorsIpVersion: %T", src)
+	}
+	return nil
+}
+
+type MonitorsStatus string
+
+const (
+	MonitorsStatusPending MonitorsStatus = "pending"
+	MonitorsStatusTesting MonitorsStatus = "testing"
+	MonitorsStatusLive    MonitorsStatus = "live"
+	MonitorsStatusPaused  MonitorsStatus = "paused"
+	MonitorsStatusDeleted MonitorsStatus = "deleted"
+)
+
+func (e *MonitorsStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MonitorsStatus(s)
+	case string:
+		*e = MonitorsStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MonitorsStatus: %T", src)
 	}
 	return nil
 }
@@ -181,7 +204,7 @@ type Account struct {
 	UrlSlug          sql.NullString `json:"url_slug"`
 	CreatedOn        time.Time      `json:"created_on"`
 	ModifiedOn       time.Time      `json:"modified_on"`
-	AccountPlanID    sql.NullInt32  `json:"account_plan_id"`
+	StripeCustomerID sql.NullString `json:"stripe_customer_id"`
 }
 
 type AccountInvite struct {
@@ -202,6 +225,12 @@ type AccountSubscription struct {
 	AccountID            int32                      `json:"account_id"`
 	StripeSubscriptionID sql.NullString             `json:"stripe_subscription_id"`
 	Status               AccountSubscriptionsStatus `json:"status"`
+	Name                 string                     `json:"name"`
+	MaxZones             int32                      `json:"max_zones"`
+	MaxDevices           int32                      `json:"max_devices"`
+	CreatedOn            time.Time                  `json:"created_on"`
+	EndedOn              sql.NullTime               `json:"ended_on"`
+	ModifiedOn           time.Time                  `json:"modified_on"`
 }
 
 type AccountUser struct {
@@ -293,10 +322,14 @@ type LogStatus struct {
 type Monitor struct {
 	ID        int32             `json:"id"`
 	UserID    sql.NullInt32     `json:"user_id"`
+	AccountID sql.NullInt32     `json:"account_id"`
 	Name      string            `json:"name"`
+	Location  string            `json:"location"`
 	Ip        string            `json:"ip"`
 	IpVersion MonitorsIpVersion `json:"ip_version"`
-	ApiKey    string            `json:"api_key"`
+	TlsName   sql.NullString    `json:"tls_name"`
+	ApiKey    sql.NullString    `json:"api_key"`
+	Status    MonitorsStatus    `json:"status"`
 	Config    string            `json:"config"`
 	LastSeen  sql.NullTime      `json:"last_seen"`
 	CreatedOn time.Time         `json:"created_on"`
