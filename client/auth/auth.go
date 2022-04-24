@@ -10,6 +10,7 @@ import (
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
+	"go.ntppool.org/monitor/api"
 )
 
 type ClientAuth struct {
@@ -17,6 +18,8 @@ type ClientAuth struct {
 	Vault *Vault
 
 	Cert *tls.Certificate `json:"-"`
+
+	deploymentEnv string
 
 	// CertRaw []byte `json:"Cert"`
 	// KeyRaw  []byte `json:"Key"`
@@ -42,14 +45,20 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 		secret: secret,
 	}
 
-	ca := &ClientAuth{
-		Name:  name,
-		ctx:   ctx,
-		dir:   dir,
-		Vault: vault,
+	depEnv, err := api.GetDeploymentEnvironment(name)
+	if err != nil {
+		return nil, err
 	}
 
-	err := ca.load()
+	ca := &ClientAuth{
+		Name:          name,
+		deploymentEnv: depEnv,
+		ctx:           ctx,
+		dir:           dir,
+		Vault:         vault,
+	}
+
+	err = ca.load()
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("could not load existing state: %s", err)
@@ -94,7 +103,7 @@ func (ca *ClientAuth) Manager() error {
 }
 
 func (ca *ClientAuth) Login() error {
-	err := ca.Vault.Login(ca.ctx)
+	err := ca.Vault.Login(ca.ctx, ca.deploymentEnv)
 	if err != nil {
 		return err
 	}

@@ -105,10 +105,12 @@ func (ca *ClientAuth) IssueCertificates() error {
 
 	data := map[string]interface{}{
 		"common_name": ca.Name,
-		"ttl":         "12h",
+		"ttl":         "36h",
 	}
 
-	rv, err := vault.Logical().WriteWithContext(ca.ctx, "pki_servers/issue/monitors-devel", data)
+	issuePath := "pki_servers/issue/monitors-" + ca.deploymentEnv
+
+	rv, err := vault.Logical().WriteWithContext(ca.ctx, issuePath, data)
 	if err != nil {
 		return err
 	}

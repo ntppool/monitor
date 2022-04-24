@@ -46,7 +46,7 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 	return client, nil
 }
 
-func getServerName(clientName string) (string, error) {
+func GetDeploymentEnvironment(clientName string) (string, error) {
 
 	clientName = strings.ToLower(clientName)
 
@@ -60,12 +60,21 @@ func getServerName(clientName string) (string, error) {
 		return "", fmt.Errorf("invalid client name %s", clientName)
 	}
 
-	if apiServer, ok := apiServers[parts[1]]; ok {
-		return apiServer, nil
+	if _, ok := apiServers[parts[1]]; ok {
+		return parts[1], nil
 	}
 
 	return "", fmt.Errorf("invalid client name %s (unknown environment %s)", clientName, parts[1])
 
+}
+
+func getServerName(clientName string) (string, error) {
+	depEnv, err := GetDeploymentEnvironment(clientName)
+	if err != nil {
+		return "", err
+	}
+
+	return apiServers[depEnv], nil
 }
 
 func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (pb.Monitor, error) {

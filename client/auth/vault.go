@@ -10,9 +10,8 @@ import (
 )
 
 var vaultAddr = "https://vault.ntppool.org"
-var vaultMount = "monitors/devel/"
 
-func (v *Vault) Login(ctx context.Context) error {
+func (v *Vault) Login(ctx context.Context, depEnv string) error {
 
 	client, err := v.vaultClient()
 	if err != nil {
@@ -34,7 +33,7 @@ func (v *Vault) Login(ctx context.Context) error {
 	appRoleAuth, err := approle.NewAppRoleAuth(
 		roleID,
 		secretID,
-		approle.WithMountPath("/monitors/devel/"),
+		approle.WithMountPath(fmt.Sprintf("/monitors/%s/", depEnv)),
 	)
 	if err != nil {
 		return fmt.Errorf("unable to initialize AppRole auth method: %w", err)
