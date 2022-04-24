@@ -9,6 +9,6 @@ getent passwd ntpmon >/dev/null || \
 
 mkdir -p ${NTPMONDIR}
 chmod 700 ${NTPMONDIR}
-chown ntpmon:ntpmon ${NTPMONDIR}
+chown -R ntpmon:ntpmon ${NTPMONDIR}
 
 exit 0

@@ -15,8 +15,7 @@ type CLI struct {
 }
 
 var (
-	defaultConfigFilename = "ntppool-monitor"
-	envPrefix             = "MONITOR"
+	envPrefix = "MONITOR"
 )
 
 type APIConfig struct {
@@ -70,9 +69,10 @@ func (cfg *APIConfig) Load(args []string) error {
 func (cfg *APIConfig) setLoader(args []string) {
 
 	acfg := aconfig.Config{
-		// MergeFiles: true,
-		FileFlag: "config",
-		Files:    []string{"monitor-api.yaml", "/vault/secrets/database.yaml"},
+		MergeFiles: true,
+		EnvPrefix:  envPrefix,
+		FileFlag:   "config",
+		// Files:      []string{"monitor-api.yaml", "/vault/secrets/database.yaml"},
 		FileDecoders: map[string]aconfig.FileDecoder{
 			".yaml": aconfigyaml.New(),
 			".env":  aconfigdotenv.New(),
