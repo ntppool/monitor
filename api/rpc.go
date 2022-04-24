@@ -50,7 +50,7 @@ func getServerName(clientName string) (string, error) {
 
 	clientName = strings.ToLower(clientName)
 
-	if strings.HasSuffix(clientName, ".mon.ntppool.dev") {
+	if !strings.HasSuffix(clientName, ".mon.ntppool.dev") {
 		return "", fmt.Errorf("invalid client name %s", clientName)
 	}
 
