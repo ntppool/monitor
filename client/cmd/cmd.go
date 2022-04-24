@@ -15,5 +15,8 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	cmd.AddCommand(cli.monitorCmd())
 	cmd.AddCommand(cli.apiCmd())
 	cmd.AddCommand(version.VersionCmd())
+
+	cmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+
 	return cmd
 }
