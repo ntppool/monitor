@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.ntppool.org/monitor/api"
 
+	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
 )
@@ -63,7 +63,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Printf("getting certificates failed: %s", err)
 	}
 
-	api, err := setupAPI(ctx, cauth)
+	api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
 	}
@@ -94,13 +94,4 @@ func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
 	}
 
 	return cauth, nil
-}
-
-func setupAPI(ctx context.Context, cauth *auth.ClientAuth) (pb.Monitor, error) {
-	api, err := api.Client(ctx, cauth)
-	if err != nil {
-		return nil, err
-	}
-
-	return api, nil
 }

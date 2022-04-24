@@ -24,13 +24,28 @@ func VersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version and build information",
 		Run: func(cmd *cobra.Command, args []string) {
-			extra := []string{}
-			if len(buildTime) > 0 {
-				extra = append(extra, buildTime)
-			}
-			extra = append(extra, runtime.Version())
-			fmt.Printf("ntppool-monitor %s (%s)\n", VERSION, strings.Join(extra, ", "))
+			ver := Version()
+			fmt.Printf("ntppool-monitor %s", ver)
 		},
 	}
 	return versionCmd
+}
+
+var v string
+
+func Version() string {
+	if len(v) > 0 {
+		return v
+	}
+	extra := []string{}
+	if len(buildTime) > 0 {
+		extra = append(extra, buildTime)
+	}
+	extra = append(extra, runtime.Version())
+	v = fmt.Sprintf("%s (%s)\n", VERSION, strings.Join(extra, ", "))
+	return v
+}
+
+func init() {
+	Version()
 }

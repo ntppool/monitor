@@ -91,4 +91,5 @@ nfpms:
         type: config
 
     scripts:
+      preinstall: scripts/preinstall.sh
       postinstall: scripts/postinstall.sh

@@ -13,6 +13,7 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/spf13/cobra"
 	"go.ntppool.org/monitor"
+	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/localok"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -58,7 +59,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
-	api, err := setupAPI(ctx, cauth)
+	api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
 	}
