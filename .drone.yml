@@ -54,6 +54,8 @@ steps:
         path: /cache
     commands:
       - ./scripts/run-goreleaser
+      - pwd
+      - ls -laR
       - echo Done
     when:
       ref:
@@ -61,6 +63,22 @@ steps:
         - refs/heads/drone-test
         - refs/tags/**
     depends_on: [test]
+
+  - name: docker
+    image: harbor.ntppool.org/ntppool/drone-kaniko:main
+    pull: always
+    settings:
+      repo: ntppool/monitor-api
+      registry: harbor.ntppool.org
+      tags: ${DRONE_BRANCH},build-${DRONE_BUILD_NUMBER},SHAABBREV,SHA7
+      auto_tag: true
+      cache: true
+      username:
+        from_secret: harbor_username
+      password:
+        from_secret: harbor_password
+    depends_on: [goreleaser]
+
 
   - name: upload
     image: plugins/s3
@@ -159,6 +177,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: cf0fc3a9caf1c219edcbc468d9d0b2291444decce93f9326d00d19133c057d37
+hmac: 4b628c150d6fbb9d1f6882831587ce13d8ea8c02a5b4551853e3812c8f1446db
 
 ...

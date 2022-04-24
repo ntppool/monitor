@@ -6,6 +6,7 @@ before:
 builds:
   - main: ./client/cmd/ntppool-monitor/
     id: ntppool-monitor
+    binary: ntppool-monitor
     env:
       - CGO_ENABLED=0
     goos:
