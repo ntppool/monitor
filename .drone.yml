@@ -54,8 +54,6 @@ steps:
         path: /cache
     commands:
       - ./scripts/run-goreleaser
-      - pwd
-      - ls -laR
       - echo Done
     when:
       ref:
@@ -177,6 +175,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 4b628c150d6fbb9d1f6882831587ce13d8ea8c02a5b4551853e3812c8f1446db
+hmac: 3d42657a6bb0f6c140ef28b69cc3e13d30327809d55a868b3ecedf1a4ffae2d7
 
 ...
