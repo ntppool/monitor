@@ -57,7 +57,11 @@ func (ca *ClientAuth) RenewCertificates() error {
 	for {
 		valid, wait := ca.checkCertificateValidity()
 		if !valid || wait < 0 {
-			ca.IssueCertificates()
+			err := ca.IssueCertificates()
+			if err != nil {
+				log.Printf("error issuing certificate: %s", err)
+				wait = 90 * time.Second
+			}
 		}
 
 		log.Printf("RenewCertificates - checking certificate renewal in: %s", wait)
