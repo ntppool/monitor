@@ -18,12 +18,8 @@ func (cfg *Config) GetNatIP() *netaddr.IP {
 	return bytesToIP(cfg.GetIPNatBytes())
 }
 
-func (sl *ServerList) IPs() ([]*netaddr.IP, error) {
-	ips := make([]*netaddr.IP, len(sl.Servers))
-	for i, s := range sl.Servers {
-		ips[i] = bytesToIP(s.IPBytes)
-	}
-	return ips, nil
+func (s *Server) IP() *netaddr.IP {
+	return bytesToIP(s.IPBytes)
 }
 
 func (ss *ServerStatus) SetIP(ip *netaddr.IP) {

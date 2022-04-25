@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -69,6 +70,11 @@ func GetDeploymentEnvironment(clientName string) (string, error) {
 }
 
 func getServerName(clientName string) (string, error) {
+
+	if e := os.Getenv("DEVEL_API_SERVER"); len(e) > 0 {
+		return e, nil
+	}
+
 	depEnv, err := GetDeploymentEnvironment(clientName)
 	if err != nil {
 		return "", err

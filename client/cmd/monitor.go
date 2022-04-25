@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"go.ntppool.org/monitor"
 	"go.ntppool.org/monitor/api"
@@ -137,22 +138,19 @@ func run(api pb.Monitor) bool {
 		return false
 	}
 
-	servers, err := serverlist.IPs()
-	if err != nil {
-		log.Printf("bad IPs in server list: %s", err)
+	if len(serverlist.Servers) == 0 {
 		return false
 	}
 
-	log.Printf("Servers: %d, Config: %+v", len(servers), serverlist.Config)
+	batchID := ulid.ULID{}
+	batchID.UnmarshalText(serverlist.BatchID)
 
-	if len(servers) == 0 {
-		return false
-	}
+	log.Printf("Batch %s - Servers: %d, Config: %+v", batchID.String(), len(serverlist.Servers), serverlist.Config)
 
 	// we're testing, so limit how much work ...
 	if *onceFlag {
-		if len(servers) > 10 {
-			servers = servers[0:9]
+		if len(serverlist.Servers) > 10 {
+			serverlist.Servers = serverlist.Servers[0:9]
 		}
 	}
 
@@ -160,11 +158,11 @@ func run(api pb.Monitor) bool {
 
 	wg := sync.WaitGroup{}
 
-	for _, ip := range servers {
+	for _, s := range serverlist.Servers {
 
 		wg.Add(1)
 
-		go func(s *netaddr.IP) {
+		go func(s *netaddr.IP, ticket []byte) {
 			status, err := monitor.CheckHost(s, serverlist.Config)
 			if status == nil {
 				status = &pb.ServerStatus{
@@ -172,6 +170,7 @@ func run(api pb.Monitor) bool {
 				}
 				status.SetIP(s)
 			}
+			status.Ticket = ticket
 			if err != nil {
 				log.Printf("Error checking %q: %s", s, err)
 				status.Error = err.Error()
@@ -187,14 +186,17 @@ func run(api pb.Monitor) bool {
 			status.TS = timestamppb.Now()
 			statuses = append(statuses, status)
 			wg.Done()
-		}(ip)
+		}(s.IP(), s.Ticket)
 	}
 
 	wg.Wait()
 
+	log.Printf("Submitting %s", serverlist.BatchID)
+
 	list := &pb.ServerStatusList{
-		Version: 2,
+		Version: 3,
 		List:    statuses,
+		BatchID: serverlist.BatchID,
 	}
 
 	r, err := api.SubmitResults(ctx, list)

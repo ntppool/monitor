@@ -2,7 +2,6 @@ package ntpdb
 
 import (
 	"encoding/json"
-	"log"
 
 	"go.ntppool.org/monitor/api/pb"
 	"inet.af/netaddr"
@@ -47,7 +46,6 @@ func (m *Monitor) GetPbConfig() (*pb.Config, error) {
 
 	if len(cfg.NatIP) > 0 {
 		ip, err := netaddr.ParseIP(cfg.NatIP)
-		log.Printf("nat IP: %s", ip)
 		if err != nil {
 			return nil, err
 		}

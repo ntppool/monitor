@@ -9,6 +9,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
@@ -25,12 +26,30 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		return nil, fmt.Errorf("monitor not active")
 	}
 
-	if in.Version != 2 {
+	if in.Version < 2 || in.Version > 3 {
 		return nil, twirp.InvalidArgumentError("Version", "Unsupported data version")
 	}
 
+	batchID := ulid.ULID{}
+	batchID.UnmarshalText(in.BatchID)
+
+	log.Printf("SubmitServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
+
+	bidb, _ := batchID.MarshalText()
+
+	// todo: check that the new batchID is newer than the last 'seen' state in the monitor table
+
 	for _, status := range in.List {
-		err := srv.processStatus(ctx, monitor, status)
+
+		if in.Version > 2 {
+			ticketOk, err := srv.tokens.Validate(monitor.ID, bidb, status.GetIP(), status.Ticket)
+			if err != nil || !ticketOk {
+				log.Printf("monitor %d signature validation failed for %q %s", monitor.ID, status.GetIP().String(), err)
+				return nil, fmt.Errorf("signature validation failed")
+			}
+		}
+
+		err = srv.processStatus(ctx, monitor, status)
 		if err != nil {
 			log.Printf("error processing status %+v: %s", status, err)
 			return nil, err

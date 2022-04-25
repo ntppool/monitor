@@ -36,11 +36,13 @@ message Server {
 message ServerList {
   Config config  = 1;
   repeated Server Servers = 2;
+  bytes BatchID = 3;
 }
 
 message ServerStatusList {
   int32 Version = 1;
   repeated ServerStatus List = 2;
+  bytes BatchID = 3;
 }
 
 message ServerStatusResult {

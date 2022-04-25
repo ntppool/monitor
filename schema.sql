@@ -295,7 +295,7 @@ CREATE TABLE `monitors` (
   `api_key` varchar(64) DEFAULT NULL,
   `status` enum('pending','testing','active','paused','deleted') NOT NULL,
   `config` text NOT NULL,
-  `last_seen` datetime DEFAULT NULL,
+  `last_seen` datetime(6) DEFAULT NULL,
   `created_on` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip`,`ip_version`),

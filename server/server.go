@@ -17,6 +17,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
+	"go.ntppool.org/monitor/server/vault"
 )
 
 type contextKey int
@@ -25,6 +26,7 @@ const certificateKey contextKey = 0
 
 type Server struct {
 	cfg    *Config
+	tokens *vault.TokenManager
 	db     *ntpdb.Queries
 	dbconn *sql.DB
 }
@@ -36,7 +38,17 @@ type Config struct {
 
 func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 	db := ntpdb.New(dbconn)
-	return &Server{cfg: &cfg, db: db, dbconn: dbconn}, nil
+	tm, err := vault.New("monitor-tokens")
+	if err != nil {
+		return nil, err
+	}
+
+	return &Server{
+		cfg:    &cfg,
+		db:     db,
+		dbconn: dbconn,
+		tokens: tm,
+	}, nil
 }
 
 func (srv *Server) getVerifiedCert(verifiedChains [][]*x509.Certificate) (*x509.Certificate, string) {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api/pb"
@@ -50,7 +51,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
-	if !mon.IsLive() {
+	if !monitor.IsLive() {
 		return nil, fmt.Errorf("monitor not active")
 	}
 
@@ -82,6 +83,17 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	pServers := []*pb.Server{}
 
+	now := time.Now()
+	batchID, err := makeULID(now)
+	if err != nil {
+		return nil, err
+	}
+
+	bidb, err := batchID.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+
 	for _, server := range servers {
 		pServer := &pb.Server{}
 
@@ -90,7 +102,11 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 			return nil, err
 		}
 		pServer.IPBytes, _ = ip.MarshalBinary()
-		pServer.Ticket = []byte("foo") // todo: crypto
+
+		pServer.Ticket, err = srv.tokens.Sign(monitor.ID, bidb, &ip)
+		if err != nil {
+			return nil, err
+		}
 
 		pServers = append(pServers, pServer)
 	}
@@ -98,6 +114,11 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	list := &pb.ServerList{
 		Config:  cfg,
 		Servers: pServers,
+		BatchID: bidb,
+	}
+
+	if len(pServers) > 0 {
+		log.Printf("GetServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
 	}
 
 	return list, nil
