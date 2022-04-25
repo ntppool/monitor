@@ -39,6 +39,10 @@ func (cli *CLI) serverCLI(cmd *cobra.Command) error {
 	log.Printf("loaded? %t", cfg.loaded)
 	log.Printf("acfg: %+v", cfg)
 
+	if len(cfg.DeploymentMode) == 0 {
+		return fmt.Errorf("deployment_mode configuration required")
+	}
+
 	cm, err := apitls.GetCertman(cfg.TLS.Cert, cfg.TLS.Key)
 	if err != nil {
 		log.Fatal(err)
@@ -61,8 +65,9 @@ func (cli *CLI) serverCLI(cmd *cobra.Command) error {
 	}
 
 	scfg := server.Config{
-		Listen:       cfg.Listen,
-		CertProvider: cm,
+		Listen:        cfg.Listen,
+		CertProvider:  cm,
+		DeploymentEnv: cfg.DeploymentMode,
 	}
 
 	go healthCheckListener()

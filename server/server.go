@@ -32,13 +32,15 @@ type Server struct {
 }
 
 type Config struct {
-	Listen       string
-	CertProvider apitls.CertificateProvider
+	DeploymentEnv string
+	Listen        string
+	CertProvider  apitls.CertificateProvider
 }
 
 func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 	db := ntpdb.New(dbconn)
-	tm, err := vault.New("monitor-tokens")
+
+	tm, err := vault.New("monitor-tokens", cfg.DeploymentEnv)
 	if err != nil {
 		return nil, err
 	}

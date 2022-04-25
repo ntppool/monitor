@@ -28,6 +28,8 @@ type APIConfig struct {
 		Cert string `default:"/etc/tls/tls.crt"`
 	}
 
+	DeploymentMode string `default:"" usage:"prod, test or devel" flag:"deployment-mode"`
+
 	loaded bool
 	loader *aconfig.Loader
 	args   []string

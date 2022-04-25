@@ -31,8 +31,6 @@ func (m *notFoundError) Error() string {
 	return "token not found"
 }
 
-var basePath = "kv/data/ntppool/devel/"
-
 type token struct {
 	Secret  string `json:"token"`
 	Created int64  `json:"token-ts"`
@@ -40,7 +38,8 @@ type token struct {
 }
 
 type TokenManager struct {
-	key string
+	key      string
+	basePath string
 
 	latest   *token
 	versions map[int]*token
@@ -49,7 +48,13 @@ type TokenManager struct {
 	lock  sync.RWMutex
 }
 
-func New(key string) (*TokenManager, error) {
+func New(key, depEnv string) (*TokenManager, error) {
+
+	if len(depEnv) == 0 {
+		return nil, fmt.Errorf("invalid deployment mode parameter %q", depEnv)
+	}
+
+	var basePath = fmt.Sprintf("kv/data/ntppool/%s/", depEnv)
 
 	cl, err := vaultClient()
 	if err != nil {
@@ -58,6 +63,7 @@ func New(key string) (*TokenManager, error) {
 
 	tm := &TokenManager{
 		key:      key,
+		basePath: basePath,
 		vault:    cl,
 		versions: map[int]*token{},
 	}
@@ -213,7 +219,7 @@ func (tm *TokenManager) createNewToken(ctx context.Context, cas int) error {
 }
 
 func (tm *TokenManager) path() string {
-	return path.Join(basePath, tm.key)
+	return path.Join(tm.basePath, tm.key)
 }
 
 func (tm *TokenManager) populate() error {
@@ -455,8 +461,8 @@ func (tm *TokenManager) getKVVersion(ctx context.Context, k string, version int)
 	return rv, nil
 }
 
-func SetKV(ctx context.Context, k string, data *vaultapi.Secret) error {
-	p := path.Join(basePath, k)
+func (tm *TokenManager) SetKV(ctx context.Context, k string, data *vaultapi.Secret) error {
+	p := tm.path()
 	cl, err := vaultClient()
 	if err != nil {
 		return nil
