@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 
 	"github.com/twitchtv/twirp"
@@ -49,10 +50,21 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
+	if !mon.IsLive() {
+		return nil, fmt.Errorf("monitor not active")
+	}
+
+	intervalMinutes := 8
+
+	if monitor.Status == ntpdb.MonitorsStatusTesting {
+		intervalMinutes = 60
+
+	}
+
 	p := ntpdb.GetServersParams{
 		MonitorID:          monitor.ID,
 		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion),
-		IntervalMinutes:    8,
+		IntervalMinutes:    intervalMinutes,
 		IntervalMinutesAll: 3,
 		Limit:              10,
 		Offset:             0,

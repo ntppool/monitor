@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"time"
@@ -18,6 +19,10 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	if err != nil {
 		log.Printf("get monitor error: %s", err)
 		return nil, err
+	}
+
+	if !monitor.IsLive() {
+		return nil, fmt.Errorf("monitor not active")
 	}
 
 	if in.Version != 2 {

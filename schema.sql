@@ -106,7 +106,7 @@ CREATE TABLE `accounts` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `url_slug_idx` (`url_slug`),
   UNIQUE KEY `stripe_customer_id` (`stripe_customer_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -207,25 +207,7 @@ CREATE TABLE `log_scores` (
   KEY `log_score_monitor_id_fk` (`monitor_id`),
   CONSTRAINT `log_score_monitor_id_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
   CONSTRAINT `log_scores_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=1159 DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `log_scores_archive`
---
-
-DROP TABLE IF EXISTS `log_scores_archive`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `log_scores_archive` (
-  `id` bigint(20) unsigned NOT NULL,
-  `monitor_id` int(10) unsigned NOT NULL,
-  `server_id` int(10) unsigned NOT NULL,
-  `ts` datetime NOT NULL,
-  `score` double NOT NULL DEFAULT '0',
-  `step` double NOT NULL DEFAULT '0',
-  `offset` double DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=47051 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -244,7 +226,7 @@ CREATE TABLE `log_scores_archive_status` (
   UNIQUE KEY `archiver` (`archiver`),
   KEY `log_score_id` (`log_score_id`),
   CONSTRAINT `log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -291,7 +273,7 @@ CREATE TABLE `logs` (
   CONSTRAINT `logs_vendor_zone_id` FOREIGN KEY (`vendor_zone_id`) REFERENCES `vendor_zones` (`id`) ON DELETE CASCADE,
   CONSTRAINT `server_logs_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
   CONSTRAINT `server_logs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -311,7 +293,7 @@ CREATE TABLE `monitors` (
   `ip_version` enum('v4','v6') NOT NULL,
   `tls_name` varchar(255) DEFAULT NULL,
   `api_key` varchar(64) DEFAULT NULL,
-  `status` enum('pending','testing','live','paused','deleted') NOT NULL,
+  `status` enum('pending','testing','active','paused','deleted') NOT NULL,
   `config` text NOT NULL,
   `last_seen` datetime DEFAULT NULL,
   `created_on` datetime NOT NULL,
@@ -323,7 +305,7 @@ CREATE TABLE `monitors` (
   KEY `monitors_account_fk` (`account_id`),
   CONSTRAINT `monitors_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
   CONSTRAINT `monitors_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -392,6 +374,7 @@ CREATE TABLE `server_scores` (
   `score_ts` datetime DEFAULT NULL,
   `score_raw` double NOT NULL DEFAULT '0',
   `stratum` tinyint(3) unsigned DEFAULT NULL,
+  `status` enum('inactive','testing','active') NOT NULL DEFAULT 'testing',
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -400,7 +383,7 @@ CREATE TABLE `server_scores` (
   KEY `monitor_id_2` (`monitor_id`,`score_ts`),
   CONSTRAINT `server_score_monitor_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
   CONSTRAINT `server_score_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=110 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -468,7 +451,7 @@ CREATE TABLE `servers` (
   KEY `server_account_fk` (`account_id`),
   CONSTRAINT `server_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
   CONSTRAINT `servers_user_ibfk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -486,7 +469,7 @@ CREATE TABLE `system_settings` (
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `key` (`key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -526,7 +509,7 @@ CREATE TABLE `user_identities` (
   UNIQUE KEY `profile_id` (`profile_id`),
   KEY `user_identities_user_id` (`user_id`),
   CONSTRAINT `user_identities_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -564,7 +547,7 @@ CREATE TABLE `users` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -619,7 +602,7 @@ CREATE TABLE `zone_server_counts` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `zone_date` (`zone_id`,`date`,`ip_version`),
   CONSTRAINT `zone_server_counts` FOREIGN KEY (`zone_id`) REFERENCES `zones` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=1558987 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1576191 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -651,4 +634,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-04-18  9:59:57
+-- Dump completed on 2022-04-26  9:37:44

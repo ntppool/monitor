@@ -116,7 +116,7 @@ func (cr *Vault) checkToken(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	rv, err := client.Logical().ReadWithContext(ctx, "/auth/token/lookup-self")
+	rv, err := client.Logical().ReadWithContext(ctx, "auth/token/lookup-self")
 	if err != nil {
 		return false, err
 	}

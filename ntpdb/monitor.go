@@ -11,6 +11,15 @@ type MonitorConfig struct {
 	Samples int32 `json:"samples"`
 }
 
+func (m *Monitor) IsLive() bool {
+	switch m.Status {
+	case MonitorsStatusActive, MonitorsStatusTesting:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *Monitor) GetConfig() (*MonitorConfig, error) {
 
 	moncfg := &MonitorConfig{}

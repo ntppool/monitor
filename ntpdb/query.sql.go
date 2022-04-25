@@ -90,7 +90,7 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 }
 
 const getServerScore = `-- name: GetServerScore :one
-SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, created_on, modified_on FROM server_scores
+SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, created_on, modified_on FROM server_scores
   WHERE
     server_id=? AND
     monitor_id=?
@@ -111,6 +111,7 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 		&i.ScoreTs,
 		&i.ScoreRaw,
 		&i.Stratum,
+		&i.Status,
 		&i.CreatedOn,
 		&i.ModifiedOn,
 	)

@@ -77,7 +77,7 @@ type MonitorsStatus string
 const (
 	MonitorsStatusPending MonitorsStatus = "pending"
 	MonitorsStatusTesting MonitorsStatus = "testing"
-	MonitorsStatusLive    MonitorsStatus = "live"
+	MonitorsStatusActive  MonitorsStatus = "active"
 	MonitorsStatusPaused  MonitorsStatus = "paused"
 	MonitorsStatusDeleted MonitorsStatus = "deleted"
 )
@@ -90,6 +90,26 @@ func (e *MonitorsStatus) Scan(src interface{}) error {
 		*e = MonitorsStatus(s)
 	default:
 		return fmt.Errorf("unsupported scan type for MonitorsStatus: %T", src)
+	}
+	return nil
+}
+
+type ServerScoresStatus string
+
+const (
+	ServerScoresStatusInactive ServerScoresStatus = "inactive"
+	ServerScoresStatusTesting  ServerScoresStatus = "testing"
+	ServerScoresStatusActive   ServerScoresStatus = "active"
+)
+
+func (e *ServerScoresStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ServerScoresStatus(s)
+	case string:
+		*e = ServerScoresStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ServerScoresStatus: %T", src)
 	}
 	return nil
 }
@@ -296,16 +316,6 @@ type LogScore struct {
 	Attributes sql.NullString  `json:"attributes"`
 }
 
-type LogScoresArchive struct {
-	ID        int64           `json:"id"`
-	MonitorID int32           `json:"monitor_id"`
-	ServerID  int32           `json:"server_id"`
-	Ts        time.Time       `json:"ts"`
-	Score     float64         `json:"score"`
-	Step      float64         `json:"step"`
-	Offset    sql.NullFloat64 `json:"offset"`
-}
-
 type LogScoresArchiveStatus struct {
 	ID         int32         `json:"id"`
 	Archiver   string        `json:"archiver"`
@@ -375,14 +385,15 @@ type ServerNote struct {
 }
 
 type ServerScore struct {
-	ID         int64         `json:"id"`
-	MonitorID  int32         `json:"monitor_id"`
-	ServerID   int32         `json:"server_id"`
-	ScoreTs    sql.NullTime  `json:"score_ts"`
-	ScoreRaw   float64       `json:"score_raw"`
-	Stratum    sql.NullInt32 `json:"stratum"`
-	CreatedOn  time.Time     `json:"created_on"`
-	ModifiedOn time.Time     `json:"modified_on"`
+	ID         int64              `json:"id"`
+	MonitorID  int32              `json:"monitor_id"`
+	ServerID   int32              `json:"server_id"`
+	ScoreTs    sql.NullTime       `json:"score_ts"`
+	ScoreRaw   float64            `json:"score_raw"`
+	Stratum    sql.NullInt32      `json:"stratum"`
+	Status     ServerScoresStatus `json:"status"`
+	CreatedOn  time.Time          `json:"created_on"`
+	ModifiedOn time.Time          `json:"modified_on"`
 }
 
 type ServerUrl struct {
