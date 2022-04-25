@@ -91,8 +91,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	for {
 
 		boff := backoff.NewExponentialBackOff()
-		boff.InitialInterval = 5 * time.Second
-		boff.MaxInterval = 90 * time.Second
+		boff.RandomizationFactor = 0.2
+		boff.InitialInterval = 2 * time.Second
+		boff.MaxInterval = 120 * time.Second
+		boff.MaxElapsedTime = 60 * time.Minute
 
 		err := backoff.Retry(func() error {
 
