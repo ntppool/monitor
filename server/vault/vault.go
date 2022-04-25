@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -32,15 +31,7 @@ func (m *notFoundError) Error() string {
 	return "token not found"
 }
 
-var vaultAddr = "https://vault.ntppool.org"
-
 var basePath = "kv/data/ntppool/devel/"
-
-var httpClient *http.Client
-
-func init() {
-	httpClient = &http.Client{}
-}
 
 type token struct {
 	Secret  string `json:"token"`
@@ -404,9 +395,10 @@ var hasOutputVaultEnvMessage bool
 
 func vaultClient() (*vaultapi.Client, error) {
 
-	c := &vaultapi.Config{
-		Address:    vaultAddr,
-		HttpClient: httpClient,
+	c := vaultapi.DefaultConfig()
+
+	if c.Address == "https://127.0.0.1:8200" {
+		c.Address = "https://vault.ntppool.org"
 	}
 
 	cl, err := vaultapi.NewClient(c)
