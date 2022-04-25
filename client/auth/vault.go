@@ -13,18 +13,13 @@ var vaultAddr = "https://vault.ntppool.org"
 
 func (v *Vault) Login(ctx context.Context, depEnv string) error {
 
-	client, err := v.vaultClient()
-	if err != nil {
-		return err
+	// setToken sets up the client if it's not already
+	v.setToken(v.Token)
+	ok, err := v.checkToken(ctx)
+	if ok {
+		return nil
 	}
-
-	if len(v.Token) > 0 {
-		ok, err := v.checkToken(ctx)
-		if ok {
-			return nil
-		}
-		log.Printf("token error: %s", err)
-	}
+	log.Printf("token error: %s", err)
 
 	roleID := v.key
 	secretID := &approle.SecretID{FromString: v.secret}
@@ -39,7 +34,7 @@ func (v *Vault) Login(ctx context.Context, depEnv string) error {
 		return fmt.Errorf("unable to initialize AppRole auth method: %w", err)
 	}
 
-	authInfo, err := client.Auth().Login(context.TODO(), appRoleAuth)
+	authInfo, err := v.client.Auth().Login(context.TODO(), appRoleAuth)
 	if err != nil {
 		return fmt.Errorf("unable to login to AppRole auth method: %w", err)
 	}

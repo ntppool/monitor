@@ -113,11 +113,10 @@ func (ca *ClientAuth) Login() error {
 
 func (ca *ClientAuth) WaitUntilReady() error {
 	for {
-		log.Printf("WaitUntilReady: Checking if cert is ready")
 		if ok, _ := ca.checkCertificateValidity(); ok {
 			return nil
 		}
-		log.Printf("WaitUntilReady: Not yet ...")
+		log.Printf("Waiting for TLS certificate to be available")
 
 		timer := time.NewTimer(5 * time.Second)
 

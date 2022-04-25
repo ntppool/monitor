@@ -86,7 +86,7 @@ func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
 	stateDir := cfg.StateDir
 	name := cfg.Name
 
-	log.Printf("name: %s, role: %s, secret: %s", name, cfg.API.Key, cfg.API.Secret)
+	log.Printf("Configuring name: %s (%s)", name, cfg.API.Key)
 
 	cauth, err := auth.New(ctx, stateDir, name, cfg.API.Key, cfg.API.Secret)
 	if err != nil {

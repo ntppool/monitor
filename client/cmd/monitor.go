@@ -50,6 +50,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("auth error: %s", err)
 	}
 
+	// ignoring errors because the Manager will issue missing certs
+	// we just want to load them from disk right away
+	cauth.LoadCertificates(ctx)
+
 	go cauth.Manager()
 
 	// block until we have a valid certificate
@@ -68,7 +72,6 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	if err != nil {
 		log.Fatalf("Could not get config: %s", err)
 	}
-
 
 	localOK := localok.NewLocalOK(cfg)
 
