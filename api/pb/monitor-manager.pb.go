@@ -104,8 +104,9 @@ type Config struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Samples int32  `protobuf:"varint,1,opt,name=Samples,proto3" json:"Samples,omitempty"`
-	IPBytes []byte `protobuf:"bytes,2,opt,name=IPBytes,proto3" json:"IPBytes,omitempty"`
+	Samples    int32  `protobuf:"varint,1,opt,name=Samples,proto3" json:"Samples,omitempty"`
+	IPBytes    []byte `protobuf:"bytes,2,opt,name=IPBytes,proto3" json:"IPBytes,omitempty"`
+	IPNatBytes []byte `protobuf:"bytes,3,opt,name=IPNatBytes,proto3" json:"IPNatBytes,omitempty"`
 }
 
 func (x *Config) Reset() {
@@ -150,6 +151,13 @@ func (x *Config) GetSamples() int32 {
 func (x *Config) GetIPBytes() []byte {
 	if x != nil {
 		return x.IPBytes
+	}
+	return nil
+}
+
+func (x *Config) GetIPNatBytes() []byte {
+	if x != nil {
+		return x.IPNatBytes
 	}
 	return nil
 }

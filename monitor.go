@@ -28,6 +28,9 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 	configIP := cfg.GetIP()
 	if configIP != nil && configIP.IsValid() {
 		opts.LocalAddress = configIP.String()
+		if natIP := cfg.GetNatIP(); natIP != nil && natIP.IsValid() {
+			opts.LocalAddress = natIP.String()
+		}
 	} else {
 		log.Printf("Did not get valid local configuration IP: %+v", configIP)
 	}

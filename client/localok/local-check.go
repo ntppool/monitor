@@ -27,7 +27,7 @@ const maxOffset = 3500 * time.Microsecond
 func NewLocalOK(cfg *pb.Config) *LocalOK {
 	var isv4 bool
 
-	if cfg.IP().Is4() {
+	if cfg.GetIP().Is4() {
 		isv4 = true
 	} else {
 		isv4 = false

@@ -69,7 +69,6 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("Could not get config: %s", err)
 	}
 
-	log.Printf("Config: Samples: %d, IP: %s", cfg.Samples, cfg.IP().String())
 
 	localOK := localok.NewLocalOK(cfg)
 

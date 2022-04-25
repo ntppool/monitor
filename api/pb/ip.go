@@ -6,12 +6,16 @@ import (
 	"inet.af/netaddr"
 )
 
-func (cfg *Config) IP() *netaddr.IP {
-	return cfg.GetIP()
-}
+// func (cfg *Config) IP() *netaddr.IP {
+// 	return cfg.GetIP()
+// }
 
 func (cfg *Config) GetIP() *netaddr.IP {
-	return bytesToIP(cfg.IPBytes)
+	return bytesToIP(cfg.GetIPBytes())
+}
+
+func (cfg *Config) GetNatIP() *netaddr.IP {
+	return bytesToIP(cfg.GetIPNatBytes())
 }
 
 func (sl *ServerList) IPs() ([]*netaddr.IP, error) {

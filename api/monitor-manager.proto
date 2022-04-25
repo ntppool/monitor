@@ -25,6 +25,7 @@ message GetServersParams {}
 message Config {
   int32  Samples = 1;
   bytes  IPBytes = 2;
+  bytes  IPNatBytes = 3;
 }
 
 message Server {
