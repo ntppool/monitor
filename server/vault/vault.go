@@ -420,7 +420,7 @@ func vaultClient() (*vaultapi.Client, error) {
 	} else {
 		if !hasOutputVaultEnvMessage {
 			hasOutputVaultEnvMessage = true
-			log.Printf("could not read /vault/secrets/token, using VAULT_TOKEN")
+			log.Printf("could not read /vault/secrets/token (%s), using VAULT_TOKEN", err)
 		}
 	}
 
