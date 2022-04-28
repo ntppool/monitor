@@ -21,7 +21,7 @@ type LocalOK struct {
 	mu         sync.RWMutex
 }
 
-const localCacheSeconds = 120
+const localCacheTTL = 120 * time.Second
 const maxOffset = 3500 * time.Microsecond
 
 func NewLocalOK(cfg *pb.Config) *LocalOK {
@@ -36,16 +36,31 @@ func NewLocalOK(cfg *pb.Config) *LocalOK {
 	return &LocalOK{cfg: cfg, isv4: isv4}
 }
 
+func (l *LocalOK) NextCheckIn() time.Duration {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	nextCheck := l.lastCheck.Add(localCacheTTL)
+	wait := nextCheck.Sub(time.Now())
+
+	if wait < 0 {
+		return time.Second * 0
+	}
+
+	return wait
+}
+
 func (l *LocalOK) Check() bool {
 	l.mu.RLock()
-	if time.Now().Before(l.lastCheck.Add(localCacheSeconds * time.Second)) {
+	if time.Now().Before(l.lastCheck.Add(localCacheTTL)) {
 		l.mu.RUnlock()
 		return l.lastStatus
 	}
 	l.mu.RUnlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// this might make a bunch check at once ...
+
 	ok := l.update()
 	l.lastCheck = time.Now()
 	l.lastStatus = ok
@@ -154,7 +169,6 @@ func (l *LocalOK) update() bool {
 	log.Printf("failures: %d, threshold: %d, hosts: %d", fails, failureThreshold, len(hosts))
 
 	if fails > failureThreshold {
-		log.Printf("Too many errors, declare local not-sane")
 		return false
 	}
 
@@ -169,7 +183,7 @@ func (l *LocalOK) sanityCheckHost(name string, ip *netaddr.IP) (bool, error) {
 
 	offset := status.AbsoluteOffset()
 
-	log.Printf("offset for %s (%s): %s", name, ip, status.Offset.AsDuration())
+	// log.Printf("offset for %s (%s): %s", name, ip, status.Offset.AsDuration())
 
 	if *offset > maxOffset || *offset < maxOffset*-1 {
 		return false, fmt.Errorf("offset too large: %s", status.Offset.AsDuration().String())

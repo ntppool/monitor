@@ -100,7 +100,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		err := backoff.Retry(func() error {
 
 			if !localOK.Check() {
-				log.Printf("Local clock might not be okay, waiting a bit")
+				wait := localOK.NextCheckIn()
+				log.Printf("Local clock might not be okay, waiting %s", wait.Round(1*time.Second).String())
+				time.Sleep(wait) // todo: ctx
 				return fmt.Errorf("local clock")
 			}
 

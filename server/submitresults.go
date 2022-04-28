@@ -16,18 +16,23 @@ import (
 )
 
 func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
+
+	rv := &pb.ServerStatusResult{
+		Ok: false,
+	}
+
 	monitor, err := srv.getMonitor(ctx)
 	if err != nil {
 		log.Printf("get monitor error: %s", err)
-		return nil, err
+		return rv, err
 	}
 
 	if !monitor.IsLive() {
-		return nil, fmt.Errorf("monitor not active")
+		return rv, fmt.Errorf("monitor not active")
 	}
 
 	if in.Version < 2 || in.Version > 3 {
-		return nil, twirp.InvalidArgumentError("Version", "Unsupported data version")
+		return rv, twirp.InvalidArgumentError("Version", "Unsupported data version")
 	}
 
 	batchID := ulid.ULID{}
@@ -52,13 +57,12 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		err = srv.processStatus(ctx, monitor, status)
 		if err != nil {
 			log.Printf("error processing status %+v: %s", status, err)
-			return nil, err
+			return rv, err
 		}
 	}
 
-	rv := &pb.ServerStatusResult{}
+	// yay, it was all okay
 	rv.Ok = true
-
 	return rv, nil
 }
 
