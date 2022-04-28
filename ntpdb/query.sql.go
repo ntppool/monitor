@@ -265,6 +265,22 @@ func (q *Queries) ListMonitors(ctx context.Context) ([]Monitor, error) {
 	return items, nil
 }
 
+const updateMonitorSeen = `-- name: UpdateMonitorSeen :exec
+UPDATE monitors
+  SET last_seen = ?
+  WHERE id = ?
+`
+
+type UpdateMonitorSeenParams struct {
+	LastSeen sql.NullTime `json:"last_seen"`
+	ID       int32        `json:"id"`
+}
+
+func (q *Queries) UpdateMonitorSeen(ctx context.Context, arg UpdateMonitorSeenParams) error {
+	_, err := q.db.ExecContext(ctx, updateMonitorSeen, arg.LastSeen, arg.ID)
+	return err
+}
+
 const updateServer = `-- name: UpdateServer :exec
 UPDATE servers
   SET score_ts  = ?,

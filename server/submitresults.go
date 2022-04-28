@@ -40,6 +40,31 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 	log.Printf("SubmitServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
 
+	batchTime := ulid.Time(batchID.Time())
+
+	lastSeen := monitor.LastSeen
+	if lastSeen.Valid {
+		log.Printf("monitor %d previous batch was %s", monitor.ID, lastSeen.Time.String())
+	} else {
+		log.Printf("monitor %d had no last seen!", monitor.ID)
+	}
+
+	if batchTime.Before(lastSeen.Time) {
+		log.Printf("monitor %d previous batch was %s; new batch is older %s (%s)",
+			monitor.ID,
+			lastSeen.Time.String(),
+			batchTime.String(),
+			batchID.String(),
+		)
+		// todo: add safety check of setting the monitor status to 'testing' ?
+		return rv, fmt.Errorf("invalid batch submission")
+	}
+
+	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
+		ID:       monitor.ID,
+		LastSeen: sql.NullTime{Time: batchTime, Valid: true},
+	})
+
 	bidb, _ := batchID.MarshalText()
 
 	// todo: check that the new batchID is newer than the last 'seen' state in the monitor table
