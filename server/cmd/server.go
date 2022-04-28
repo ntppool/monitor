@@ -7,10 +7,7 @@ import (
 	"os"
 	"time"
 
-	"database/sql"
-
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
 
 	"github.com/spf13/cobra"
@@ -32,7 +29,7 @@ func (cli *CLI) serverCmd() *cobra.Command {
 	return serverCmd
 }
 
-func (cli *CLI) serverCLI(cmd *cobra.Command) error {
+func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cfg := cli.Config
 
@@ -49,19 +46,9 @@ func (cli *CLI) serverCLI(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
-	dbconn := sql.OpenDB(ntpdb.Driver{CreateConnectorFunc: createConnector(cfg)})
+	dbconn, err := cli.OpenDB()
 	if err != nil {
 		log.Fatalf(err.Error())
-	}
-
-	dbconn.SetConnMaxLifetime(time.Minute * 3)
-	dbconn.SetMaxOpenConns(10)
-	dbconn.SetMaxIdleConns(5)
-
-	err = dbconn.Ping()
-	if err != nil {
-		log.Printf("Could not connect to database: %s", err)
-		os.Exit(2)
 	}
 
 	scfg := server.Config{

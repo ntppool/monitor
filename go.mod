@@ -9,6 +9,7 @@ require (
 	github.com/cristalhq/aconfig/aconfigdotenv v0.16.1
 	github.com/cristalhq/aconfig/aconfigyaml v0.16.1
 	github.com/dyson/certman v0.2.1
+	github.com/evanphx/json-patch v0.5.2
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/hashicorp/vault/api v1.5.0
 	github.com/hashicorp/vault/api/auth/approle v0.1.1

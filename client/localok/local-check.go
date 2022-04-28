@@ -71,20 +71,24 @@ func (l *LocalOK) update() bool {
 
 	// todo: get this from server config ...
 	allHosts := []string{
-		"time.apple.com",
-		// "ntp.ubuntu.com",
-		// "time.google.com",
-		"ntp1.net.berkeley.edu",
+		// "time.apple.com",
+		// "ntp1.net.berkeley.edu",
 		"tock.ucla.edu",
-		"ntp.inet.tele.dk",
+		"jptyo5-ntp-003.aaplimg.com",
 		"uslax1-ntp-001.aaplimg.com",
 		"defra1-ntp-002.aaplimg.com",
 		"uklon5-ntp-001.aaplimg.com",
-		"ntp.stupi.se",
-		// "ntp.se",
-		"ntp.nict.jp",
-		"ntp.ripe.net",
+		// "ntp.stupi.se",
+		// "ntp.nict.jp",
+		// "ntp.ripe.net",
 		"time.fu-berlin.de",
+	}
+
+	if len(l.cfg.BaseChecks) > 0 {
+		allHosts = []string{}
+		for _, s := range l.cfg.BaseChecks {
+			allHosts = append(allHosts, string(s))
+		}
 	}
 
 	type namedIP struct {

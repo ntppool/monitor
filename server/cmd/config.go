@@ -85,14 +85,14 @@ func (cfg *APIConfig) setLoader(args []string) {
 
 }
 
-func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []string) error {
+func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		err := cli.Config.Load(args)
 		if err != nil {
 			fmt.Printf("Could not load config: %s", err)
 			return err
 		}
-		err = fn(cmd)
+		err = fn(cmd, args)
 		if err != nil {
 			fmt.Printf("error: %s", err)
 			return err

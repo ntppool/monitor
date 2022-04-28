@@ -17,5 +17,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	cmd.AddCommand(cli.serverCmd())
 	cmd.AddCommand(version.VersionCmd())
 
+	cmd.AddCommand(cli.dbCmd())
+
 	return cmd
 }

@@ -42,7 +42,20 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	if err != nil {
 		return nil, err
 	}
-	return monitor.GetPbConfig()
+
+	var cfg *ntpdb.MonitorConfig
+
+	smon, err := srv.db.GetSystemMonitor(ctx, "settings", monitor.IpVersion)
+	if err == nil {
+		cfg, err = monitor.GetConfigWithDefaults([]byte(smon.Config))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cfg, err = monitor.GetConfig()
+	}
+
+	return cfg.PbConfig()
 }
 
 func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
@@ -71,7 +84,12 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		Offset:             0,
 	}
 
-	cfg, err := monitor.GetPbConfig()
+	mcfg, err := monitor.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := mcfg.PbConfig()
 	if err != nil {
 		return nil, err
 	}
