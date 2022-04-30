@@ -15,6 +15,19 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
+type CounterOpt struct {
+	Name    string
+	Counter int
+}
+
+type SubmitCounters struct {
+	Ok         *CounterOpt
+	Offset     *CounterOpt
+	Timeout    *CounterOpt
+	Sig        *CounterOpt
+	BatchOrder *CounterOpt
+}
+
 func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
 
 	rv := &pb.ServerStatusResult{
@@ -34,6 +47,24 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	if in.Version < 2 || in.Version > 3 {
 		return rv, twirp.InvalidArgumentError("Version", "Unsupported data version")
 	}
+
+	counters := &SubmitCounters{
+		Ok:         &CounterOpt{"ok", 0},
+		Offset:     &CounterOpt{"offset", 0},
+		Timeout:    &CounterOpt{"timeout", 0},
+		Sig:        &CounterOpt{"signature_validation", 0},
+		BatchOrder: &CounterOpt{"batch_out_of_order", 0},
+	}
+
+	defer func() {
+		for _, c := range []*CounterOpt{
+			counters.Ok, counters.Offset,
+			counters.Timeout, counters.Sig,
+			counters.BatchOrder,
+		} {
+			srv.m.TestsCompleted.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String(), c.Name).Add(float64(c.Counter))
+		}
+	}()
 
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(in.BatchID)
@@ -57,6 +88,9 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			batchID.String(),
 		)
 		// todo: add safety check of setting the monitor status to 'testing' ?
+
+		counters.BatchOrder.Counter += len(in.List)
+
 		return rv, fmt.Errorf("invalid batch submission")
 	}
 
@@ -69,20 +103,21 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 	// todo: check that the new batchID is newer than the last 'seen' state in the monitor table
 
-	for _, status := range in.List {
+	for i, status := range in.List {
 
 		if in.Version > 2 {
 			ticketOk, err := srv.tokens.Validate(monitor.ID, bidb, status.GetIP(), status.Ticket)
 			if err != nil || !ticketOk {
 				log.Printf("monitor %d signature validation failed for %q %s", monitor.ID, status.GetIP().String(), err)
-				return nil, fmt.Errorf("signature validation failed")
+				counters.Sig.Counter += len(in.List) - i
+				return nil, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
 			}
 		}
 
-		err = srv.processStatus(ctx, monitor, status)
+		err = srv.processStatus(ctx, monitor, status, counters)
 		if err != nil {
 			log.Printf("error processing status %+v: %s", status, err)
-			return rv, err
+			return rv, twirp.InternalErrorWith(err)
 		}
 	}
 
@@ -91,7 +126,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	return rv, nil
 }
 
-func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus) error {
+func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus, counters *SubmitCounters) error {
 
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
 	if err != nil {
@@ -142,6 +177,15 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 		}
 	}
 
+	switch {
+	case step == -5:
+		counters.Timeout.Counter += 1
+	case step < 1:
+		counters.Offset.Counter += 1
+	default:
+		counters.Ok.Counter += 1
+	}
+
 	ts := sql.NullTime{Time: status.TS.AsTime(), Valid: true}
 
 	server.ScoreRaw = (server.ScoreRaw * 0.95) + step
@@ -188,7 +232,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 		if err != nil {
 			return err
 		}
-		log.Printf("attribute JSON for %d %s", server.ID, b)
+		// log.Printf("attribute JSON for %d %s", server.ID, b)
 		attributeStr.String = string(b)
 		attributeStr.Valid = true
 	}

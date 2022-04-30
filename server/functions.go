@@ -7,37 +7,45 @@ import (
 	"log"
 	"time"
 
+	sctx "go.ntppool.org/monitor/server/context"
+
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
 	"inet.af/netaddr"
 )
 
-func getCertificateName(ctx context.Context) string {
-	cn := ctx.Value(certificateKey)
-	if name, ok := cn.(string); ok {
-		return name
-	}
-	log.Fatalf("certificateKey didn't return a string")
-	return ""
-}
-
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
+
+	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
+		if mon == nil {
+			log.Printf("got cached nil mon")
+		}
+		return mon, nil
+	}
+
 	cn := getCertificateName(ctx)
+
 	log.Printf("cn: %+v", cn)
 
 	monitor, err := srv.db.GetMonitorTLSName(ctx, sql.NullString{String: cn, Valid: true})
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, twirp.NotFoundError("no such monitor")
+			err = twirp.NotFoundError("no such monitor")
 		}
+		ctx = context.WithValue(ctx, sctx.MonitorKey, nil)
 		return nil, err
 	}
 
+	ctx = context.WithValue(ctx, sctx.MonitorKey, monitor)
 	return &monitor, nil
 }
 
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
+
+	ua := ctx.Value("user-agent").(string)
+	log.Printf("user agent: %v", ua)
+
 	monitor, err := srv.getMonitor(ctx)
 	if err != nil {
 		return nil, err
@@ -69,17 +77,17 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	intervalMinutes := 8
+	intervalMinutesAll := 2
 
-	if monitor.Status == ntpdb.MonitorsStatusTesting {
+	if monitor.Status != ntpdb.MonitorsStatusActive {
 		intervalMinutes = 60
-
 	}
 
 	p := ntpdb.GetServersParams{
 		MonitorID:          monitor.ID,
 		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion),
 		IntervalMinutes:    intervalMinutes,
-		IntervalMinutesAll: 3,
+		IntervalMinutesAll: intervalMinutesAll,
 		Limit:              10,
 		Offset:             0,
 	}
@@ -135,8 +143,9 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		BatchID: bidb,
 	}
 
-	if len(pServers) > 0 {
+	if count := len(pServers); count > 0 {
 		log.Printf("GetServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
+		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String()).Add(float64(count))
 	}
 
 	return list, nil

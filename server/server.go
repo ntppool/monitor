@@ -17,16 +17,16 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
+	sctx "go.ntppool.org/monitor/server/context"
+	"go.ntppool.org/monitor/server/metrics"
+	twirpmetrics "go.ntppool.org/monitor/server/metrics/twirp"
 	"go.ntppool.org/monitor/server/vault"
 )
-
-type contextKey int
-
-const certificateKey contextKey = 0
 
 type Server struct {
 	cfg    *Config
 	tokens *vault.TokenManager
+	m      *metrics.Metrics
 	db     *ntpdb.Queries
 	dbconn *sql.DB
 }
@@ -45,11 +45,14 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 		return nil, err
 	}
 
+	metrics := metrics.New()
+
 	return &Server{
 		cfg:    &cfg,
 		db:     db,
 		dbconn: dbconn,
 		tokens: tm,
+		m:      metrics,
 	}, nil
 }
 
@@ -97,12 +100,28 @@ func (srv *Server) Run() error {
 	twirpHandler := pb.NewMonitorServer(srv,
 		twirp.WithServerPathPrefix("/api/v1"),
 		twirp.WithServerHooks(NewLoggingServerHooks()),
+		twirp.WithServerHooks(twirpmetrics.NewServerHooks(srv.m.Registry())),
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle(twirpHandler.PathPrefix(), srv.certificateMiddleware(twirpHandler))
+	mux.Handle(twirpHandler.PathPrefix(),
+		srv.certificateMiddleware(
+			WithUserAgent(
+				twirpHandler,
+			),
+		),
+	)
 
 	logger.Infof("starting server")
+
+	metricsServer := &http.Server{
+		Addr:    ":9000",
+		Handler: srv.m.Handler(),
+	}
+
+	go func() {
+		log.Printf("metrics server: %s", metricsServer.ListenAndServe())
+	}()
 
 	server := &http.Server{
 		Addr: ":8000",
@@ -124,7 +143,7 @@ func (srv *Server) certificateMiddleware(next http.Handler) http.Handler {
 
 		_, name := srv.getVerifiedCert(r.TLS.VerifiedChains)
 
-		ctx := context.WithValue(r.Context(), certificateKey, name)
+		ctx := context.WithValue(r.Context(), sctx.CertificateKey, name)
 		rctx := r.WithContext(ctx)
 		next.ServeHTTP(w, rctx)
 	})
