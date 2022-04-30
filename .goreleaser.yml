@@ -82,6 +82,18 @@ nfpms:
     dependencies:
       - ntp
     bindir: /usr/bin
+
+    overrides:
+      deb:
+        dependencies:
+          - "ntp | chrony"
+
+      rpm:
+        # this is supposed to work, but I couldn't figure it out.
+        # so, ... ntp only on redhat flavors for now.
+        #dependencies:
+        #  - (ntp or chrony)
+
     contents:
       - src: "scripts/ntppool-monitor@.service"
         dst: "/etc/systemd/system/ntppool-monitor@.service"
