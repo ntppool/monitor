@@ -25,7 +25,7 @@ type APIConfig struct {
 		Secret string `default:"" `
 	}
 
-	StateDir string `default:"" flag:"state-dir" usage:"Directory for storing state"`
+	StateDir string `default:"." flag:"state-dir" usage:"Directory for storing state"`
 
 	loaded bool
 	loader *aconfig.Loader
