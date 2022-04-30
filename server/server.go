@@ -110,9 +110,10 @@ func (srv *Server) Run() error {
 		TLSConfig: tlsConfig,
 		Handler:   mux,
 
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       20 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		IdleTimeout:       240 * time.Second,
 	}
 
 	return server.ListenAndServeTLS("", "")
