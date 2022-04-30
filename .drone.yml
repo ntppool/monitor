@@ -55,11 +55,6 @@ steps:
     commands:
       - ./scripts/run-goreleaser
       - echo Done
-    when:
-      ref:
-        - refs/heads/main
-        - refs/heads/drone-test
-        - refs/tags/**
     depends_on: [test]
 
   - name: docker
@@ -98,6 +93,10 @@ steps:
       strip_prefix: dist/
       endpoint: https://minio-ewr1.develooper.com/
       path_style: true
+    when:
+      ref:
+        - refs/heads/main
+        - refs/tags/**
     depends_on: [goreleaser]
 
   - name: fury-publish
@@ -117,7 +116,6 @@ steps:
     when:
       ref:
         - refs/heads/main
-        - refs/heads/drone-test
         - refs/tags/**
     depends_on: [goreleaser]
 
@@ -175,6 +173,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 3d42657a6bb0f6c140ef28b69cc3e13d30327809d55a868b3ecedf1a4ffae2d7
+hmac: 394d44c554914ae7ea4faa9037be00d694731d671ddff374560ce98c0efb8a03
 
 ...
