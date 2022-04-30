@@ -169,7 +169,7 @@ func (tm *TokenManager) rotateTokensBackground() {
 
 	l := log.New(os.Stderr, "rotateTokensBackground: ", 0)
 
-	ticker := time.NewTicker(2 * time.Hour)
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	for {
@@ -179,6 +179,8 @@ func (tm *TokenManager) rotateTokensBackground() {
 			l.Printf("could not get token: %s", err)
 		}
 
+		l.Printf("checking token age, latest is from %d", latest.Created)
+
 		if age := (time.Now().Unix() - int64(latest.Created)); age > 28800 {
 			l.Printf("latest token is more than eight hours old (%d seconds), rotate it", age)
 			tm.createNewToken(ctx, latest.version)
@@ -186,7 +188,7 @@ func (tm *TokenManager) rotateTokensBackground() {
 			tm.latest = nil
 			tm.lock.Unlock()
 			tm.getToken(ctx)
-
+			l.Printf("finished renewing token")
 		}
 
 		select {
