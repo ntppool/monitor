@@ -25,6 +25,8 @@ import (
 // manage the token, so all that code from the client
 // goes away.
 
+const tokenRefreshInterval = 10 * time.Hour
+
 type notFoundError struct{}
 
 func (m *notFoundError) Error() string {
@@ -108,7 +110,7 @@ func (tm *TokenManager) Validate(monitorID int32, batchID []byte, ip *netaddr.IP
 	if err != nil {
 		return false, err
 	}
-	if len(expected) > 0 && bytes.Compare(sig, expected) == 0 {
+	if len(expected) > 0 && bytes.Equal(sig, expected) {
 		return true, nil
 	}
 
@@ -169,7 +171,7 @@ func (tm *TokenManager) rotateTokensBackground() {
 
 	l := log.New(os.Stderr, "rotateTokensBackground: ", 0)
 
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := time.NewTicker(tokenRefreshInterval / 5)
 	defer ticker.Stop()
 
 	for {
@@ -179,10 +181,12 @@ func (tm *TokenManager) rotateTokensBackground() {
 			l.Printf("could not get token: %s", err)
 		}
 
-		l.Printf("checking token age, latest is from %d", latest.Created)
+		latestTime := time.Unix(latest.Created, 0)
 
-		if age := (time.Now().Unix() - int64(latest.Created)); age > 28800 {
-			l.Printf("latest token is more than eight hours old (%d seconds), rotate it", age)
+		l.Printf("checking token age, latest is %s old (interval: %s)", time.Since(latestTime), tokenRefreshInterval.String())
+
+		if age := time.Since(latestTime); age > tokenRefreshInterval {
+			l.Printf("token age (%s) is more than %s, rotate it", age, tokenRefreshInterval)
 			tm.createNewToken(ctx, latest.version)
 			tm.lock.Lock()
 			tm.latest = nil
@@ -265,15 +269,6 @@ func (tm *TokenManager) getTokenVersionCache(ctx context.Context, version int) (
 		return t, nil
 	}
 
-	latest, err := tm.getToken(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if latest.version < version {
-		return nil, fmt.Errorf("invalid signature version")
-	}
-
 	return nil, nil
 }
 
@@ -285,6 +280,15 @@ func (tm *TokenManager) getTokenVersion(ctx context.Context, version int) (*toke
 	}
 	if token != nil {
 		return token, nil
+	}
+
+	latest, err := tm.getToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if latest.version < version {
+		return nil, fmt.Errorf("invalid signature version")
 	}
 
 	tm.lock.Lock()
@@ -306,6 +310,8 @@ func (tm *TokenManager) getTokenVersion(ctx context.Context, version int) (*toke
 		return nil, err
 	}
 
+	tm.versions[version] = token
+
 	return token, err
 
 }
@@ -318,6 +324,8 @@ func (tm *TokenManager) getToken(ctx context.Context) (*token, error) {
 		return token, nil
 	}
 
+	log.Printf("getToken didn't have latest token, getting from vault")
+
 	tm.lock.RUnlock()
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
@@ -326,6 +334,8 @@ func (tm *TokenManager) getToken(ctx context.Context) (*token, error) {
 	if tm.latest != nil {
 		return tm.latest, nil
 	}
+
+	log.Printf("getToken calling getKV")
 
 	rv, err := tm.getKV(ctx, tm.key)
 	if err != nil {
@@ -339,6 +349,11 @@ func (tm *TokenManager) getToken(ctx context.Context) (*token, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	tm.latest = t
+	tm.versions[t.version] = t
+
+	log.Printf("getToken returning success")
 
 	return t, nil
 }

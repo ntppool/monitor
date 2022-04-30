@@ -36,11 +36,15 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		Ok: false,
 	}
 
+	log.Printf("SubmitResults(), getMonitor")
+
 	monitor, err := srv.getMonitor(ctx)
 	if err != nil {
 		log.Printf("get monitor error: %s", err)
 		return rv, err
 	}
+
+	log.Printf("SubmitResults(), getMonitor == %s", monitor.TlsName.String)
 
 	if !monitor.IsLive() {
 		return rv, fmt.Errorf("monitor not active")
@@ -67,6 +71,8 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			srv.m.TestsCompleted.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String(), c.Name).Add(float64(c.Counter))
 		}
 	}()
+
+	log.Printf("SubmitResults(%s), decode batchID", monitor.TlsName.String)
 
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(in.BatchID)
@@ -106,6 +112,8 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 	// todo: check that the new batchID is newer than the last 'seen' state in the monitor table
 
+	log.Printf("SubmitResults(%s)/%s, processing data", monitor.TlsName.String, batchID.String())
+
 	for i, status := range in.List {
 
 		if in.Version > 2 {
@@ -123,6 +131,8 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			return rv, twirp.InternalErrorWith(err)
 		}
 	}
+
+	log.Printf("SubmitResults(%s)/%s, finished", monitor.TlsName.String, batchID.String())
 
 	// yay, it was all okay
 	rv.Ok = true

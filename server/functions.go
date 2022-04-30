@@ -26,7 +26,7 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
 
 	cn := getCertificateName(ctx)
 
-	log.Printf("cn: %+v", cn)
+	log.Printf("cn: %+v, getting monitor", cn)
 
 	monitor, err := srv.db.GetMonitorTLSName(ctx, sql.NullString{String: cn, Valid: true})
 	if err != nil {
@@ -37,7 +37,12 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
 		return nil, err
 	}
 
+	log.Printf("cn: %+v, got monitor %s, storing in context", cn, monitor.TlsName.String)
+
 	ctx = context.WithValue(ctx, sctx.MonitorKey, monitor)
+
+	log.Printf("cn: %+v, returning", cn)
+
 	return &monitor, nil
 }
 
@@ -76,6 +81,8 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
+	log.Printf("GetServers(%s) starting", monitor.TlsName.String)
+
 	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
 		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
@@ -101,6 +108,16 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		Offset:             0,
 	}
 
+	log.Printf("GetServers(%s) making BatchID", monitor.TlsName.String)
+
+	now := time.Now()
+	batchID, err := makeULID(now)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("GetServers(%s)/%s GetConfig", monitor.TlsName.String, batchID.String())
+
 	mcfg, err := monitor.GetConfig()
 	if err != nil {
 		return nil, err
@@ -111,6 +128,8 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
+	log.Printf("GetServers(%s)/%s GetServers", monitor.TlsName.String, batchID.String())
+
 	servers, err := srv.db.GetServers(ctx, p)
 	if err != nil {
 		return nil, err
@@ -118,16 +137,12 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	pServers := []*pb.Server{}
 
-	now := time.Now()
-	batchID, err := makeULID(now)
-	if err != nil {
-		return nil, err
-	}
-
 	bidb, err := batchID.MarshalText()
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("GetServers(%s)/%s serializing data", monitor.TlsName.String, batchID.String())
 
 	for _, server := range servers {
 		pServer := &pb.Server{}
@@ -156,6 +171,8 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		log.Printf("GetServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
 		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String()).Add(float64(count))
 	}
+
+	log.Printf("GetServers(%s)/%s done", monitor.TlsName.String, batchID.String())
 
 	return list, nil
 }
