@@ -13,10 +13,10 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
-	"go.ntppool.org/monitor"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/localok"
+	"go.ntppool.org/monitor/client/monitor"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"inet.af/netaddr"
 )

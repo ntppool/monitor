@@ -10,7 +10,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	"inet.af/netaddr"
 
-	"go.ntppool.org/monitor"
+	"go.ntppool.org/monitor/client/monitor"
 )
 
 type LocalOK struct {
