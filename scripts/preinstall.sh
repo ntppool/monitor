@@ -2,6 +2,8 @@
 
 NTPMONDIR=/var/run/ntpmon
 
+mkdir -p /etc/ntpmon
+
 getent group ntpmon >/dev/null || groupadd -r ntpmon
 getent passwd ntpmon >/dev/null || \
     useradd -r -g ntpmon -d ${NTPMONDIR} -s /sbin/nologin \

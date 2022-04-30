@@ -90,6 +90,10 @@ nfpms:
         dst: "/etc/default/ntppool-monitor.sample"
         type: config
 
+      - src: "scripts/defaults"
+        dst: "/etc/default/ntppool-monitor"
+        type: config|noreplace
+
     scripts:
       preinstall: scripts/preinstall.sh
       postinstall: scripts/postinstall.sh
