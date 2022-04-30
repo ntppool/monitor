@@ -73,7 +73,6 @@ func (l *LocalOK) update() bool {
 	allHosts := []string{
 		// "time.apple.com",
 		// "ntp1.net.berkeley.edu",
-		"tock.ucla.edu",
 		"jptyo5-ntp-003.aaplimg.com",
 		"uslax1-ntp-001.aaplimg.com",
 		"defra1-ntp-002.aaplimg.com",
@@ -89,6 +88,8 @@ func (l *LocalOK) update() bool {
 		for _, s := range l.cfg.BaseChecks {
 			allHosts = append(allHosts, string(s))
 		}
+	} else {
+		log.Printf("Did not get BaseChecks from API, using built-in defaults")
 	}
 
 	type namedIP struct {
