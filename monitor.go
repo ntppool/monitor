@@ -108,12 +108,12 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 		}
 	}
 
-	errLog := ""
-	if len(best.Error) > 0 {
-		errLog = fmt.Sprintf(" err: %q", best.Error)
-	}
-	log.Printf("best result for %s - offset: %s rtt: %s%s",
-		ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
+	// errLog := ""
+	// if len(best.Error) > 0 {
+	// 	errLog = fmt.Sprintf(" err: %q", best.Error)
+	// }
+	// log.Printf("best result for %s - offset: %s rtt: %s%s",
+	// 	ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
 
 	if len(best.Error) > 0 {
 		return best, fmt.Errorf("%s", best.Error)
