@@ -10,7 +10,7 @@ import (
 )
 
 const getMonitorTLSName = `-- name: GetMonitorTLSName :one
-SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, created_on FROM monitors
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, last_submit, created_on FROM monitors
 WHERE tls_name = ? LIMIT 1
 `
 
@@ -30,6 +30,7 @@ func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString)
 		&i.Status,
 		&i.Config,
 		&i.LastSeen,
+		&i.LastSubmit,
 		&i.CreatedOn,
 	)
 	return i, err
@@ -224,7 +225,7 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, created_on FROM monitors
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, last_submit, created_on FROM monitors
 ORDER BY name
 `
 
@@ -250,6 +251,7 @@ func (q *Queries) ListMonitors(ctx context.Context) ([]Monitor, error) {
 			&i.Status,
 			&i.Config,
 			&i.LastSeen,
+			&i.LastSubmit,
 			&i.CreatedOn,
 		); err != nil {
 			return nil, err
@@ -278,6 +280,23 @@ type UpdateMonitorSeenParams struct {
 
 func (q *Queries) UpdateMonitorSeen(ctx context.Context, arg UpdateMonitorSeenParams) error {
 	_, err := q.db.ExecContext(ctx, updateMonitorSeen, arg.LastSeen, arg.ID)
+	return err
+}
+
+const updateMonitorSubmit = `-- name: UpdateMonitorSubmit :exec
+UPDATE monitors
+  SET last_submit = ?, last_seen = ?
+  WHERE id = ?
+`
+
+type UpdateMonitorSubmitParams struct {
+	LastSubmit sql.NullTime `json:"last_submit"`
+	LastSeen   sql.NullTime `json:"last_seen"`
+	ID         int32        `json:"id"`
+}
+
+func (q *Queries) UpdateMonitorSubmit(ctx context.Context, arg UpdateMonitorSubmitParams) error {
+	_, err := q.db.ExecContext(ctx, updateMonitorSubmit, arg.LastSubmit, arg.LastSeen, arg.ID)
 	return err
 }
 

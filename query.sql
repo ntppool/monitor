@@ -45,6 +45,11 @@ UPDATE monitors
   SET last_seen = ?
   WHERE id = ?;
 
+-- name: UpdateMonitorSubmit :exec
+UPDATE monitors
+  SET last_submit = ?, last_seen = ?
+  WHERE id = ?;
+
 -- name: InsertLogScore :exec
 INSERT INTO log_scores
   (server_id, monitor_id, ts, score, step, offset, rtt, attributes)

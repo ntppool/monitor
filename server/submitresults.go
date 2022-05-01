@@ -30,6 +30,8 @@ type SubmitCounters struct {
 
 func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
 
+	now := time.Now()
+
 	rv := &pb.ServerStatusResult{
 		Ok: false,
 	}
@@ -73,17 +75,17 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 	batchTime := ulid.Time(batchID.Time())
 
-	lastSeen := monitor.LastSeen
-	if lastSeen.Valid {
-		log.Printf("monitor %d previous batch was %s", monitor.ID, lastSeen.Time.String())
+	lastSubmit := monitor.LastSubmit
+	if lastSubmit.Valid {
+		log.Printf("monitor %d previous batch was %s", monitor.ID, lastSubmit.Time.String())
 	} else {
 		log.Printf("monitor %d had no last seen!", monitor.ID)
 	}
 
-	if batchTime.Before(lastSeen.Time) {
+	if batchTime.Before(lastSubmit.Time) {
 		log.Printf("monitor %d previous batch was %s; new batch is older %s (%s)",
 			monitor.ID,
-			lastSeen.Time.String(),
+			lastSubmit.Time.String(),
 			batchTime.String(),
 			batchID.String(),
 		)
@@ -94,9 +96,10 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		return rv, fmt.Errorf("invalid batch submission")
 	}
 
-	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
-		ID:       monitor.ID,
-		LastSeen: sql.NullTime{Time: batchTime, Valid: true},
+	srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
+		ID:         monitor.ID,
+		LastSubmit: sql.NullTime{Time: batchTime, Valid: true},
+		LastSeen:   sql.NullTime{Time: now, Valid: true},
 	})
 
 	bidb, _ := batchID.MarshalText()

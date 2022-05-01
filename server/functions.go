@@ -50,6 +50,10 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	if err != nil {
 		return nil, err
 	}
+	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
+		ID:       monitor.ID,
+		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
+	})
 
 	var cfg *ntpdb.MonitorConfig
 
@@ -71,6 +75,11 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	if err != nil {
 		return nil, err
 	}
+
+	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
+		ID:       monitor.ID,
+		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
+	})
 
 	if !monitor.IsLive() {
 		return nil, fmt.Errorf("monitor not active")
