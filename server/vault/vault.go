@@ -121,6 +121,7 @@ func (tm *TokenManager) Validate(monitorID int32, batchID []byte, ip *netaddr.IP
 }
 
 func (tm *TokenManager) Sign(monitorID int32, batchID []byte, ip *netaddr.IP) ([]byte, error) {
+
 	token, err := tm.getToken(context.Background())
 	if err != nil {
 		return nil, err

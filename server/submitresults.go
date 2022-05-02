@@ -13,6 +13,8 @@ import (
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
+	"go.opentelemetry.io/otel/attribute"
+	otrace "go.opentelemetry.io/otel/trace"
 )
 
 type CounterOpt struct {
@@ -29,22 +31,18 @@ type SubmitCounters struct {
 }
 
 func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
-
+	span := otrace.SpanFromContext(ctx)
 	now := time.Now()
 
 	rv := &pb.ServerStatusResult{
 		Ok: false,
 	}
 
-	log.Printf("SubmitResults(), getMonitor")
-
-	monitor, err := srv.getMonitor(ctx)
+	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
 		log.Printf("get monitor error: %s", err)
 		return rv, err
 	}
-
-	log.Printf("SubmitResults(), getMonitor == %s", monitor.TlsName.String)
 
 	if !monitor.IsLive() {
 		return rv, fmt.Errorf("monitor not active")
@@ -72,12 +70,10 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		}
 	}()
 
-	log.Printf("SubmitResults(%s), decode batchID", monitor.TlsName.String)
-
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(in.BatchID)
 
-	log.Printf("SubmitServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
+	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
 	batchTime := ulid.Time(batchID.Time())
 
@@ -99,6 +95,8 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 		counters.BatchOrder.Counter += len(in.List)
 
+		span.AddEvent("Out of order batch", otrace.WithAttributes(attribute.String("previous", lastSubmit.Time.String())))
+
 		return rv, fmt.Errorf("invalid batch submission")
 	}
 
@@ -110,15 +108,12 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 	bidb, _ := batchID.MarshalText()
 
-	// todo: check that the new batchID is newer than the last 'seen' state in the monitor table
-
-	log.Printf("SubmitResults(%s)/%s, processing data", monitor.TlsName.String, batchID.String())
-
 	for i, status := range in.List {
 
 		if in.Version > 2 {
 			ticketOk, err := srv.tokens.Validate(monitor.ID, bidb, status.GetIP(), status.Ticket)
 			if err != nil || !ticketOk {
+				span.AddEvent("signature validation failed")
 				log.Printf("monitor %d signature validation failed for %q %s", monitor.ID, status.GetIP().String(), err)
 				counters.Sig.Counter += len(in.List) - i
 				return nil, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
@@ -127,19 +122,19 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 		err = srv.processStatus(ctx, monitor, status, counters)
 		if err != nil {
+			span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
 			log.Printf("error processing status %+v: %s", status, err)
 			return rv, twirp.InternalErrorWith(err)
 		}
 	}
 
-	log.Printf("SubmitResults(%s)/%s, finished", monitor.TlsName.String, batchID.String())
-
-	// yay, it was all okay
 	rv.Ok = true
 	return rv, nil
 }
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus, counters *SubmitCounters) error {
+	ctx, span := srv.tracer.Start(ctx, "processStatus")
+	defer span.End()
 
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
 	if err != nil {

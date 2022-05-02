@@ -8,26 +8,26 @@ import (
 	"strings"
 	"time"
 
-	sctx "go.ntppool.org/monitor/server/context"
-
 	"github.com/twitchtv/twirp"
+	"go.opentelemetry.io/otel/attribute"
+	otrace "go.opentelemetry.io/otel/trace"
+	"inet.af/netaddr"
+
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
-	"inet.af/netaddr"
+	sctx "go.ntppool.org/monitor/server/context"
 )
 
-func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
+func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
 
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
 		if mon == nil {
 			log.Printf("got cached nil mon")
 		}
-		return mon, nil
+		return mon, ctx, nil
 	}
 
 	cn := getCertificateName(ctx)
-
-	log.Printf("cn: %+v, getting monitor", cn)
 
 	monitor, err := srv.db.GetMonitorTLSName(ctx, sql.NullString{String: cn, Valid: true})
 	if err != nil {
@@ -35,24 +35,23 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
 			err = twirp.NotFoundError("no such monitor")
 		}
 		ctx = context.WithValue(ctx, sctx.MonitorKey, nil)
-		return nil, err
+		return nil, ctx, err
 	}
 
-	log.Printf("cn: %+v, got monitor %s, storing in context", cn, monitor.TlsName.String)
+	// log.Printf("cn: %+v, got monitor %s (%T), storing in context", cn, monitor.TlsName.String, monitor)
 
-	ctx = context.WithValue(ctx, sctx.MonitorKey, monitor)
+	ctx = context.WithValue(ctx, sctx.MonitorKey, &monitor)
 
-	log.Printf("cn: %+v, returning", cn)
-
-	return &monitor, nil
+	return &monitor, ctx, nil
 }
 
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
+	span := otrace.SpanFromContext(ctx)
 
 	ua := ctx.Value(sctx.ClientVersion).(string)
 	log.Printf("user agent: %v", ua)
 
-	monitor, err := srv.getMonitor(ctx)
+	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +59,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		ID:       monitor.ID,
 		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
 	})
+	span.AddEvent("UpdateMonitorSeen")
 
 	// the client always starts by getting a config, so we just track the user-agent here
 	if err = srv.updateUserAgent(ctx, monitor); err != nil {
@@ -74,23 +74,25 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		if err != nil {
 			return nil, err
 		}
+		span.AddEvent("Merged Configs")
 	} else {
 		cfg, err = monitor.GetConfig()
 		if err != nil {
 			return nil, err
 		}
+		span.AddEvent("Single Config")
 	}
 
 	return cfg.PbConfig()
 }
 
 func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
-	monitor, err := srv.getMonitor(ctx)
+	span := otrace.SpanFromContext(ctx)
+
+	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	log.Printf("GetServers(%s) starting", monitor.TlsName.String)
 
 	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
@@ -117,15 +119,13 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		Offset:             0,
 	}
 
-	log.Printf("GetServers(%s) making BatchID", monitor.TlsName.String)
-
 	now := time.Now()
 	batchID, err := makeULID(now)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("GetServers(%s)/%s GetConfig", monitor.TlsName.String, batchID.String())
+	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
 	mcfg, err := monitor.GetConfig()
 	if err != nil {
@@ -137,12 +137,12 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
-	log.Printf("GetServers(%s)/%s GetServers", monitor.TlsName.String, batchID.String())
-
 	servers, err := srv.db.GetServers(ctx, p)
 	if err != nil {
 		return nil, err
 	}
+
+	span.AddEvent("GetServers DB select", otrace.WithAttributes(attribute.Int("serverCount", len(servers))))
 
 	pServers := []*pb.Server{}
 
@@ -150,8 +150,6 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	if err != nil {
 		return nil, err
 	}
-
-	log.Printf("GetServers(%s)/%s serializing data", monitor.TlsName.String, batchID.String())
 
 	for _, server := range servers {
 		pServer := &pb.Server{}
@@ -177,11 +175,8 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	if count := len(pServers); count > 0 {
-		log.Printf("GetServers() BatchID for monitor %d: %s", monitor.ID, batchID.String())
 		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String()).Add(float64(count))
 	}
-
-	log.Printf("GetServers(%s)/%s done", monitor.TlsName.String, batchID.String())
 
 	return list, nil
 }

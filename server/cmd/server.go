@@ -33,8 +33,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cfg := cli.Config
 
-	log.Printf("loaded? %t", cfg.loaded)
-	log.Printf("acfg: %+v", cfg)
+	// log.Printf("acfg: %+v", cfg)
 
 	if len(cfg.DeploymentMode) == 0 {
 		return fmt.Errorf("deployment_mode configuration required")
