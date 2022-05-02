@@ -84,17 +84,18 @@ func getServerName(clientName string) (string, error) {
 	return apiServers[depEnv], nil
 }
 
-func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (pb.Monitor, error) {
+func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, pb.Monitor, error) {
 
 	serverName, err := getServerName(clientName)
 	if err != nil {
-		return nil, err
+		return ctx, nil, err
 	}
 
 	httpClient, err := httpClient(cp)
 	if err != nil {
-		return nil, err
+		return ctx, nil, err
 	}
+
 	client := pb.NewMonitorProtobufClient(
 		serverName,
 		httpClient,
@@ -106,8 +107,8 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 	ctx, err = twirp.WithHTTPRequestHeaders(ctx, hdr)
 	if err != nil {
 		log.Printf("twirp error setting headers: %s", err)
-		return nil, err
+		return ctx, nil, err
 	}
 
-	return client, nil
+	return ctx, client, nil
 }

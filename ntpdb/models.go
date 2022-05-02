@@ -330,20 +330,21 @@ type LogStatus struct {
 }
 
 type Monitor struct {
-	ID         int32             `json:"id"`
-	UserID     sql.NullInt32     `json:"user_id"`
-	AccountID  sql.NullInt32     `json:"account_id"`
-	Name       string            `json:"name"`
-	Location   string            `json:"location"`
-	Ip         string            `json:"ip"`
-	IpVersion  MonitorsIpVersion `json:"ip_version"`
-	TlsName    sql.NullString    `json:"tls_name"`
-	ApiKey     sql.NullString    `json:"api_key"`
-	Status     MonitorsStatus    `json:"status"`
-	Config     string            `json:"config"`
-	LastSeen   sql.NullTime      `json:"last_seen"`
-	LastSubmit sql.NullTime      `json:"last_submit"`
-	CreatedOn  time.Time         `json:"created_on"`
+	ID            int32             `json:"id"`
+	UserID        sql.NullInt32     `json:"user_id"`
+	AccountID     sql.NullInt32     `json:"account_id"`
+	Name          string            `json:"name"`
+	Location      string            `json:"location"`
+	Ip            string            `json:"ip"`
+	IpVersion     MonitorsIpVersion `json:"ip_version"`
+	TlsName       sql.NullString    `json:"tls_name"`
+	ApiKey        sql.NullString    `json:"api_key"`
+	Status        MonitorsStatus    `json:"status"`
+	Config        string            `json:"config"`
+	ClientVersion string            `json:"client_version"`
+	LastSeen      sql.NullTime      `json:"last_seen"`
+	LastSubmit    sql.NullTime      `json:"last_submit"`
+	CreatedOn     time.Time         `json:"created_on"`
 }
 
 type SchemaRevision struct {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	sctx "go.ntppool.org/monitor/server/context"
@@ -48,7 +49,7 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, error) {
 
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
 
-	ua := ctx.Value("user-agent").(string)
+	ua := ctx.Value(sctx.ClientVersion).(string)
 	log.Printf("user agent: %v", ua)
 
 	monitor, err := srv.getMonitor(ctx)
@@ -60,6 +61,11 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
 	})
 
+	// the client always starts by getting a config, so we just track the user-agent here
+	if err = srv.updateUserAgent(ctx, monitor); err != nil {
+		log.Printf("error updating user-agent: %s", err)
+	}
+
 	var cfg *ntpdb.MonitorConfig
 
 	smon, err := srv.db.GetSystemMonitor(ctx, "settings", monitor.IpVersion)
@@ -70,6 +76,9 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		}
 	} else {
 		cfg, err = monitor.GetConfig()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return cfg.PbConfig()
@@ -175,4 +184,19 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	log.Printf("GetServers(%s)/%s done", monitor.TlsName.String, batchID.String())
 
 	return list, nil
+}
+
+func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) error {
+	ua := ctx.Value(sctx.ClientVersion).(string)
+
+	ua = strings.TrimPrefix(ua, "ntppool-monitor/")
+
+	if ua != mon.ClientVersion {
+		srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{
+			ClientVersion: ua,
+			ID:            mon.ID,
+		})
+	}
+
+	return nil
 }

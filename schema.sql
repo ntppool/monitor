@@ -295,6 +295,7 @@ CREATE TABLE `monitors` (
   `api_key` varchar(64) DEFAULT NULL,
   `status` enum('pending','testing','active','paused','deleted') NOT NULL,
   `config` text NOT NULL,
+  `client_version` varchar(255) NOT NULL,
   `last_seen` datetime(6) DEFAULT NULL,
   `last_submit` datetime(6) DEFAULT NULL,
   `created_on` datetime NOT NULL,
@@ -635,4 +636,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-05-01 10:40:47
+-- Dump completed on 2022-05-02  1:18:25

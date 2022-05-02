@@ -17,6 +17,9 @@ func init() {
 	if len(gitVersion) > 0 {
 		VERSION = VERSION + "/" + gitVersion
 	}
+	if len(VERSION) == 0 {
+		VERSION = "dev-snapshot"
+	}
 }
 
 func VersionCmd() *cobra.Command {
@@ -25,7 +28,7 @@ func VersionCmd() *cobra.Command {
 		Short: "Print version and build information",
 		Run: func(cmd *cobra.Command, args []string) {
 			ver := Version()
-			fmt.Printf("ntppool-monitor %s", ver)
+			fmt.Printf("ntppool-monitor %s\n", ver)
 		},
 	}
 	return versionCmd
@@ -42,7 +45,7 @@ func Version() string {
 		extra = append(extra, buildTime)
 	}
 	extra = append(extra, runtime.Version())
-	v = fmt.Sprintf("%s (%s)\n", VERSION, strings.Join(extra, ", "))
+	v = fmt.Sprintf("%s (%s)", VERSION, strings.Join(extra, ", "))
 	return v
 }
 

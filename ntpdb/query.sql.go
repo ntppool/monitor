@@ -10,7 +10,7 @@ import (
 )
 
 const getMonitorTLSName = `-- name: GetMonitorTLSName :one
-SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, last_submit, created_on FROM monitors
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 WHERE tls_name = ? LIMIT 1
 `
 
@@ -29,6 +29,7 @@ func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString)
 		&i.ApiKey,
 		&i.Status,
 		&i.Config,
+		&i.ClientVersion,
 		&i.LastSeen,
 		&i.LastSubmit,
 		&i.CreatedOn,
@@ -225,7 +226,7 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, last_seen, last_submit, created_on FROM monitors
+SELECT id, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 ORDER BY name
 `
 
@@ -250,6 +251,7 @@ func (q *Queries) ListMonitors(ctx context.Context) ([]Monitor, error) {
 			&i.ApiKey,
 			&i.Status,
 			&i.Config,
+			&i.ClientVersion,
 			&i.LastSeen,
 			&i.LastSubmit,
 			&i.CreatedOn,
@@ -297,6 +299,22 @@ type UpdateMonitorSubmitParams struct {
 
 func (q *Queries) UpdateMonitorSubmit(ctx context.Context, arg UpdateMonitorSubmitParams) error {
 	_, err := q.db.ExecContext(ctx, updateMonitorSubmit, arg.LastSubmit, arg.LastSeen, arg.ID)
+	return err
+}
+
+const updateMonitorVersion = `-- name: UpdateMonitorVersion :exec
+UPDATE monitors
+  SET client_version = ?
+  WHERE id = ?
+`
+
+type UpdateMonitorVersionParams struct {
+	ClientVersion string `json:"client_version"`
+	ID            int32  `json:"id"`
+}
+
+func (q *Queries) UpdateMonitorVersion(ctx context.Context, arg UpdateMonitorVersionParams) error {
+	_, err := q.db.ExecContext(ctx, updateMonitorVersion, arg.ClientVersion, arg.ID)
 	return err
 }
 

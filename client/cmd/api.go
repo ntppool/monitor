@@ -63,7 +63,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Printf("getting certificates failed: %s", err)
 	}
 
-	api, err := api.Client(ctx, cli.Config.Name, cauth)
+	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
 	}

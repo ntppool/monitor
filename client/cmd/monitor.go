@@ -64,7 +64,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
-	api, err := api.Client(ctx, cli.Config.Name, cauth)
+	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
 	}

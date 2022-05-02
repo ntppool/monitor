@@ -12,10 +12,6 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-type monotonic struct {
-	Monotonic *ulid.MonotonicEntropy
-}
-
 var monotonicPool = sync.Pool{
 	New: func() interface{} {
 
