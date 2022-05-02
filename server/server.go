@@ -55,7 +55,7 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 		m:      metrics,
 	}
 
-	err = srv.initTracer()
+	err = srv.initTracer(cfg.DeploymentEnv)
 	if err != nil {
 		return nil, err
 	}

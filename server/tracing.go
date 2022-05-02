@@ -26,7 +26,7 @@ func (srv *Server) NewTracer() trace.Tracer {
 	return traceProvider.Tracer("monitor-api")
 }
 
-func (srv *Server) initTracer() error {
+func (srv *Server) initTracer(depEnv string) error {
 
 	// exporter, err := srv.newStdoutExporter(os.Stdout)
 
@@ -47,7 +47,7 @@ func (srv *Server) initTracer() error {
 		tp := sdktrace.NewTracerProvider(
 			sdktrace.WithSampler(sdktrace.AlwaysSample()),
 			sdktrace.WithBatcher(exporter),
-			sdktrace.WithResource(srv.newResource()),
+			sdktrace.WithResource(srv.newResource(depEnv)),
 		)
 
 		otel.SetTracerProvider(tp)
@@ -89,10 +89,7 @@ func (srv *Server) newOLTPExporter() (sdktrace.SpanExporter, error) {
 // }
 
 // newResource returns a resource describing this application.
-func (srv *Server) newResource() *resource.Resource {
-
-	log.Printf("Default resource: %+v", resource.Default())
-	log.Printf("schemaURL: %s", semconv.SchemaURL)
+func (srv *Server) newResource(depEnv string) *resource.Resource {
 
 	r, err := resource.Merge(
 		resource.Default(),
@@ -100,7 +97,7 @@ func (srv *Server) newResource() *resource.Resource {
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String("monitor-api"),
 			semconv.ServiceVersionKey.String(version.Version()),
-			attribute.String("environment", "demo"),
+			attribute.String("environment", depEnv),
 		),
 	)
 	if err != nil {
