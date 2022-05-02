@@ -190,7 +190,9 @@ func NewLoggingServerHooks() *twirp.ServerHooks {
 		},
 		Error: func(ctx context.Context, twerr twirp.Error) context.Context {
 			d := logDataFn(ctx)
-			log.Printf("method=%s cn=%s TraceID=%s error=\"%s\"", d.MethodName, d.CN, d.Span.SpanContext().TraceID(), string(twerr.Code()))
+			log.Printf("method=%s cn=%s TraceID=%s error=%q message=%q",
+				d.MethodName, d.CN, d.Span.SpanContext().TraceID(),
+				string(twerr.Code()), twerr.Msg())
 			return ctx
 		},
 		ResponseSent: func(ctx context.Context) {

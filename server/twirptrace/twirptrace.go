@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	otrace "go.opentelemetry.io/otel/trace"
 
@@ -195,8 +196,9 @@ func (t *TraceServerHooks) handleError(ctx context.Context, err twirp.Error) con
 	if span != nil {
 		if t.opts.includeClientErrors || statusCode >= 500 {
 			span.SetAttributes(attribute.Bool("error", true))
+			span.AddEvent("error", otrace.WithAttributes(attribute.String("message", err.Msg())))
+			span.SetStatus(codes.Error, err.Msg())
 		}
-		// span.Logs(otlog.String("event", "error"), otlog.String("message", err.Msg()))
 	}
 
 	return ctx
