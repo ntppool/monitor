@@ -48,7 +48,7 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Cont
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
 	span := otrace.SpanFromContext(ctx)
 
-	ua := ctx.Value(sctx.ClientVersion).(string)
+	ua := ctx.Value(sctx.ClientVersionKey).(string)
 	log.Printf("user agent: %v", ua)
 
 	monitor, ctx, err := srv.getMonitor(ctx)
@@ -127,6 +127,9 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
+	log.Printf("method=GetServers cn=%s traceID=%s batchID=%s",
+		monitor.TlsName.String, span.SpanContext().TraceID(), batchID.String())
+
 	mcfg, err := monitor.GetConfig()
 	if err != nil {
 		return nil, err
@@ -182,7 +185,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 }
 
 func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) error {
-	ua := ctx.Value(sctx.ClientVersion).(string)
+	ua := ctx.Value(sctx.ClientVersionKey).(string)
 
 	ua = strings.TrimPrefix(ua, "ntppool-monitor/")
 

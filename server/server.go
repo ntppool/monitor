@@ -15,6 +15,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
+	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
 	twirpmetrics "go.ntppool.org/monitor/server/metrics/twirp"
 	twirptrace "go.ntppool.org/monitor/server/twirptrace"
@@ -159,23 +160,46 @@ func (srv *Server) Run() error {
 }
 
 func NewLoggingServerHooks() *twirp.ServerHooks {
+
+	type logData struct {
+		CN         string
+		MethodName string
+		Span       otrace.Span
+	}
+
+	logDataFn := func(ctx context.Context) *logData {
+		method, _ := twirp.MethodName(ctx)
+		span := otrace.SpanFromContext(ctx)
+		cn := getCertificateName(ctx)
+
+		return &logData{
+			CN:         cn,
+			MethodName: method,
+			Span:       span,
+		}
+	}
+
 	return &twirp.ServerHooks{
 		RequestRouted: func(ctx context.Context) (context.Context, error) {
-			method, _ := twirp.MethodName(ctx)
-			span := otrace.SpanFromContext(ctx)
-			cn := getCertificateName(ctx)
-			log.Printf("%s %s (TraceID %s)", method, cn, span.SpanContext().TraceID())
+			d := logDataFn(ctx)
+
+			ctx = context.WithValue(ctx, sctx.RequestStartKey, time.Now())
+
+			log.Printf("method=%s cn=%s TraceID=%s", d.MethodName, d.CN, d.Span.SpanContext().TraceID())
 			return ctx, nil
 		},
 		Error: func(ctx context.Context, twerr twirp.Error) context.Context {
-			method, _ := twirp.MethodName(ctx)
-			span := otrace.SpanFromContext(ctx)
-			cn := getCertificateName(ctx)
-			log.Printf("%s %s (TraceID %s), error: %s", method, cn, span.SpanContext().TraceID(), string(twerr.Code()))
+			d := logDataFn(ctx)
+			log.Printf("method=%s cn=%s TraceID=%s error=\"%s\"", d.MethodName, d.CN, d.Span.SpanContext().TraceID(), string(twerr.Code()))
 			return ctx
 		},
-		// ResponseSent: func(ctx context.Context) {
-		// 	log.Println("Response Sent (error or success)")
-		// },
+		ResponseSent: func(ctx context.Context) {
+			d := logDataFn(ctx)
+			requestStart, _ := ctx.Value(sctx.RequestStartKey).(time.Time)
+			duration := time.Since(requestStart)
+
+			log.Printf("method=%s cn=%s TraceID=%s duration=%s",
+				d.MethodName, d.CN, d.Span.SpanContext().TraceID(), duration)
+		},
 	}
 }

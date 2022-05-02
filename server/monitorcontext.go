@@ -21,7 +21,7 @@ func WithUserAgent(base http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		ua := r.Header.Get("User-Agent")
-		ctx = context.WithValue(ctx, sctx.ClientVersion, ua)
+		ctx = context.WithValue(ctx, sctx.ClientVersionKey, ua)
 		r = r.WithContext(ctx)
 
 		base.ServeHTTP(w, r)

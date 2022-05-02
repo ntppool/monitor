@@ -11,10 +11,11 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/twitchtv/twirp"
-	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/ntpdb"
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
+
+	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/ntpdb"
 )
 
 type CounterOpt struct {
@@ -74,6 +75,9 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	batchID.UnmarshalText(in.BatchID)
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
+
+	log.Printf("method=SubmitResults cn=%s traceID=%s batchID=%s",
+		monitor.TlsName.String, span.SpanContext().TraceID(), batchID.String())
 
 	batchTime := ulid.Time(batchID.Time())
 
