@@ -22,9 +22,9 @@ func (mipv MonitorsIpVersion) String() string {
 	return string(mipv)
 }
 
-func (q *Queries) GetSystemMonitor(ctx context.Context, name string, ipVersion MonitorsIpVersion) (*SystemMonitor, error) {
+func (q *Queries) GetSystemMonitor(ctx context.Context, name string, ipVersion NullMonitorsIpVersion) (*SystemMonitor, error) {
 
-	name = name + "-" + ipVersion.String()
+	name = name + "-" + ipVersion.MonitorsIpVersion.String()
 
 	monitor, err := q.GetMonitorTLSName(ctx, sql.NullString{String: name + ".system", Valid: true})
 	if err != nil {

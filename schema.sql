@@ -230,6 +230,25 @@ CREATE TABLE `log_scores_archive_status` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `log_scores_scorer_status`
+--
+
+DROP TABLE IF EXISTS `log_scores_scorer_status`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `log_scores_scorer_status` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `scorer` varchar(255) NOT NULL,
+  `log_score_id` bigint(20) unsigned DEFAULT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `scorer` (`scorer`),
+  KEY `scorer_log_score_id` (`log_score_id`),
+  CONSTRAINT `scorer_log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `log_status`
 --
 
@@ -285,17 +304,18 @@ DROP TABLE IF EXISTS `monitors`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `monitors` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `type` enum('monitor','score') NOT NULL DEFAULT 'monitor',
   `user_id` int(10) unsigned DEFAULT NULL,
   `account_id` int(10) unsigned DEFAULT NULL,
   `name` varchar(30) NOT NULL,
   `location` varchar(255) NOT NULL DEFAULT '',
-  `ip` varchar(40) NOT NULL,
-  `ip_version` enum('v4','v6') NOT NULL,
+  `ip` varchar(40) DEFAULT NULL,
+  `ip_version` enum('v4','v6') DEFAULT NULL,
   `tls_name` varchar(255) DEFAULT NULL,
   `api_key` varchar(64) DEFAULT NULL,
   `status` enum('pending','testing','active','paused','deleted') NOT NULL,
   `config` text NOT NULL,
-  `client_version` varchar(255) NOT NULL,
+  `client_version` varchar(255) NOT NULL DEFAULT '',
   `last_seen` datetime(6) DEFAULT NULL,
   `last_submit` datetime(6) DEFAULT NULL,
   `created_on` datetime NOT NULL,
@@ -655,4 +675,8 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+<<<<<<< HEAD
 -- Dump completed on 2022-11-01  2:16:12
+=======
+-- Dump completed on 2022-10-29  5:16:46
+>>>>>>> 41a164e (scoring wip 3, update Go and dependencies)

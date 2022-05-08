@@ -196,7 +196,7 @@ func (t *TraceServerHooks) handleError(ctx context.Context, err twirp.Error) con
 	if span != nil {
 		if t.opts.includeClientErrors || statusCode >= 500 {
 			span.SetAttributes(attribute.Bool("error", true))
-			span.AddEvent("error", otrace.WithAttributes(attribute.String("message", err.Msg())))
+			span.AddEvent("error-message", otrace.WithAttributes(attribute.String("message", err.Msg())))
 			span.SetStatus(codes.Error, err.Msg())
 		}
 	}

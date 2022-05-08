@@ -1,4 +1,4 @@
-package cmd
+package ntpdb
 
 import (
 	"database/sql"
@@ -8,12 +8,17 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"go.ntppool.org/monitor/ntpdb"
 )
 
-func (cli *CLI) OpenDB() (*sql.DB, error) {
+type DBConfig struct {
+	DSN  string `default:"" flag:"dsn" usage:"Database DSN"`
+	User string `default:"" flag:"user"`
+	Pass string `default:"" flag:"pass"`
+}
 
-	dbconn := sql.OpenDB(ntpdb.Driver{CreateConnectorFunc: createConnector(cli.Config)})
+func OpenDB(config DBConfig) (*sql.DB, error) {
+
+	dbconn := sql.OpenDB(Driver{CreateConnectorFunc: createConnector(config)})
 
 	dbconn.SetConnMaxLifetime(time.Minute * 3)
 	dbconn.SetMaxOpenConns(10)
@@ -28,9 +33,9 @@ func (cli *CLI) OpenDB() (*sql.DB, error) {
 	return dbconn, nil
 }
 
-func createConnector(cfg *APIConfig) ntpdb.CreateConnectorFunc {
+func createConnector(cfg DBConfig) CreateConnectorFunc {
 	return func() (driver.Connector, error) {
-		dsn := cfg.Database.DSN
+		dsn := cfg.DSN
 		if len(dsn) == 0 {
 			return nil, fmt.Errorf("--database.dsn flag or DATABASE_DSN environment variable required")
 		}
@@ -40,11 +45,11 @@ func createConnector(cfg *APIConfig) ntpdb.CreateConnectorFunc {
 			return nil, err
 		}
 
-		if user := cfg.Database.User; len(user) > 0 && err == nil {
+		if user := cfg.User; len(user) > 0 && err == nil {
 			dbcfg.User = user
 		}
 
-		if pass := cfg.Database.Pass; len(pass) > 0 && err == nil {
+		if pass := cfg.Pass; len(pass) > 0 && err == nil {
 			dbcfg.Passwd = pass
 		}
 

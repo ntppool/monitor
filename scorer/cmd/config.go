@@ -8,7 +8,6 @@ import (
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
-	"go.ntppool.org/monitor/ntpdb"
 )
 
 type CLI struct {
@@ -16,13 +15,10 @@ type CLI struct {
 }
 
 type APIConfig struct {
-	Database ntpdb.DBConfig
-
-	Listen string `default:":8000" usage:"Listen address" flag:"listen"`
-
-	TLS struct {
-		Key  string `default:"/etc/tls/tls.key"`
-		Cert string `default:"/etc/tls/tls.crt"`
+	Database struct {
+		DSN  string `default:"" flag:"dsn" usage:"Database DSN"`
+		User string `default:"" flag:"user"`
+		Pass string `default:"" flag:"pass"`
 	}
 
 	DeploymentMode string `default:"" usage:"prod, test or devel" flag:"deployment-mode"`
@@ -63,7 +59,7 @@ func (cfg *APIConfig) setLoader(args []string) {
 	acfg := aconfig.Config{
 		// MergeFiles: true,
 		FileFlag: "config",
-		Files:    []string{"monitor-api.yaml", "/vault/secrets/database.yaml"},
+		Files:    []string{"monitor-scorer.yaml", "/vault/secrets/database.yaml"},
 		FileDecoders: map[string]aconfig.FileDecoder{
 			".yaml": aconfigyaml.New(),
 			".env":  aconfigdotenv.New(),

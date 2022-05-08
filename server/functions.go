@@ -112,7 +112,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	p := ntpdb.GetServersParams{
 		MonitorID:          monitor.ID,
-		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion),
+		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
 		IntervalMinutes:    intervalMinutes,
 		IntervalMinutesAll: intervalMinutesAll,
 		Limit:              10,
@@ -178,7 +178,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	if count := len(pServers); count > 0 {
-		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.String()).Add(float64(count))
+		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.MonitorsIpVersion.String()).Add(float64(count))
 	}
 
 	return list, nil

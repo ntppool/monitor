@@ -1,7 +1,6 @@
-################ Production ################
-#FROM harbor.ntppool.org/ntppool/base-os:3.15.4 as production
-FROM alpine:3.16.0
+FROM alpine:3.16.2
 
+RUN apk --no-cache upgrade
 RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
 
 RUN addgroup -g 1000 ntpmon && adduser -u 1000 -D -G ntpmon ntpmon

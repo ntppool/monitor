@@ -2,10 +2,6 @@
 SELECT * FROM monitors
 WHERE tls_name = ? LIMIT 1;
 
--- name: GetScorers :many
-SELECT * FROM monitors
-WHERE type = 'score';
-
 -- name: ListMonitors :many
 SELECT * FROM monitors
 ORDER BY name;
@@ -28,6 +24,11 @@ UPDATE server_scores
       score_raw = ?
   WHERE id = ?;
 
+-- name: InsertServerScore :exec
+insert into server_scores
+  (monitor_id, server_id, score_raw, created_on)
+  values (?, ?, ?, ?);
+
 -- name: UpdateServerScoreStratum :exec
 UPDATE server_scores
   SET stratum  = ?
@@ -44,8 +45,29 @@ UPDATE servers
   SET stratum = ?
   WHERE id = ?;
 
+-- name: GetScorers :many
+SELECT m.id as ID, s.id as status_id,
+  m.status, s.log_score_id, m.name
+FROM monitors m, scorer_status s
+WHERE m.type = 'score' and (m.id=s.scorer_id);
+
 -- name: GetScorerStatus :many
-select * from scorer_status;
+select s.*,m.name from scorer_status s, monitors m
+WHERE m.type = 'score' and (m.id=s.scorer_id);
+
+-- name: UpdateScorerStatus :exec
+update scorer_status
+  set log_score_id = ?
+  where scorer_id = ?;
+
+-- name: GetScorerLogScores :many
+select ls.* from log_scores ls, monitors m
+WHERE
+  ls.id > sqlc.arg('log_score_id') AND
+  m.type = 'monitor' AND
+  monitor_id = m.id
+ORDER by id
+LIMIT ?;
 
 -- name: UpdateMonitorSeen :exec
 UPDATE monitors

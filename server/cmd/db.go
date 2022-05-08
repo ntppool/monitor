@@ -12,23 +12,23 @@ import (
 
 func (cli *CLI) dbCmd() *cobra.Command {
 
-	var serverCmd = &cobra.Command{
+	var dbCmd = &cobra.Command{
 		Use:   "db",
 		Short: "db utility functions",
 		// DisableFlagParsing: true,
 		// Args:  cobra.ExactArgs(1),
 	}
 
-	serverCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	dbCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
 
-	serverCmd.AddCommand(
+	dbCmd.AddCommand(
 		&cobra.Command{
 			Use:   "mon",
 			Short: "monitor config debug",
 			RunE:  cli.Run(cli.dbMonitorConfig),
 		})
 
-	return serverCmd
+	return dbCmd
 }
 
 func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
@@ -41,7 +41,7 @@ func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	dbconn, err := cli.OpenDB()
+	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
 		return err
 	}

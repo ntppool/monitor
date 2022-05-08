@@ -50,7 +50,7 @@ func (m *Monitor) getConfig(conf []byte) (*MonitorConfig, error) {
 		return nil, err
 	}
 
-	moncfg.ip = m.Ip
+	moncfg.ip = m.Ip.String
 
 	return moncfg, nil
 }

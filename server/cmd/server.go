@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
 
 	"github.com/spf13/cobra"
@@ -33,7 +34,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cfg := cli.Config
 
-	// log.Printf("acfg: %+v", cfg)
+	log.Printf("acfg: %+v", cfg)
 
 	if len(cfg.DeploymentMode) == 0 {
 		return fmt.Errorf("deployment_mode configuration required")
@@ -45,7 +46,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		os.Exit(2)
 	}
 
-	dbconn, err := cli.OpenDB()
+	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
