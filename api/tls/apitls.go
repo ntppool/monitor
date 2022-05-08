@@ -7,7 +7,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/dyson/certman"
+	"github.com/abh/certman"
 )
 
 //go:embed ca.pem
