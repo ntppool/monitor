@@ -2,7 +2,7 @@
 #FROM harbor.ntppool.org/ntppool/base-os:3.15.4 as production
 FROM alpine:3.15.4
 
-RUN apk --no-cache add ca-certificates tzdata zsh jq tmux
+RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
 
 RUN addgroup -g 1000 ntpmon && adduser -u 1000 -D -G ntpmon ntpmon
 RUN touch ~ntpmon/.zshrc ~root/.zshrc; chown ntpmon:ntpmon ~ntpmon/.zshrc
