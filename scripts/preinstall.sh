@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# this is created by systemd in the systemd unit file now
+# but keeping it here for now since the user is still
+# setup this way.
 NTPMONDIR=/var/run/ntpmon
 
 mkdir -p /etc/ntpmon

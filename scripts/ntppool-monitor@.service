@@ -5,7 +5,16 @@ After=ntp.service
 [Service]
 Type=simple
 User=ntpmon
+
+# not used yet
+# https://www.freedesktop.org/software/systemd/man/systemd.exec.html
+# ConfigurationDirectory=/etc/ntpmon
+
 WorkingDirectory=/var/run/ntpmon
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+RuntimeDirectory=ntpmon
+
 EnvironmentFile=-/etc/default/ntppool-monitor
 ExecStart=/usr/bin/ntppool-monitor --config /etc/ntpmon/%i.json monitor
 Restart=always
