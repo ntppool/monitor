@@ -1,6 +1,6 @@
 ################ Production ################
 #FROM harbor.ntppool.org/ntppool/base-os:3.15.4 as production
-FROM alpine:3.15.4
+FROM alpine:3.16.0
 
 RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
 
