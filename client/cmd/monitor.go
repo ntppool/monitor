@@ -73,11 +73,6 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("auth: %w", err)
 	}
 
-	go func() {
-		<-ctx.Done()
-		log.Info("Shutting down monitor", "name", cauth.Name)
-	}()
-
 	deployEnv, err := api.GetDeploymentEnvironmentFromName(cauth.Name)
 	if err != nil {
 		return err
@@ -125,6 +120,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("could not setup API: %w", err)
 	}
+
+	go func() {
+		// this goroutine is just for logging
+		<-ctx.Done()
+		log.Info("Shutting down monitor", "name", cauth.Name)
+	}()
 
 	conf := config.NewConfigger(nil)
 
