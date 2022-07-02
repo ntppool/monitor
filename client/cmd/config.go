@@ -3,6 +3,7 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/cristalhq/aconfig"
 	"github.com/cristalhq/aconfig/aconfigdotenv"
@@ -28,6 +29,7 @@ type APIConfig struct {
 	}
 
 	StateDir string `default:"." flag:"state-dir" usage:"Directory for storing state"`
+	Debug    bool   `usage:"Enable debug logging"`
 
 	loaded bool
 	loader *aconfig.Loader
@@ -62,6 +64,10 @@ func (cfg *APIConfig) Load(args []string) error {
 	}
 	if len(cfg.Name) == 0 {
 		return fmt.Errorf("name configuration required")
+	}
+
+	if cfg.Debug {
+		os.Setenv("MONITOR_DEBUG", "true")
 	}
 
 	cfg.loaded = true
