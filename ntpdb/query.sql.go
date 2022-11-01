@@ -39,6 +39,83 @@ func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString)
 	return i, err
 }
 
+const getScorerStatus = `-- name: GetScorerStatus :many
+select id, scorer_id, log_score_id, modified_on from scorer_status
+`
+
+func (q *Queries) GetScorerStatus(ctx context.Context) ([]ScorerStatus, error) {
+	rows, err := q.db.QueryContext(ctx, getScorerStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScorerStatus
+	for rows.Next() {
+		var i ScorerStatus
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScorerID,
+			&i.LogScoreID,
+			&i.ModifiedOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getScorers = `-- name: GetScorers :many
+SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
+WHERE type = 'score'
+`
+
+func (q *Queries) GetScorers(ctx context.Context) ([]Monitor, error) {
+	rows, err := q.db.QueryContext(ctx, getScorers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Monitor
+	for rows.Next() {
+		var i Monitor
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.UserID,
+			&i.AccountID,
+			&i.Name,
+			&i.Location,
+			&i.Ip,
+			&i.IpVersion,
+			&i.TlsName,
+			&i.ApiKey,
+			&i.Status,
+			&i.Config,
+			&i.ClientVersion,
+			&i.LastSeen,
+			&i.LastSubmit,
+			&i.CreatedOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getServer = `-- name: GetServer :one
 SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, created_on, updated_on, score_ts, score_raw, deletion_on FROM servers WHERE id=?
 `

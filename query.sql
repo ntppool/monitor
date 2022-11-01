@@ -2,6 +2,10 @@
 SELECT * FROM monitors
 WHERE tls_name = ? LIMIT 1;
 
+-- name: GetScorers :many
+SELECT * FROM monitors
+WHERE type = 'score';
+
 -- name: ListMonitors :many
 SELECT * FROM monitors
 ORDER BY name;
@@ -39,6 +43,9 @@ UPDATE servers
 UPDATE servers
   SET stratum = ?
   WHERE id = ?;
+
+-- name: GetScorerStatus :many
+select * from scorer_status;
 
 -- name: UpdateMonitorSeen :exec
 UPDATE monitors

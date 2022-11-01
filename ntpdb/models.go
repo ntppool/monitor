@@ -354,6 +354,13 @@ type SchemaRevision struct {
 	SchemaName string `json:"schema_name"`
 }
 
+type ScorerStatus struct {
+	ID         int32         `json:"id"`
+	ScorerID   int32         `json:"scorer_id"`
+	LogScoreID sql.NullInt64 `json:"log_score_id"`
+	ModifiedOn time.Time     `json:"modified_on"`
+}
+
 type Server struct {
 	ID           int32            `json:"id"`
 	Ip           string           `json:"ip"`
@@ -445,12 +452,11 @@ type UserIdentity struct {
 }
 
 type UserPrivilege struct {
-	UserID             int32 `json:"user_id"`
-	SeeAllServers      bool  `json:"see_all_servers"`
-	SeeAllUserProfiles bool  `json:"see_all_user_profiles"`
-	VendorAdmin        int32 `json:"vendor_admin"`
-	EquipmentAdmin     int32 `json:"equipment_admin"`
-	SupportStaff       int32 `json:"support_staff"`
+	UserID         int32 `json:"user_id"`
+	SeeAllServers  bool  `json:"see_all_servers"`
+	VendorAdmin    int32 `json:"vendor_admin"`
+	EquipmentAdmin int32 `json:"equipment_admin"`
+	SupportStaff   int32 `json:"support_staff"`
 }
 
 type VendorZone struct {

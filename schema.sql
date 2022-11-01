@@ -325,6 +325,26 @@ CREATE TABLE `schema_revision` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `scorer_status`
+--
+
+DROP TABLE IF EXISTS `scorer_status`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `scorer_status` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `scorer_id` int(10) unsigned NOT NULL,
+  `log_score_id` bigint(20) unsigned DEFAULT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `scorer_log_score_id` (`log_score_id`),
+  KEY `scores_status_monitor_id_fk` (`scorer_id`),
+  CONSTRAINT `scorer_log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`),
+  CONSTRAINT `scores_status_monitor_id_fk` FOREIGN KEY (`scorer_id`) REFERENCES `monitors` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `server_alerts`
 --
 
@@ -524,7 +544,6 @@ DROP TABLE IF EXISTS `user_privileges`;
 CREATE TABLE `user_privileges` (
   `user_id` int(10) unsigned NOT NULL,
   `see_all_servers` tinyint(1) NOT NULL DEFAULT '0',
-  `see_all_user_profiles` tinyint(1) NOT NULL DEFAULT '0',
   `vendor_admin` tinyint(4) NOT NULL DEFAULT '0',
   `equipment_admin` tinyint(4) NOT NULL DEFAULT '0',
   `support_staff` tinyint(4) NOT NULL DEFAULT '0',
@@ -636,4 +655,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-05-02  1:18:25
+-- Dump completed on 2022-11-01  2:16:12
