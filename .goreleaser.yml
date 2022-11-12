@@ -34,6 +34,20 @@ builds:
       - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
       - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
 
+  - main: ./scorer/cmd/monitor-scorer/
+    id: monitor-scorer
+    binary: monitor-scorer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    ldflags:
+      - -s -w
+      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
+      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
+      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+
+
 archives:
   # - files:
   #     - LICENSE.txt
