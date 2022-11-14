@@ -49,16 +49,20 @@ builds:
 
 
 archives:
-  # - files:
-  #     - LICENSE.txt
-  #     - ./client/cmd/ntppool-monitor/README.md
-
-  - replacements:
+  - id: a1
+    allow_different_binary_count: true
+    replacements:
       #darwin: Darwin
       #linux: Linux
       #windows: Windows
       #386: i386
       #amd64: x86_64
+  # files:
+  #   - LICENSE.txt
+  #   - ./client/cmd/ntppool-monitor/README.md
+
+
+
 checksum:
   name_template: "checksums.txt"
 snapshot:
