@@ -3,18 +3,16 @@ package scorer
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
-	"go.ntppool.org/monitor/scorer/score"
 	"go.ntppool.org/monitor/scorer/types"
 )
 
-const batchSize = 500
+const batchSize = 5000
 
 type runner struct {
 	ctx    context.Context
@@ -34,7 +32,7 @@ func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
 	}, nil
 }
 
-func (r *runner) Run() error {
+func (r *runner) Run() (int, error) {
 
 	registry := map[string]ScorerMap{}
 
@@ -42,7 +40,7 @@ func (r *runner) Run() error {
 
 	scorers, err := db.GetScorers(r.ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	for _, sc := range scorers {
@@ -62,24 +60,29 @@ func (r *runner) Run() error {
 		}
 	}
 
+	count := 0
+
 	for name, sm := range registry {
 		log.Printf("processing %q from %d", name, sm.LastID)
-		err := r.process(name, sm)
+		scount, err := r.process(name, sm)
+		count += scount
 		if err != nil {
-			return err
+			return count, err
 		}
 	}
 
-	return nil
+	return count, nil
 }
 
-func (r *runner) process(name string, sm ScorerMap) error {
+func (r *runner) process(name string, sm ScorerMap) (int, error) {
 
 	tx, err := r.dbconn.BeginTx(r.ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
+
+	count := 0
 
 	db := ntpdb.New(r.dbconn).WithTx(tx)
 
@@ -89,52 +92,58 @@ func (r *runner) process(name string, sm ScorerMap) error {
 			Limit:      batchSize,
 		})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	log.Printf("got %d scores", len(logscores))
 
-	newScores := []score.Score{}
+	count = len(logscores)
+
+	if count == 0 {
+		return 0, nil
+	}
 
 	for _, ls := range logscores {
-		ss, err := r.getServerScore(db, ls.ServerID, ls.MonitorID.Int32)
+		ss, err := r.getServerScore(db, ls.ServerID, sm.ScorerID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
-			return fmt.Errorf("scorer %q: %s", name, err)
+			return 0, fmt.Errorf("scorer %q: %s", name, err)
 		}
-		newScores = append(newScores, ns)
-	}
-
-	for _, s := range newScores {
 
 		p := ntpdb.InsertLogScoreParams{
-			ServerID:   s.ServerID,
-			MonitorID:  s.MonitorID,
-			Ts:         s.Ts,
-			Step:       s.Step,
-			Offset:     s.Offset,
-			Rtt:        s.Rtt,
-			Score:      s.Score,
-			Attributes: s.Attributes,
+			ServerID:   ns.ServerID,
+			MonitorID:  ns.MonitorID,
+			Ts:         ns.Ts,
+			Step:       ns.Step,
+			Offset:     ns.Offset,
+			Rtt:        ns.Rtt,
+			Score:      ns.Score,
+			Attributes: ns.Attributes,
 		}
-		err := db.InsertLogScore(r.ctx, p)
+		err = db.InsertLogScore(r.ctx, p)
 		if err != nil {
-			return err
-		}
-		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{})
-		if err != nil {
-			return err
+			return 0, err
 		}
 
+		// log.Printf("updating server score id %d to score %.3f", ss.ID, ns.Score)
+
+		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{
+			ID:       ss.ID,
+			ScoreRaw: ns.Score,
+			ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
+		})
+		if err != nil {
+			return 0, err
+		}
 	}
 
-	b, err := json.MarshalIndent(newScores, "", "  ")
-	if err != nil {
-		log.Printf("could not json encode: %s", err)
-	}
-	fmt.Printf("%s\n", b)
+	// b, err := json.MarshalIndent(newScores, "", "  ")
+	// if err != nil {
+	// 	log.Printf("could not json encode: %s", err)
+	// }
+	// fmt.Printf("%s\n", b)
 
 	db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
 		LogScoreID: sql.NullInt64{Int64: logscores[len(logscores)-1].ID, Valid: true},
@@ -143,10 +152,10 @@ func (r *runner) process(name string, sm ScorerMap) error {
 
 	err = tx.Commit()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return count, nil
 }
 
 func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int32) (ntpdb.ServerScore, error) {
@@ -158,7 +167,7 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int32) (n
 		MonitorID: monitorID,
 	}
 
-	log.Printf("get server score for server id: %d", serverID)
+	// log.Printf("get server score for server id: %d", serverID)
 
 	serverScore, err := db.GetServerScore(ctx, p)
 	if err == nil {

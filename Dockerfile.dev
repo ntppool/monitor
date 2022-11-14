@@ -6,8 +6,9 @@ RUN go install -v ./...
 
 FROM alpine:3.16.2
 
-RUN apk --no-cache upgrade
-RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
+#RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
+RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl
+RUN apk --no-cache upgrade --ignore alpine-baselayout
 
 RUN addgroup -g 1000 ntpmon && adduser -u 1000 -D -G ntpmon ntpmon
 RUN touch ~ntpmon/.zshrc ~root/.zshrc; chown ntpmon:ntpmon ~ntpmon/.zshrc

@@ -675,8 +675,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
-<<<<<<< HEAD
 -- Dump completed on 2022-11-01  2:16:12
-=======
--- Dump completed on 2022-10-29  5:16:46
->>>>>>> 41a164e (scoring wip 3, update Go and dependencies)
