@@ -60,6 +60,25 @@ update scorer_status
   set log_score_id = ?
   where scorer_id = ?;
 
+-- name: InsertScorerStatus :exec
+insert into scorer_status
+   (scorer_id, log_score_id, modified_on)
+   values (?,?,NOW());
+
+-- name: InsertScorer :execresult
+insert into monitors
+   (type, user_id, account_id,
+    name, location, ip, ip_version,
+    tls_name, api_key, status, config, client_version, created_on)
+    VALUES ('score', NULL, NULL,
+            ?, '', NULL, NULL,
+            ?, NULL, 'active',
+            '', '', NOW());
+
+-- name: GetMinLogScoreID :one
+-- https://github.com/kyleconroy/sqlc/issues/1965
+select id from log_scores order by id limit 1;
+
 -- name: GetScorerLogScores :many
 select ls.* from log_scores ls, monitors m
 WHERE
@@ -68,6 +87,24 @@ WHERE
   monitor_id = m.id
 ORDER by id
 LIMIT ?;
+
+-- name: GetScorerRecentScores :many
+ select ls.*
+   from log_scores ls
+   inner join
+   (select monitor_id, max(ls2.ts) as sts
+      from log_scores ls2, monitors m
+      where ls2.server_id = sqlc.arg('server_id')
+         and ls2.monitor_id=m.id and m.type = 'monitor'
+         and ls2.ts <= sqlc.arg('ts')
+         and ls2.ts >= date_sub(sqlc.arg('ts'), interval sqlc.arg('time_lookback') second)
+      group by monitor_id
+   ) as g
+   where
+     ls.server_id = sqlc.arg('server_id') AND
+     g.sts = ls.ts AND
+     g.monitor_id = ls.monitor_id
+  order by ls.ts;
 
 -- name: UpdateMonitorSeen :exec
 UPDATE monitors

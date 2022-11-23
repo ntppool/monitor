@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+const getMinLogScoreID = `-- name: GetMinLogScoreID :one
+select id from log_scores order by id limit 1
+`
+
+// https://github.com/kyleconroy/sqlc/issues/1965
+func (q *Queries) GetMinLogScoreID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getMinLogScoreID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getMonitorTLSName = `-- name: GetMonitorTLSName :one
 SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 WHERE tls_name = ? LIMIT 1
@@ -57,6 +69,70 @@ type GetScorerLogScoresParams struct {
 
 func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScoresParams) ([]LogScore, error) {
 	rows, err := q.db.QueryContext(ctx, getScorerLogScores, arg.LogScoreID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LogScore
+	for rows.Next() {
+		var i LogScore
+		if err := rows.Scan(
+			&i.ID,
+			&i.MonitorID,
+			&i.ServerID,
+			&i.Ts,
+			&i.Score,
+			&i.Step,
+			&i.Offset,
+			&i.Rtt,
+			&i.Attributes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getScorerRecentScores = `-- name: GetScorerRecentScores :many
+ select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes
+   from log_scores ls
+   inner join
+   (select monitor_id, max(ls2.ts) as sts
+      from log_scores ls2, monitors m
+      where ls2.server_id = ?
+         and ls2.monitor_id=m.id and m.type = 'monitor'
+         and ls2.ts <= ?
+         and ls2.ts >= date_sub(?, interval ? second)
+      group by monitor_id
+   ) as g
+   where
+     ls.server_id = ? AND
+     g.sts = ls.ts AND
+     g.monitor_id = ls.monitor_id
+  order by ls.ts
+`
+
+type GetScorerRecentScoresParams struct {
+	ServerID     int32       `json:"server_id"`
+	Ts           time.Time   `json:"ts"`
+	TimeLookback interface{} `json:"time_lookback"`
+}
+
+func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecentScoresParams) ([]LogScore, error) {
+	rows, err := q.db.QueryContext(ctx, getScorerRecentScores,
+		arg.ServerID,
+		arg.Ts,
+		arg.Ts,
+		arg.TimeLookback,
+		arg.ServerID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +435,42 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 		arg.Rtt,
 		arg.Attributes,
 	)
+	return err
+}
+
+const insertScorer = `-- name: InsertScorer :execresult
+insert into monitors
+   (type, user_id, account_id,
+    name, location, ip, ip_version,
+    tls_name, api_key, status, config, client_version, created_on)
+    VALUES ('score', NULL, NULL,
+            ?, '', NULL, NULL,
+            ?, NULL, 'active',
+            '', '', NOW())
+`
+
+type InsertScorerParams struct {
+	Name    string         `json:"name"`
+	TlsName sql.NullString `json:"tls_name"`
+}
+
+func (q *Queries) InsertScorer(ctx context.Context, arg InsertScorerParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, insertScorer, arg.Name, arg.TlsName)
+}
+
+const insertScorerStatus = `-- name: InsertScorerStatus :exec
+insert into scorer_status
+   (scorer_id, log_score_id, modified_on)
+   values (?,?,NOW())
+`
+
+type InsertScorerStatusParams struct {
+	ScorerID   int32         `json:"scorer_id"`
+	LogScoreID sql.NullInt64 `json:"log_score_id"`
+}
+
+func (q *Queries) InsertScorerStatus(ctx context.Context, arg InsertScorerStatusParams) error {
+	_, err := q.db.ExecContext(ctx, insertScorerStatus, arg.ScorerID, arg.LogScoreID)
 	return err
 }
 

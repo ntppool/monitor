@@ -3,6 +3,7 @@ package every
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
@@ -12,11 +13,19 @@ type EveryScore struct {
 	scorerID int32
 }
 
-func New(id int32) *EveryScore {
-	return &EveryScore{scorerID: id}
+func New() *EveryScore {
+	return &EveryScore{}
+}
+
+func (s *EveryScore) Setup(id int32) {
+	s.scorerID = id
 }
 
 func (s *EveryScore) Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, ls ntpdb.LogScore) (score.Score, error) {
+
+	if s.scorerID == 0 {
+		return score.Score{}, fmt.Errorf("EveryScore not Setup()")
+	}
 
 	// ctx, span := srv.tracer.Start(ctx, "Score")
 	// defer span.End()

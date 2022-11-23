@@ -9,10 +9,11 @@ import (
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
+	"go.ntppool.org/monitor/scorer/recentmedian"
 	"go.ntppool.org/monitor/scorer/types"
 )
 
-const batchSize = 5000
+const batchSize = 500
 
 type runner struct {
 	ctx    context.Context
@@ -32,9 +33,18 @@ func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
 	}, nil
 }
 
+func (r *runner) Scorers() map[string]*ScorerMap {
+
+	return map[string]*ScorerMap{
+		"every":        {Scorer: every.New()},
+		"recentmedian": {Scorer: recentmedian.New()},
+	}
+
+}
+
 func (r *runner) Run() (int, error) {
 
-	registry := map[string]ScorerMap{}
+	registry := r.Scorers()
 
 	db := ntpdb.New(r.dbconn)
 
@@ -45,24 +55,21 @@ func (r *runner) Run() (int, error) {
 
 	for _, sc := range scorers {
 		log.Printf("setting up scorer: %s (last ls id: %d)", sc.Name, sc.LogScoreID.Int64)
-		var s types.Scorer
-		switch sc.Name {
-		case "every":
-			s = every.New(sc.ID)
-		default:
+		if s, ok := registry[sc.Name]; ok {
+			s.Scorer.Setup(sc.ID)
+			s.ScorerID = sc.ID
+			s.LastID = sc.LogScoreID.Int64
+		} else {
 			log.Printf("scorer %q not implemented", sc.Name)
-		}
-
-		registry[sc.Name] = ScorerMap{
-			Scorer:   s,
-			ScorerID: sc.ID,
-			LastID:   sc.LogScoreID.Int64,
 		}
 	}
 
 	count := 0
 
 	for name, sm := range registry {
+		if sm.ScorerID == 0 {
+			continue
+		}
 		log.Printf("processing %q from %d", name, sm.LastID)
 		scount, err := r.process(name, sm)
 		count += scount
@@ -74,7 +81,7 @@ func (r *runner) Run() (int, error) {
 	return count, nil
 }
 
-func (r *runner) process(name string, sm ScorerMap) (int, error) {
+func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 
 	tx, err := r.dbconn.BeginTx(r.ctx, nil)
 	if err != nil {
@@ -85,6 +92,8 @@ func (r *runner) process(name string, sm ScorerMap) (int, error) {
 	count := 0
 
 	db := ntpdb.New(r.dbconn).WithTx(tx)
+
+	log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
 
 	logscores, err := db.GetScorerLogScores(r.ctx,
 		ntpdb.GetScorerLogScoresParams{
