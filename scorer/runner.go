@@ -80,6 +80,7 @@ func (r *runner) Run() (int, error) {
 		scount, err := r.process(name, sm)
 		count += scount
 		if err != nil {
+			log.Printf("process error: %s", err)
 			return count, err
 		}
 	}
@@ -161,11 +162,14 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 		}
 
 		if name == mainScorer {
-			db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
+			err := db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
 				ID:       ss.ServerID,
 				ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
 				ScoreRaw: ns.Score,
 			})
+			if err != nil {
+				return 0, err
+			}
 		}
 
 	}
@@ -176,10 +180,15 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	// }
 	// fmt.Printf("%s\n", b)
 
-	db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
-		LogScoreID: sql.NullInt64{Int64: logscores[len(logscores)-1].ID, Valid: true},
+	latestID := logscores[len(logscores)-1].ID
+	// log.Printf("updating scorer status %d, new latest id: %d", sm.ScorerID, latestID)
+	err = db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
+		LogScoreID: sql.NullInt64{Int64: latestID, Valid: true},
 		ScorerID:   sm.ScorerID,
 	})
+	if err != nil {
+		return 0, err
+	}
 
 	err = tx.Commit()
 	if err != nil {
