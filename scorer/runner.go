@@ -137,10 +137,17 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 			Score:      ns.Score,
 			Attributes: ns.Attributes,
 		}
-		err = db.InsertLogScore(r.ctx, p)
+		_, err = db.InsertLogScore(r.ctx, p)
 		if err != nil {
 			return 0, err
 		}
+
+		// insertID, err := res.LastInsertId()
+		// if err != nil {
+		// 	return 0, err
+		// }
+
+		// log.Printf("- inserted log_score %d", insertID)
 
 		// log.Printf("updating server score id %d to score %.3f", ss.ID, ns.Score)
 

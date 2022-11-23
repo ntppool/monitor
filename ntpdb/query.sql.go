@@ -407,7 +407,7 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 	return items, nil
 }
 
-const insertLogScore = `-- name: InsertLogScore :exec
+const insertLogScore = `-- name: InsertLogScore :execresult
 INSERT INTO log_scores
   (server_id, monitor_id, ts, score, step, offset, rtt, attributes)
   values (?, ?, ?, ?, ?, ?, ?, ?)
@@ -424,8 +424,8 @@ type InsertLogScoreParams struct {
 	Attributes sql.NullString  `json:"attributes"`
 }
 
-func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) error {
-	_, err := q.db.ExecContext(ctx, insertLogScore,
+func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, insertLogScore,
 		arg.ServerID,
 		arg.MonitorID,
 		arg.Ts,
@@ -435,7 +435,6 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 		arg.Rtt,
 		arg.Attributes,
 	)
-	return err
 }
 
 const insertScorer = `-- name: InsertScorer :execresult

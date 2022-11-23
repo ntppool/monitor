@@ -190,7 +190,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 		Attributes: score.Attributes,
 	}
 
-	err = db.InsertLogScore(ctx, ls)
+	_, err = db.InsertLogScore(ctx, ls)
 	if err != nil {
 		return err
 	}

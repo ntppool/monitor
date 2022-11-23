@@ -3,7 +3,9 @@ package recentmedian
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
@@ -26,6 +28,8 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	if s.scorerID == 0 {
 		return score.Score{}, fmt.Errorf("RecentMedian not Setup()")
 	}
+
+	// log.Printf("median, processing ls: %d", latest.ID)
 
 	arg := ntpdb.GetScorerRecentScoresParams{}
 	arg.TimeLookback = 900
@@ -64,16 +68,38 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 
 	}
 
+	attributes := ntpdb.LogScoreAttributes{}
+
+	if ls.Attributes.Valid {
+		err := json.Unmarshal([]byte(ls.Attributes.String), &attributes)
+		if err != nil {
+			return score.Score{}, err
+		}
+	}
+
+	attributes.FromLSID = int(latest.ID)
+	attributes.FromSSID = int(serverScore.ID)
+	b, err := json.Marshal(attributes)
+	if err != nil {
+		log.Printf("could not marshal attributes %+v: %s", attributes, err)
+	}
+	attributeStr := sql.NullString{
+		String: string(b),
+		Valid:  true,
+	}
+
+	// log.Printf("inserting median from LS %d", ls.ID)
+
 	return score.Score{
 		LogScore: ntpdb.LogScore{
 			ServerID:   ls.ServerID,
 			MonitorID:  sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
-			Ts:         ls.Ts,
+			Ts:         latest.Ts,
 			Step:       ls.Step,
-			Offset:     ls.Offset,
-			Rtt:        ls.Rtt,
 			Score:      ls.Score,
-			Attributes: ls.Attributes,
+			Attributes: attributeStr,
+			// Offset:     ls.Offset,
+			// Rtt:        ls.Rtt,
 		},
 	}, nil
 

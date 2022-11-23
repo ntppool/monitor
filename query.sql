@@ -123,7 +123,7 @@ UPDATE monitors
   SET client_version = ?
   WHERE id = ?;
 
--- name: InsertLogScore :exec
+-- name: InsertLogScore :execresult
 INSERT INTO log_scores
   (server_id, monitor_id, ts, score, step, offset, rtt, attributes)
   values (?, ?, ?, ?, ?, ?, ?, ?);
