@@ -611,7 +611,9 @@ const updateServer = `-- name: UpdateServer :exec
 UPDATE servers
   SET score_ts  = ?,
       score_raw = ?
-  WHERE id = ?
+  WHERE
+    id = ?
+    AND score_ts < ?
 `
 
 type UpdateServerParams struct {
@@ -621,7 +623,12 @@ type UpdateServerParams struct {
 }
 
 func (q *Queries) UpdateServer(ctx context.Context, arg UpdateServerParams) error {
-	_, err := q.db.ExecContext(ctx, updateServer, arg.ScoreTs, arg.ScoreRaw, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateServer,
+		arg.ScoreTs,
+		arg.ScoreRaw,
+		arg.ID,
+		arg.ScoreTs,
+	)
 	return err
 }
 

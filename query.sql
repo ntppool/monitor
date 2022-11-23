@@ -36,9 +36,11 @@ UPDATE server_scores
 
 -- name: UpdateServer :exec
 UPDATE servers
-  SET score_ts  = ?,
-      score_raw = ?
-  WHERE id = ?;
+  SET score_ts  = sqlc.arg('score_ts'),
+      score_raw = sqlc.arg('score_raw')
+  WHERE
+    id = ?
+    AND score_ts < sqlc.arg('score_ts');
 
 -- name: UpdateServerStratum :exec
 UPDATE servers

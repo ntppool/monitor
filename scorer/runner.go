@@ -14,6 +14,7 @@ import (
 )
 
 const batchSize = 500
+const mainScorer = "recentmedian"
 
 type runner struct {
 	ctx    context.Context
@@ -35,11 +36,16 @@ func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
 
 func (r *runner) Scorers() map[string]*ScorerMap {
 
-	return map[string]*ScorerMap{
+	m := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
 	}
 
+	if _, ok := m[mainScorer]; !ok {
+		log.Printf("invalid main scorer %s", mainScorer)
+	}
+
+	return m
 }
 
 func (r *runner) Run() (int, error) {
@@ -146,6 +152,15 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
+		if name == mainScorer {
+			db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
+				ID:       ss.ServerID,
+				ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
+				ScoreRaw: ns.Score,
+			})
+		}
+
 	}
 
 	// b, err := json.MarshalIndent(newScores, "", "  ")
