@@ -13,7 +13,7 @@ import (
 	"go.ntppool.org/monitor/scorer/types"
 )
 
-const batchSize = 500
+const batchSize = 2000
 const mainScorer = "recentmedian"
 
 type runner struct {
@@ -99,7 +99,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 
 	db := ntpdb.New(r.dbconn).WithTx(tx)
 
-	log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
+	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
 
 	logscores, err := db.GetScorerLogScores(r.ctx,
 		ntpdb.GetScorerLogScoresParams{
