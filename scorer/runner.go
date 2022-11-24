@@ -10,42 +10,46 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
-	"go.ntppool.org/monitor/scorer/types"
 )
 
 const batchSize = 2000
 const mainScorer = "recentmedian"
 
 type runner struct {
-	ctx    context.Context
-	dbconn *sql.DB
+	ctx      context.Context
+	dbconn   *sql.DB
+	registry map[string]*ScorerMap
 }
 
-type ScorerMap struct {
-	Scorer   types.Scorer
-	ScorerID int32
-	LastID   int64
+type lastUpdate struct {
+	ts    time.Time
+	score float64
 }
 
 func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
-	return &runner{
-		ctx:    ctx,
-		dbconn: dbconn,
-	}, nil
-}
-
-func (r *runner) Scorers() map[string]*ScorerMap {
 
 	m := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
 	}
 
+	for _, sm := range m {
+		sm.lastScore = map[int]*lastUpdate{}
+	}
+
 	if _, ok := m[mainScorer]; !ok {
 		log.Printf("invalid main scorer %s", mainScorer)
 	}
 
-	return m
+	return &runner{
+		ctx:      ctx,
+		dbconn:   dbconn,
+		registry: m,
+	}, nil
+}
+
+func (r *runner) Scorers() map[string]*ScorerMap {
+	return r.registry
 }
 
 func (r *runner) Run() (int, error) {
@@ -128,29 +132,25 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 			return 0, fmt.Errorf("scorer %q: %s", name, err)
 		}
 
-		p := ntpdb.InsertLogScoreParams{
-			ServerID:   ns.ServerID,
-			MonitorID:  ns.MonitorID,
-			Ts:         ns.Ts,
-			Step:       ns.Step,
-			Offset:     ns.Offset,
-			Rtt:        ns.Rtt,
-			Score:      ns.Score,
-			Attributes: ns.Attributes,
+		if sm.IsNew(&ls) {
+			// only store the new calculated score in log_scores if it's
+			// changed (or we haven't for 10 minutes)
+
+			p := ntpdb.InsertLogScoreParams{
+				ServerID:   ns.ServerID,
+				MonitorID:  ns.MonitorID,
+				Ts:         ns.Ts,
+				Step:       ns.Step,
+				Offset:     ns.Offset,
+				Rtt:        ns.Rtt,
+				Score:      ns.Score,
+				Attributes: ns.Attributes,
+			}
+			_, err = db.InsertLogScore(r.ctx, p)
+			if err != nil {
+				return 0, err
+			}
 		}
-		_, err = db.InsertLogScore(r.ctx, p)
-		if err != nil {
-			return 0, err
-		}
-
-		// insertID, err := res.LastInsertId()
-		// if err != nil {
-		// 	return 0, err
-		// }
-
-		// log.Printf("- inserted log_score %d", insertID)
-
-		// log.Printf("updating server score id %d to score %.3f", ss.ID, ns.Score)
 
 		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{
 			ID:       ss.ID,
@@ -231,5 +231,4 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int32) (n
 	}
 
 	return db.GetServerScore(ctx, p)
-
 }

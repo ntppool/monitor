@@ -31,10 +31,11 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 
 	// log.Printf("median, processing ls: %d", latest.ID)
 
-	arg := ntpdb.GetScorerRecentScoresParams{}
-	arg.TimeLookback = 900
-	arg.ServerID = serverScore.ServerID
-	arg.Ts = latest.Ts
+	arg := ntpdb.GetScorerRecentScoresParams{
+		TimeLookback: 1200,
+		ServerID:     serverScore.ServerID,
+		Ts:           latest.Ts,
+	}
 
 	// log.Printf("getting recent scores: %+v", arg)
 
@@ -73,7 +74,13 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	if ls.Attributes.Valid {
 		err := json.Unmarshal([]byte(ls.Attributes.String), &attributes)
 		if err != nil {
-			return score.Score{}, err
+			return score.Score{
+				LogScore: ntpdb.LogScore{
+					ServerID:  ls.ServerID,
+					MonitorID: sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
+					Ts:        latest.Ts,
+				},
+			}, err
 		}
 	}
 
@@ -90,7 +97,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 
 	// log.Printf("inserting median from LS %d", ls.ID)
 
-	return score.Score{
+	ns := score.Score{
 		LogScore: ntpdb.LogScore{
 			ServerID:   ls.ServerID,
 			MonitorID:  sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
@@ -101,8 +108,9 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 			// Offset:     ls.Offset,
 			// Rtt:        ls.Rtt,
 		},
-	}, nil
+	}
 
+	return ns, nil
 }
 
 /*
