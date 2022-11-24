@@ -179,6 +179,12 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 		})
 	}
 
+	db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
+		ID:       serverScore.ID,
+		ScoreTs:  sql.NullTime{Time: score.Ts, Valid: true},
+		ScoreRaw: serverScore.ScoreRaw,
+	})
+
 	ls := ntpdb.InsertLogScoreParams{
 		ServerID:   server.ID,
 		MonitorID:  sql.NullInt32{Int32: monitor.ID, Valid: true},
