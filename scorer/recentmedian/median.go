@@ -49,17 +49,13 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	if len(recent) < 3 {
 		ls = recent[0]
 	} else {
-		// log.Printf("%d recent scores", len(recent))
-
-		// js, _ := json.MarshalIndent(recent, "", "    ")
-		// log.Printf("recent 1: %s", js)
 
 		slices.SortStableFunc(recent, func(a, b ntpdb.LogScore) bool {
-			return a.Score > b.Score || a.Rtt.Int32 < b.Rtt.Int32
+			if a.Score != b.Score {
+				return a.Score > b.Score
+			}
+			return a.Rtt.Int32 < b.Rtt.Int32
 		})
-
-		// js, _ = json.MarshalIndent(recent, "", "    ")
-		// log.Printf("recent 2: %s", js)
 
 		i := len(recent) / 2
 		if len(recent)%2 == 0 {
