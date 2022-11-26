@@ -6,7 +6,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
+
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
 )
@@ -45,45 +47,55 @@ func (cli *CLI) scorerCmd() *cobra.Command {
 }
 
 func (cli *CLI) scorerServer(cmd *cobra.Command, args []string) error {
-
-	for {
-		count, err := cli.scorerRun(cmd, args)
-		if err != nil {
-			return err
-		}
-
-		if count == 0 {
-			time.Sleep(20 * time.Second)
-		}
-
-	}
-
+	return cli.scorerRun(cmd, args, true)
 }
 
 func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
-	_, err := cli.scorerRun(cmd, args)
-	return err
+	return cli.scorerRun(cmd, args, false)
 }
 
-func (cli *CLI) scorerRun(cmd *cobra.Command, args []string) (int, error) {
+func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
 
 	ctx := context.Background()
 
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	sc, err := scorer.New(ctx, dbconn)
 	if err != nil {
-		return 0, nil
+		return nil
 	}
-	count, err := sc.Run()
-	if err != nil {
-		return count, err
+
+	expback := backoff.NewExponentialBackOff()
+	expback.InitialInterval = time.Second * 3
+	expback.MaxInterval = time.Second * 60
+	expback.MaxElapsedTime = 0
+
+	for {
+
+		count, err := sc.Run()
+		if err != nil {
+			return err
+		}
+		log.Printf("Processed %d log scores", count)
+
+		if !continuous {
+			break
+		}
+
+		if count == 0 {
+			sl := expback.NextBackOff()
+			// log.Printf("going to sleep %s", sl)
+			time.Sleep(sl)
+		} else {
+			expback.Reset()
+		}
+
 	}
-	log.Printf("Processed %d log scores", count)
-	return count, nil
+
+	return nil
 }
 
 func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
