@@ -37,7 +37,7 @@ func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
 	return true
 }
 
-const float64EqualityThreshold = 1e-9
+const float64EqualityThreshold = 1e-12
 
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) <= float64EqualityThreshold
