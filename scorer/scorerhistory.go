@@ -15,7 +15,7 @@ type ScorerMap struct {
 	lastScore map[int]*lastUpdate
 }
 
-var minScoreInterval = 5 * time.Minute
+var minScoreInterval = 10 * time.Minute
 
 func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
 
