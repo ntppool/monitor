@@ -3,6 +3,7 @@ module go.ntppool.org/monitor
 go 1.18
 
 // replace github.com/abh/certman => /Users/ask/go/src/github.com/abh/certman
+// replace github.com/hashicorp/vault/api => /Users/ask/go/src/github.com/hashicorp/vault/api
 
 require (
 	github.com/abh/certman v0.3.3-0.20220618054024-6f833d6bf7d5
@@ -13,7 +14,7 @@ require (
 	github.com/cristalhq/aconfig/aconfigdotenv v0.17.1
 	github.com/cristalhq/aconfig/aconfigyaml v0.17.1
 	github.com/evanphx/json-patch v0.5.2
-	github.com/go-sql-driver/mysql v1.6.0
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/hashicorp/vault/api v1.8.2
 	github.com/hashicorp/vault/api/auth/approle v0.3.0
 	github.com/oklog/ulid/v2 v2.1.0
@@ -27,7 +28,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.11.1
 	go.opentelemetry.io/otel/sdk v1.11.1
 	go.opentelemetry.io/otel/trace v1.11.1
-	golang.org/x/exp v0.0.0-20221114191408-850992195362
+	golang.org/x/exp v0.0.0-20221126150942-6ab00d035af9
 	google.golang.org/protobuf v1.28.1
 	inet.af/netaddr v0.0.0-20220811202034-502d2d690317
 )
@@ -63,7 +64,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/vault/sdk v0.6.1 // indirect
 	github.com/hashicorp/yamux v0.1.1 // indirect
-	github.com/inconshreveable/mousetrap v1.0.1 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/joho/godotenv v1.4.0 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -93,7 +94,7 @@ require (
 	golang.org/x/sys v0.2.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	golang.org/x/time v0.2.0 // indirect
-	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
+	google.golang.org/genproto v0.0.0-20221202195650-67e5cbc046fd // indirect
 	google.golang.org/grpc v1.51.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
