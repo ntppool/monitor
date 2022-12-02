@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	approle "github.com/hashicorp/vault/api/auth/approle"
@@ -11,7 +12,22 @@ import (
 
 var vaultAddr = "https://vault.ntppool.org"
 
+const authPrefix = "/monitors"
+
+type Vault struct {
+	key    string
+	secret string
+	Token  string
+
+	client *vaultapi.Client
+	lock   sync.RWMutex
+
+	deploymentEnvironment string
+}
+
 func (v *Vault) Login(ctx context.Context, depEnv string) error {
+
+	v.deploymentEnvironment = depEnv
 
 	// setToken sets up the client if it's not already
 	v.setToken(v.Token)
@@ -19,16 +35,20 @@ func (v *Vault) Login(ctx context.Context, depEnv string) error {
 	if ok {
 		return nil
 	}
-	log.Printf("token error: %s", err)
+	if verr, ok := err.(*vaultapi.ResponseError); ok {
+		if verr.StatusCode != 403 {
+			log.Printf("token lookup error: %s", err)
+		}
+	}
 
 	roleID := v.key
 	secretID := &approle.SecretID{FromString: v.secret}
 
-	log.Printf("RoleID: %s", roleID)
+	// log.Printf("RoleID: %s", roleID)
 	appRoleAuth, err := approle.NewAppRoleAuth(
 		roleID,
 		secretID,
-		approle.WithMountPath(fmt.Sprintf("/monitors/%s/", depEnv)),
+		approle.WithMountPath(fmt.Sprintf("%s/%s/", authPrefix, depEnv)),
 	)
 	if err != nil {
 		return fmt.Errorf("unable to initialize AppRole auth method: %w", err)
@@ -42,8 +62,9 @@ func (v *Vault) Login(ctx context.Context, depEnv string) error {
 		return fmt.Errorf("no auth info was returned after login")
 	}
 
-	log.Printf("authInfo: %+v", authInfo)
-	log.Printf("Token: %s", authInfo.Auth.ClientToken)
+	log.Printf("Authenticated API key")
+	// log.Printf("authInfo: %+v", authInfo)
+	// log.Printf("Token: %s", authInfo.Auth.ClientToken)
 
 	v.setToken(authInfo.Auth.ClientToken)
 
@@ -116,7 +137,31 @@ func (cr *Vault) checkToken(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	log.Printf("token self data: %+v", rv)
+	log.Printf("Session token expires: %s, remaining uses: %s", rv.Data["expire_time"], rv.Data["num_uses"])
 
 	return true, nil
+}
+
+func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interface{}, error) {
+	client, err := cr.vaultClient()
+	if err != nil {
+		return nil, err
+	}
+
+	rv, err := client.Logical().WriteWithContext(ctx,
+		fmt.Sprintf("auth/%s/%s/role/%s/secret-id/lookup",
+			authPrefix,
+			cr.deploymentEnvironment,
+			name,
+		),
+		map[string]interface{}{
+			"secret_id": cr.secret,
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return rv.Data, nil
 }

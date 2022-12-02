@@ -92,10 +92,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	for {
 
 		boff := backoff.NewExponentialBackOff()
-		boff.RandomizationFactor = 0.2
-		boff.InitialInterval = 2 * time.Second
+		boff.RandomizationFactor = 0.3
+		boff.InitialInterval = 3 * time.Second
 		boff.MaxInterval = 120 * time.Second
-		boff.MaxElapsedTime = 60 * time.Minute
+		boff.MaxElapsedTime = 0
 
 		err := backoff.Retry(func() error {
 
@@ -107,7 +107,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			}
 
 			if !run(api) {
-				log.Printf("Got no work, sleeping.")
+				// log.Printf("Got no work, sleeping.")
 				return fmt.Errorf("no work")
 			}
 			boff.Reset()
@@ -147,7 +147,7 @@ func run(api pb.Monitor) bool {
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(serverlist.BatchID)
 
-	log.Printf("Batch %s - Servers: %d, Config: %+v", batchID.String(), len(serverlist.Servers), serverlist.Config)
+	log.Printf("Batch %s - Servers: %d", batchID.String(), len(serverlist.Servers))
 
 	// we're testing, so limit how much work ...
 	if *onceFlag {

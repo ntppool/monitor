@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -43,7 +42,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 
-	fmt.Println("Checking API")
+	log.Println("Checking API")
 
 	// time.Sleep(20 * time.Second)
 
@@ -63,6 +62,13 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Printf("getting certificates failed: %s", err)
 	}
 
+	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name)
+	if err != nil {
+		log.Fatalf("Could not get secret metadata: %s", err)
+	}
+
+	log.Printf("API key expires %s, created %s, remaining uses: %s", secretInfo["expiration_time"], secretInfo["creation_time"], secretInfo["secret_id_num_uses"])
+
 	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
@@ -74,7 +80,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 	}
 
 	if cfg.Samples > 0 {
-		fmt.Printf("Ok\n")
+		log.Println("Got valid config; API access validated")
 	}
 
 	return nil
@@ -86,7 +92,7 @@ func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
 	stateDir := cfg.StateDir
 	name := cfg.Name
 
-	log.Printf("Configuring name: %s (%s)", name, cfg.API.Key)
+	log.Printf("Configuring %s (%s)", name, cfg.API.Key)
 
 	cauth, err := auth.New(ctx, stateDir, name, cfg.API.Key, cfg.API.Secret)
 	if err != nil {

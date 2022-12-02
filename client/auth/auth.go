@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	vaultapi "github.com/hashicorp/vault/api"
 	"go.ntppool.org/monitor/api"
 )
 
@@ -27,15 +26,6 @@ type ClientAuth struct {
 	ctx  context.Context
 	dir  string
 	lock sync.RWMutex
-}
-
-type Vault struct {
-	key    string
-	secret string
-	Token  string
-
-	client *vaultapi.Client
-	lock   sync.RWMutex
 }
 
 func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error) {
@@ -113,7 +103,7 @@ func (ca *ClientAuth) Login() error {
 
 func (ca *ClientAuth) WaitUntilReady() error {
 	for {
-		if ok, _ := ca.checkCertificateValidity(); ok {
+		if ok, _, _ := ca.checkCertificateValidity(); ok {
 			return nil
 		}
 		log.Printf("Waiting for TLS certificate to be available")

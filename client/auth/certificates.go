@@ -19,7 +19,9 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 		log.Printf("Could not load certificates: %s", err)
 	}
 
-	if ca.Cert == nil {
+	_, notAfter, _, err := ca.CertificateDates()
+
+	if ca.Cert == nil || err != nil || time.Now().After(notAfter) {
 		err := ca.IssueCertificates()
 		if err != nil {
 			return err
@@ -30,37 +32,53 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 
 }
 
-// checkCertificateValidity checks if the certificate is
-// valid and how long until it needs renewal
-func (ca *ClientAuth) checkCertificateValidity() (bool, time.Duration) {
+// CertificateDates returns NotBefore, NotAfter and the remaining validity
+func (ca *ClientAuth) CertificateDates() (time.Time, time.Time, time.Duration, error) {
 	ca.lock.RLock()
 	defer ca.lock.RUnlock()
 
 	if ca.Cert == nil || ca.Cert.Leaf == nil {
-		return false, time.Second * 2
+		return time.Time{}, time.Time{}, 0, fmt.Errorf("no certificate")
 	}
 
 	c := ca.Cert.Leaf
 
-	duration := c.NotAfter.Sub(c.NotBefore)
-	renewAfter := c.NotAfter.Add(-duration / 3)
+	return c.NotBefore, c.NotAfter, time.Until(c.NotAfter), nil
+}
 
-	if time.Now().After(c.NotAfter.Add(-1 * time.Hour)) {
-		return false, time.Second * 0
+// checkCertificateValidity checks if the certificate is
+// valid and how long until it needs renewal
+func (ca *ClientAuth) checkCertificateValidity() (bool, time.Duration, error) {
+
+	notAfter, notBefore, _, err := ca.CertificateDates()
+	if err != nil {
+		return false, 0, err
 	}
 
-	return true, renewAfter.Sub(time.Now()) + time.Second*1
+	duration := notAfter.Sub(notBefore)
+	renewAfter := notAfter.Add(-duration / 3)
+
+	if time.Now().After(notAfter.Add(-duration / 3)) {
+		maxTime := time.Second * 30
+		delay := duration / 3
+		if delay > maxTime {
+			delay = maxTime
+		}
+		return false, delay, nil
+	}
+
+	return true, time.Until(renewAfter) + time.Second*1, nil
 }
 
 func (ca *ClientAuth) RenewCertificates() error {
 
 	for {
-		valid, wait := ca.checkCertificateValidity()
+		valid, wait, _ := ca.checkCertificateValidity()
 		if !valid || wait < 0 {
 			err := ca.IssueCertificates()
 			if err != nil {
 				log.Printf("error issuing certificate: %s", err)
-				wait = 90 * time.Second
+				wait = 300 * time.Second
 			}
 		}
 
@@ -97,6 +115,9 @@ func (ca *ClientAuth) LoadCertificates(ctx context.Context) error {
 }
 
 func (ca *ClientAuth) IssueCertificates() error {
+	if ok, nil := ca.Vault.checkToken(context.Background()); ok {
+		return nil
+	}
 	err := ca.Login()
 	if err != nil {
 		return err
