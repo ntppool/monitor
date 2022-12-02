@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/twitchtv/twirp"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
@@ -76,7 +77,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 
 	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
-		log.Fatalf("Could not get config: %s", err)
+		if twerr, ok := err.(twirp.Error); ok {
+			if twerr.Code() == twirp.PermissionDenied {
+				log.Fatalf("could not get config: %s", twerr.Msg())
+			}
+		}
+		log.Fatalf("could not get config: %s", err)
 	}
 
 	if cfg.Samples > 0 {

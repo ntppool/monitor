@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -61,6 +60,10 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	})
 	span.AddEvent("UpdateMonitorSeen")
 
+	if !monitor.IsLive() {
+		return nil, twirp.PermissionDenied.Error("monitor not active")
+	}
+
 	// the client always starts by getting a config, so we just track the user-agent here
 	if err = srv.updateUserAgent(ctx, monitor); err != nil {
 		log.Printf("error updating user-agent: %s", err)
@@ -100,7 +103,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	})
 
 	if !monitor.IsLive() {
-		return nil, fmt.Errorf("monitor not active")
+		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
 	intervalMinutes := 8

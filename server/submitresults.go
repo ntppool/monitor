@@ -46,7 +46,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	}
 
 	if !monitor.IsLive() {
-		return rv, fmt.Errorf("monitor not active")
+		return rv, twirp.PermissionDenied.Error("monitor not active")
 	}
 
 	if in.Version < 2 || in.Version > 3 {

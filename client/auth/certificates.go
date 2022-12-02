@@ -82,6 +82,9 @@ func (ca *ClientAuth) RenewCertificates() error {
 			}
 		}
 
+		if wait < 0 {
+			wait = 0 * time.Second
+		}
 		log.Printf("RenewCertificates - checking certificate renewal in: %s", wait)
 		timer := time.NewTimer(wait)
 		select {

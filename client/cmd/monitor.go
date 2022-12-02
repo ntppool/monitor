@@ -13,6 +13,7 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
+	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/localok"
@@ -71,7 +72,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
-		log.Fatalf("Could not get config: %s", err)
+		if twerr, ok := err.(twirp.Error); ok {
+			if twerr.Code() == twirp.PermissionDenied {
+				log.Fatalf("could not get config: %s", twerr.Msg())
+			}
+		}
+		log.Fatalf("could not get config: %s", err)
 	}
 
 	localOK := localok.NewLocalOK(cfg)
@@ -106,7 +112,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				return fmt.Errorf("local clock")
 			}
 
-			if !run(api) {
+			if ok, err := run(api); !ok || err != nil {
+				if err != nil {
+					log.Println(err)
+					boff.MaxInterval = 20 * time.Minute
+					boff.Multiplier = 5
+				}
 				// log.Printf("Got no work, sleeping.")
 				return fmt.Errorf("no work")
 			}
@@ -129,19 +140,23 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 }
 
-func run(api pb.Monitor) bool {
+func run(api pb.Monitor) (bool, error) {
 
 	ctx := context.Background()
 
 	serverlist, err := api.GetServers(ctx, &pb.GetServersParams{})
-
 	if err != nil {
-		log.Printf("getting server list: %s", err)
-		return false
+		if twerr, ok := err.(twirp.Error); ok {
+			if twerr.Code() == twirp.PermissionDenied {
+				return false, fmt.Errorf("getting server list: %s", twerr.Msg())
+			}
+		}
+		return false, fmt.Errorf("getting server list: %s", err)
 	}
 
 	if len(serverlist.Servers) == 0 {
-		return false
+		// no error, just no servers
+		return false, nil
 	}
 
 	batchID := ulid.ULID{}
@@ -203,14 +218,12 @@ func run(api pb.Monitor) bool {
 
 	r, err := api.SubmitResults(ctx, list)
 	if err != nil {
-		log.Printf("SubmitResults error: %s", err)
-		return false
+		return false, fmt.Errorf("SubmitResults: %s", err)
 	}
 	if !r.Ok {
-		log.Printf("SubmitResults did not return okay")
-		return false
+		return false, fmt.Errorf("SubmitResults not okay")
 	}
 
-	return true
+	return true, nil
 
 }
