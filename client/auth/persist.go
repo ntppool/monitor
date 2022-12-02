@@ -3,7 +3,6 @@ package auth
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 )
@@ -23,7 +22,7 @@ func (ca *ClientAuth) stateFilePrefix(filename string) string {
 
 func (ca *ClientAuth) load() error {
 	path := ca.stateFilePrefix(stateFile)
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}

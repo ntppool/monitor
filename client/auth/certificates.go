@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
@@ -77,11 +77,11 @@ func (ca *ClientAuth) RenewCertificates() error {
 
 func (ca *ClientAuth) LoadCertificates(ctx context.Context) error {
 
-	certPem, err := ioutil.ReadFile(ca.stateFilePrefix("cert.pem"))
+	certPem, err := os.ReadFile(ca.stateFilePrefix("cert.pem"))
 	if err != nil {
 		return err
 	}
-	keyPem, err := ioutil.ReadFile(ca.stateFilePrefix("key.pem"))
+	keyPem, err := os.ReadFile(ca.stateFilePrefix("key.pem"))
 	if err != nil {
 		return err
 	}
