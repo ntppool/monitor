@@ -16,7 +16,9 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 
 	err := ca.LoadCertificates(ctx)
 	if err != nil {
-		log.Printf("Could not load certificates: %s", err)
+		if !os.IsNotExist(err) {
+			log.Printf("Could not load certificates: %s", err)
+		}
 	}
 
 	_, notAfter, _, err := ca.CertificateDates()

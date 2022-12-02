@@ -52,9 +52,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("auth error: %s", err)
 	}
 
-	// ignoring errors because the Manager will issue missing certs
-	// we just want to load them from disk right away
-	cauth.LoadCertificates(ctx)
+	err = cauth.LoadOrIssueCertificates()
+	if err != nil {
+		log.Fatalf("%s", err)
+	}
 
 	go cauth.Manager()
 

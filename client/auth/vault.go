@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -54,8 +55,15 @@ func (v *Vault) Login(ctx context.Context, depEnv string) error {
 		return fmt.Errorf("unable to initialize AppRole auth method: %w", err)
 	}
 
-	authInfo, err := v.client.Auth().Login(context.TODO(), appRoleAuth)
+	authInfo, err := v.client.Auth().Login(ctx, appRoleAuth)
+
 	if err != nil {
+		var verr *vaultapi.ResponseError
+		if errors.As(err, &verr) {
+			if verr.StatusCode == 400 {
+				return fmt.Errorf("invalid api key or api secret")
+			}
+		}
 		return fmt.Errorf("unable to login to AppRole auth method: %w", err)
 	}
 	if authInfo == nil {
