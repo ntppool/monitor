@@ -28,6 +28,7 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 		if err != nil {
 			return err
 		}
+		return nil
 	}
 
 	return err
