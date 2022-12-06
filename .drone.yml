@@ -95,7 +95,7 @@ steps:
     when:
       ref:
         - refs/heads/main
-        - refs/tags/**
+        - refs/tags/*
     depends_on: [goreleaser]
 
   - name: fury-publish
@@ -115,7 +115,7 @@ steps:
     when:
       ref:
         - refs/heads/main
-        - refs/tags/**
+        - refs/tags/*
     depends_on: [goreleaser]
 
 volumes:
@@ -172,6 +172,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 0bc74619247f24694c17044a3787e539bc43f55df3f511a0c676ac88439032a8
+hmac: ff122698e91d0f7f05589700ad75a331478636710f112febbdb4bd4353861a2f
 
 ...
