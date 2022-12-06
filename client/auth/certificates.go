@@ -152,7 +152,7 @@ func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []b
 
 	data := map[string]interface{}{
 		"common_name": name,
-		"ttl":         "4h",
+		"ttl":         "120h",
 	}
 
 	depEnv, err := api.GetDeploymentEnvironment(name)
