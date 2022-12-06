@@ -63,7 +63,7 @@ steps:
     settings:
       repo: ntppool/monitor-api
       registry: harbor.ntppool.org
-      tags: ${DRONE_BRANCH},build-${DRONE_BUILD_NUMBER},SHAABBREV,SHA7
+      tags: "${DRONE_BRANCH},build-${DRONE_BUILD_NUMBER},SHAABBREV,SHA7"
       auto_tag: true
       cache: true
       username:
@@ -172,6 +172,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: ff122698e91d0f7f05589700ad75a331478636710f112febbdb4bd4353861a2f
+hmac: ff65fa2624120fa5184c1f6e83556f48adc26687b851d758ae0d56ea2f2ecb22
 
 ...
