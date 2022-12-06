@@ -52,9 +52,15 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("auth error: %s", err)
 	}
 
+	err = cauth.Login()
+	if err != nil {
+		log.Printf("Could not authenticate: %s", err)
+		os.Exit(2)
+	}
+
 	err = cauth.LoadOrIssueCertificates()
 	if err != nil {
-		log.Fatalf("%s", err)
+		log.Fatalf("LoadOrIssueCertificates: %s", err)
 	}
 
 	go cauth.Manager()

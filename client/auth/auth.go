@@ -12,6 +12,8 @@ import (
 	"go.ntppool.org/monitor/api"
 )
 
+const vaultAuthPrefix = "/monitors"
+
 type ClientAuth struct {
 	Name  string
 	Vault *Vault
@@ -30,12 +32,12 @@ type ClientAuth struct {
 
 func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error) {
 
-	vault := &Vault{
-		key:    key,
-		secret: secret,
+	depEnv, err := api.GetDeploymentEnvironment(name)
+	if err != nil {
+		return nil, err
 	}
 
-	depEnv, err := api.GetDeploymentEnvironment(name)
+	vault, err := NewVault(key, secret, fmt.Sprintf("%s/%s", vaultAuthPrefix, depEnv))
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +48,14 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 		ctx:           ctx,
 		dir:           dir,
 		Vault:         vault,
+	}
+
+	if vault == nil || vault.client == nil {
+		if vault == nil {
+			return nil, fmt.Errorf("vault struct not setup")
+		}
+
+		return nil, fmt.Errorf("vault client not setup")
 	}
 
 	err = ca.load()
@@ -70,6 +80,8 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 	}
 
 	if changed {
+		ca.Vault.AuthSecret = nil
+		ca.Vault.Token = ""
 		err = ca.save()
 		if err != nil {
 			return nil, err
@@ -93,10 +105,29 @@ func (ca *ClientAuth) Manager() error {
 }
 
 func (ca *ClientAuth) Login() error {
-	err := ca.Vault.Login(ca.ctx, ca.deploymentEnv)
+	// log.Printf("ClientAuth.Login(), vault: %+v", ca.Vault)
+	authInfo, err := ca.Vault.Login(ca.ctx)
 	if err != nil {
 		return err
 	}
+
+	// log.Printf("ClientAuth logged in: %+v", authInfo)
+
+	updateChannel := make(chan bool, 10)
+
+	go ca.Vault.RenewToken(ca.ctx, authInfo, updateChannel)
+
+	go func() {
+		for {
+			select {
+			case <-updateChannel:
+				ca.save()
+
+			case <-ca.ctx.Done():
+				return
+			}
+		}
+	}()
 
 	return ca.save()
 }

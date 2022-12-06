@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	"go.ntppool.org/monitor/api"
+
 	vaultapi "github.com/hashicorp/vault/api"
 )
 
@@ -110,70 +112,72 @@ func (ca *ClientAuth) LoadCertificates(ctx context.Context) error {
 		return err
 	}
 
-	cert, err := tls.X509KeyPair(certPem, keyPem)
-	if err != nil {
-		return err
-	}
-
-	ca.SetCertificate(&cert)
-
-	return nil
-}
-
-func (ca *ClientAuth) IssueCertificates() error {
-	if ok, nil := ca.Vault.checkToken(context.Background()); ok {
-		return nil
-	}
-	err := ca.Login()
-	if err != nil {
-		return err
-	}
-
-	vault, err := ca.Vault.vaultClient()
-	if err != nil {
-		return err
-	}
-
-	data := map[string]interface{}{
-		"common_name": ca.Name,
-		"ttl":         "36h",
-	}
-
-	issuePath := "pki_servers/issue/monitors-" + ca.deploymentEnv
-
-	rv, err := vault.Logical().WriteWithContext(ca.ctx, issuePath, data)
-	if err != nil {
-		return err
-	}
-
-	cert, err := getVaultDataString(rv, "certificate")
-	if err != nil {
-		return err
-	}
-
-	privateKey, err := getVaultDataString(rv, "private_key")
-	if err != nil {
-		return err
-	}
-
-	tlsCert, err := tls.X509KeyPair([]byte(cert), []byte(privateKey))
+	tlsCert, err := tls.X509KeyPair(certPem, keyPem)
 	if err != nil {
 		return err
 	}
 
 	ca.SetCertificate(&tlsCert)
 
-	err = replaceFile(ca.stateFilePrefix("cert.pem"), []byte(cert))
+	return nil
+}
+
+func (ca *ClientAuth) IssueCertificates() error {
+	certPem, keyPem, err := ca.Vault.IssueCertificates(ca.ctx, ca.Name)
 	if err != nil {
 		return err
 	}
 
-	err = replaceFile(ca.stateFilePrefix("key.pem"), []byte(privateKey))
+	tlsCert, err := tls.X509KeyPair(certPem, keyPem)
+	if err != nil {
+		return err
+	}
+
+	ca.SetCertificate(&tlsCert)
+
+	err = replaceFile(ca.stateFilePrefix("cert.pem"), certPem)
+	if err != nil {
+		return err
+	}
+
+	err = replaceFile(ca.stateFilePrefix("key.pem"), keyPem)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []byte, error) {
+
+	data := map[string]interface{}{
+		"common_name": name,
+		"ttl":         "4h",
+	}
+
+	depEnv, err := api.GetDeploymentEnvironment(name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	issuePath := "pki_servers/issue/monitors-" + depEnv
+
+	rv, err := v.client.Logical().WriteWithContext(ctx, issuePath, data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cert, err := getVaultDataString(rv, "certificate")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	privateKey, err := getVaultDataString(rv, "private_key")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return []byte(cert), []byte(privateKey), nil
 
 }
 

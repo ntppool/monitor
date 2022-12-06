@@ -28,7 +28,6 @@ func (cli *CLI) apiCmd() *cobra.Command {
 }
 
 func (cli *CLI) apiOkCmd() *cobra.Command {
-
 	apiOkCmd := &cobra.Command{
 		Use:   "ok",
 		Short: "Check API connection",
@@ -40,16 +39,17 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 }
 
 func (cli *CLI) apiOK(cmd *cobra.Command) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+
+	timeout := time.Second * 20
+	timeout = time.Minute * 5
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	log.Println("Checking API")
-
-	// time.Sleep(20 * time.Second)
-
 	cauth, err := cli.ClientAuth(ctx)
 	if err != nil {
-		log.Fatalf("auth error: %s", err)
+		log.Fatalf("auth setup error: %s", err)
 	}
 
 	err = cauth.Login()
@@ -89,8 +89,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Println("Got valid config; API access validated")
 	}
 
-	return nil
+	cancel()
+	time.Sleep(time.Millisecond * 100)
 
+	log.Printf("done!")
+
+	return nil
 }
 
 func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {

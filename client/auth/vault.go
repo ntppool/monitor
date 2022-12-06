@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	approle "github.com/hashicorp/vault/api/auth/approle"
@@ -13,32 +14,52 @@ import (
 
 var vaultAddr = "https://vault.ntppool.org"
 
-const authPrefix = "/monitors"
-
 type Vault struct {
-	key    string
-	secret string
-	Token  string
+	key        string
+	secret     string
+	Token      string
+	AuthSecret *vaultapi.Secret
+
+	authPrefix string
 
 	client *vaultapi.Client
 	lock   sync.RWMutex
-
-	deploymentEnvironment string
 }
 
-func (v *Vault) Login(ctx context.Context, depEnv string) error {
+func NewVault(key, secret, authPrefix string) (v *Vault, err error) {
 
-	v.deploymentEnvironment = depEnv
-
-	// setToken sets up the client if it's not already
-	v.setToken(v.Token)
-	ok, err := v.checkToken(ctx)
-	if ok {
-		return nil
+	if key == "" || secret == "" || authPrefix == "" {
+		return nil, fmt.Errorf("vault parameters required (key, secret, authPrefix)")
 	}
-	if verr, ok := err.(*vaultapi.ResponseError); ok {
-		if verr.StatusCode != 403 {
-			log.Printf("token lookup error: %s", err)
+
+	v = &Vault{
+		key:        key,
+		secret:     secret,
+		authPrefix: authPrefix,
+	}
+	v.client, err = v.vaultClient()
+	if err != nil {
+		return nil, err
+	}
+	return v, err
+}
+
+func (v *Vault) Login(ctx context.Context) (*vaultapi.Secret, error) {
+
+	if v.AuthSecret != nil && v.AuthSecret.Auth.Renewable && len(v.AuthSecret.Auth.ClientToken) > 0 {
+		v.setAuthSecret(v.AuthSecret)
+
+		auth, err := v.client.Auth().Token().RenewSelfWithContext(ctx, 120)
+		if err != nil {
+			var verr *vaultapi.ResponseError
+			if errors.As(err, &verr) {
+				if verr.StatusCode != 403 {
+					log.Printf("token renewal error: %s", err)
+				}
+			}
+		} else {
+			v.setAuthSecret(auth)
+			return auth, nil
 		}
 	}
 
@@ -49,65 +70,65 @@ func (v *Vault) Login(ctx context.Context, depEnv string) error {
 	appRoleAuth, err := approle.NewAppRoleAuth(
 		roleID,
 		secretID,
-		approle.WithMountPath(fmt.Sprintf("%s/%s/", authPrefix, depEnv)),
+		approle.WithMountPath(fmt.Sprintf("%s/", v.authPrefix)),
 	)
 	if err != nil {
-		return fmt.Errorf("unable to initialize AppRole auth method: %w", err)
+		return nil, fmt.Errorf("unable to initialize AppRole auth method: %w", err)
 	}
 
+	v.client.SetToken("")
+
+	// v.client.SetOutputCurlString(true)
+	// _, err = v.client.Auth().Login(ctx, appRoleAuth)
+	// cerr := &vaultapi.OutputStringError{}
+	// if errors.As(err, &cerr) {
+	// 	c, err := cerr.CurlString()
+	// 	if err != nil {
+	// 		log.Fatalf("no curl string: %s", err)
+	// 	}
+	// 	log.Printf("curl: %s", c)
+	// }
+
+	v.client.SetOutputCurlString(false)
 	authInfo, err := v.client.Auth().Login(ctx, appRoleAuth)
 
 	if err != nil {
 		var verr *vaultapi.ResponseError
 		if errors.As(err, &verr) {
 			if verr.StatusCode == 400 {
-				return fmt.Errorf("invalid api key or api secret")
+				return nil, fmt.Errorf("invalid api key or api secret")
 			}
 		}
-		return fmt.Errorf("unable to login to AppRole auth method: %w", err)
+		return nil, fmt.Errorf("unable to login to AppRole: %w", err)
 	}
 	if authInfo == nil {
-		return fmt.Errorf("no auth info was returned after login")
+		return nil, fmt.Errorf("no auth info was returned after login")
 	}
 
 	log.Printf("Authenticated API key")
 	// log.Printf("authInfo: %+v", authInfo)
 	// log.Printf("Token: %s", authInfo.Auth.ClientToken)
 
-	v.setToken(authInfo.Auth.ClientToken)
+	v.setAuthSecret(authInfo)
 
-	return nil
+	return authInfo, nil
 }
 
-func (v *Vault) setToken(token string) error {
-
-	var oldToken string
+func (v *Vault) setAuthSecret(secret *vaultapi.Secret) error {
 
 	err := func() error {
 		v.lock.Lock()
 		defer v.lock.Unlock()
 
-		var err error
+		v.Token = secret.Auth.ClientToken
+		v.AuthSecret = secret
 
-		oldToken = v.Token
-		v.Token = token
-
-		if v.client == nil {
-			v.client, err = v.vaultClient()
-			if err != nil {
-				return err
-			}
-		}
-		v.client.SetToken(token)
+		v.client.SetToken(v.Token)
 
 		return nil
 	}()
 	if err != nil {
 		return err
-	}
-
-	if token == oldToken {
-		return nil
 	}
 
 	return nil
@@ -134,21 +155,21 @@ func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
 	return client, nil
 }
 
-func (cr *Vault) checkToken(ctx context.Context) (bool, error) {
-	client, err := cr.vaultClient()
-	if err != nil {
-		return false, err
-	}
+// func (cr *Vault) checkToken(ctx context.Context) (bool, *vaultapi.Secret, error) {
+// 	client, err := cr.vaultClient()
+// 	if err != nil {
+// 		return false, nil, err
+// 	}
 
-	rv, err := client.Logical().ReadWithContext(ctx, "auth/token/lookup-self")
-	if err != nil {
-		return false, err
-	}
+// 	rv, err := client.Logical().ReadWithContext(ctx, "auth/token/lookup-self")
+// 	if err != nil {
+// 		return false, nil, err
+// 	}
 
-	log.Printf("Session token expires: %s, remaining uses: %s", rv.Data["expire_time"], rv.Data["num_uses"])
+// 	log.Printf("Session token expires: %s, remaining uses: %s", rv.Data["expire_time"], rv.Data["num_uses"])
 
-	return true, nil
-}
+// 	return true, rv, nil
+// }
 
 func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interface{}, error) {
 	client, err := cr.vaultClient()
@@ -157,9 +178,8 @@ func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interf
 	}
 
 	rv, err := client.Logical().WriteWithContext(ctx,
-		fmt.Sprintf("auth/%s/%s/role/%s/secret-id/lookup",
-			authPrefix,
-			cr.deploymentEnvironment,
+		fmt.Sprintf("auth/%s/role/%s/secret-id/lookup",
+			cr.authPrefix,
 			name,
 		),
 		map[string]interface{}{
@@ -172,4 +192,81 @@ func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interf
 	}
 
 	return rv.Data, nil
+}
+
+func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, updateChannel chan<- bool) {
+	// log.Printf("starting RenewToken, with authInfo: %+v", authInfo)
+
+	for {
+		var err error
+		if authInfo == nil {
+			authInfo, err = cr.Login(ctx)
+			if err != nil {
+				log.Fatalf("unable to authenticate to Vault: %v", err)
+			}
+		}
+		tokenErr := cr.manageTokenLifecycle(ctx, authInfo, updateChannel)
+		if tokenErr != nil {
+			log.Fatalf("unable to start managing token lifecycle: %v", tokenErr)
+		}
+
+		if err = ctx.Err(); err != nil {
+			return
+		}
+
+		authInfo = nil
+	}
+}
+
+// Starts token lifecycle management. Returns only fatal errors as errors,
+// otherwise returns nil so we can attempt login again.
+func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secret, updateChannel chan<- bool) error {
+
+	renew := token.Auth.Renewable // You may notice a different top-level field called Renewable. That one is used for dynamic secrets renewal, not token renewal.
+	if !renew {
+		log.Printf("Token is not configured to be renewable. Re-attempting login.")
+		return nil
+	}
+
+	watcher, err := cr.client.NewLifetimeWatcher(&vaultapi.LifetimeWatcherInput{
+		Secret: token,
+		// Increment: 3600, // Learn more about this optional value in https://www.vaultproject.io/docs/concepts/lease#lease-durations-and-renewal
+	})
+	if err != nil {
+		return fmt.Errorf("unable to initialize new lifetime watcher for renewing auth token: %w", err)
+	}
+
+	go watcher.Start()
+	defer watcher.Stop()
+
+	for {
+		select {
+		// `DoneCh` will return if renewal fails, or if the remaining lease
+		// duration is under a built-in threshold and either renewing is not
+		// extending it or renewing is disabled. In any case, the caller
+		// needs to attempt to log in again.
+		case err := <-watcher.DoneCh():
+			if err != nil {
+				log.Printf("Failed to renew token: %v. Re-attempting login.", err)
+				return nil
+			}
+			if err = ctx.Err(); err != nil {
+				return nil
+			}
+			// This occurs once the token has reached max TTL.
+			log.Printf("Token can no longer be renewed. Re-attempting login.")
+			return nil
+
+		// Successfully completed renewal
+		case renewal := <-watcher.RenewCh():
+			updateChannel <- true
+			log.Printf("Successfully renewed token")
+			// js, err := json.MarshalIndent(renewal, "", "  ")
+			cr.setAuthSecret(renewal.Secret)
+
+		case <-ctx.Done():
+			watcher.Stop()
+			time.Sleep(100 * time.Millisecond) // allow the watcher to mark itself done
+		}
+	}
 }
