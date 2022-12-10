@@ -88,15 +88,15 @@ func (v *Vault) Login(ctx context.Context) (*vaultapi.Secret, error) {
 	// 	}
 	// 	log.Printf("curl: %s", c)
 	// }
+	// v.client.SetOutputCurlString(false)
 
-	v.client.SetOutputCurlString(false)
 	authInfo, err := v.client.Auth().Login(ctx, appRoleAuth)
 
 	if err != nil {
 		var verr *vaultapi.ResponseError
 		if errors.As(err, &verr) {
 			if verr.StatusCode == 400 {
-				return nil, fmt.Errorf("invalid api key or api secret")
+				return nil, AuthenticationError{Message: "invalid api key or api secret"}
 			}
 		}
 		return nil, fmt.Errorf("unable to login to AppRole: %w", err)
@@ -189,6 +189,10 @@ func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interf
 
 	if err != nil {
 		return nil, err
+	}
+
+	if rv == nil {
+		return nil, fmt.Errorf("no secret found")
 	}
 
 	return rv.Data, nil

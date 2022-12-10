@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -54,6 +56,28 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	err = cauth.Login()
 	if err != nil {
+		var aerr auth.AuthenticationError
+		if errors.As(err, &aerr) {
+			var url string
+			deployEnv, err := api.GetDeploymentEnvironment(cauth.Name)
+			if err != nil {
+				log.Printf("error: %s", err)
+			}
+			switch deployEnv {
+			case "devel":
+				url = "https://manage.askdev.grundclock.com/manage/monitors"
+			case "test":
+				url = "https://manage.beta.grundclock.com/manage/monitors"
+			case "prod":
+				url = "https://manage.ntppool.org/manage/monitors"
+			default:
+				url = "the management site"
+			}
+
+			log.Printf("Authentication error: %s -- Go to %s to rotate and download new a API secret", aerr, url)
+			os.Exit(2)
+		}
+
 		log.Printf("Could not authenticate: %s", err)
 		os.Exit(2)
 	}
