@@ -3,11 +3,13 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"log"
 
 	"github.com/cristalhq/aconfig"
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
+	"go.ntppool.org/monitor/version"
 )
 
 type CLI struct {
@@ -93,6 +95,9 @@ func (cfg *APIConfig) setLoader(args []string) {
 
 func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+
+		log.Printf("ntppool-monitor version %s", version.Version())
+
 		err := cli.Config.Load(args)
 		if err != nil {
 			fmt.Printf("Could not load config: %s", err)
