@@ -163,7 +163,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 
 		if name == mainScorer {
 			err := db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
-				ID:       ss.ServerID,
+				ID:       ns.ServerID,
 				ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
 				ScoreRaw: ns.Score,
 			})

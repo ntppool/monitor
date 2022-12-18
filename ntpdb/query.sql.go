@@ -612,7 +612,7 @@ UPDATE servers
       score_raw = ?
   WHERE
     id = ?
-    AND score_ts < ?
+    AND (score_ts < ? OR score_ts is NULL)
 `
 
 type UpdateServerParams struct {

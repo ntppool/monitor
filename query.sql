@@ -40,7 +40,7 @@ UPDATE servers
       score_raw = sqlc.arg('score_raw')
   WHERE
     id = ?
-    AND score_ts < sqlc.arg('score_ts');
+    AND (score_ts < sqlc.arg('score_ts') OR score_ts is NULL);
 
 -- name: UpdateServerStratum :exec
 UPDATE servers
