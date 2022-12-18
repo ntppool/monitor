@@ -1,4 +1,4 @@
--- MariaDB dump 10.19  Distrib 10.6.7-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.19  Distrib 10.6.11-MariaDB, for Linux (x86_64)
 --
 -- Host: ntp-db-mysql-master.ntpdb.svc.cluster.local    Database: askntp
 -- ------------------------------------------------------
@@ -230,25 +230,6 @@ CREATE TABLE `log_scores_archive_status` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `log_scores_scorer_status`
---
-
-DROP TABLE IF EXISTS `log_scores_scorer_status`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `log_scores_scorer_status` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `scorer` varchar(255) NOT NULL,
-  `log_score_id` bigint(20) unsigned DEFAULT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `scorer` (`scorer`),
-  KEY `scorer_log_score_id` (`log_score_id`),
-  CONSTRAINT `scorer_log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `log_status`
 --
 
@@ -329,6 +310,27 @@ CREATE TABLE `monitors` (
   CONSTRAINT `monitors_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Temporary table structure for view `monitors_data`
+--
+
+DROP TABLE IF EXISTS `monitors_data`;
+/*!50001 DROP VIEW IF EXISTS `monitors_data`*/;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8;
+/*!50001 CREATE VIEW `monitors_data` AS SELECT
+ 1 AS `id`,
+  1 AS `account_id`,
+  1 AS `type`,
+  1 AS `name`,
+  1 AS `ip`,
+  1 AS `ip_version`,
+  1 AS `status`,
+  1 AS `client_version`,
+  1 AS `last_seen`,
+  1 AS `last_submit` */;
+SET character_set_client = @saved_cs_client;
 
 --
 -- Table structure for table `schema_revision`
@@ -493,6 +495,25 @@ CREATE TABLE `servers` (
   KEY `server_account_fk` (`account_id`),
   CONSTRAINT `server_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
   CONSTRAINT `servers_user_ibfk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `servers_monitor_review`
+--
+
+DROP TABLE IF EXISTS `servers_monitor_review`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `servers_monitor_review` (
+  `server_id` int(10) unsigned NOT NULL,
+  `last_review` datetime DEFAULT NULL,
+  `next_review` datetime DEFAULT NULL,
+  `last_change` datetime DEFAULT NULL,
+  `config` text NOT NULL,
+  PRIMARY KEY (`server_id`),
+  KEY `next_review` (`next_review`),
+  CONSTRAINT `server_monitor_review_server_id_fk` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -665,6 +686,24 @@ CREATE TABLE `zones` (
   CONSTRAINT `zones_parent` FOREIGN KEY (`parent_id`) REFERENCES `zones` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Final view structure for view `monitors_data`
+--
+
+/*!50001 DROP VIEW IF EXISTS `monitors_data`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`askntp`@`10.%` SQL SECURITY DEFINER */
+/*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`name`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -675,4 +714,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-11-01  2:16:12
+-- Dump completed on 2022-12-17  7:35:25

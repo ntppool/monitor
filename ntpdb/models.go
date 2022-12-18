@@ -598,13 +598,6 @@ type LogScoresArchiveStatus struct {
 	ModifiedOn time.Time     `json:"modified_on"`
 }
 
-type LogScoresScorerStatus struct {
-	ID         int32         `json:"id"`
-	Scorer     string        `json:"scorer"`
-	LogScoreID sql.NullInt64 `json:"log_score_id"`
-	ModifiedOn time.Time     `json:"modified_on"`
-}
-
 type LogStatus struct {
 	ServerID   int32     `json:"server_id"`
 	LastCheck  time.Time `json:"last_check"`
@@ -628,6 +621,19 @@ type Monitor struct {
 	LastSeen      sql.NullTime          `json:"last_seen"`
 	LastSubmit    sql.NullTime          `json:"last_submit"`
 	CreatedOn     time.Time             `json:"created_on"`
+}
+
+type MonitorsDatum struct {
+	ID            int32                 `json:"id"`
+	AccountID     sql.NullInt32         `json:"account_id"`
+	Type          MonitorsType          `json:"type"`
+	Name          interface{}           `json:"name"`
+	Ip            sql.NullString        `json:"ip"`
+	IpVersion     NullMonitorsIpVersion `json:"ip_version"`
+	Status        MonitorsStatus        `json:"status"`
+	ClientVersion string                `json:"client_version"`
+	LastSeen      sql.NullTime          `json:"last_seen"`
+	LastSubmit    sql.NullTime          `json:"last_submit"`
 }
 
 type SchemaRevision struct {
@@ -697,6 +703,14 @@ type ServerUrl struct {
 type ServerZone struct {
 	ServerID int32 `json:"server_id"`
 	ZoneID   int32 `json:"zone_id"`
+}
+
+type ServersMonitorReview struct {
+	ServerID   int32        `json:"server_id"`
+	LastReview sql.NullTime `json:"last_review"`
+	NextReview sql.NullTime `json:"next_review"`
+	LastChange sql.NullTime `json:"last_change"`
+	Config     string       `json:"config"`
 }
 
 type SystemSetting struct {
