@@ -116,6 +116,9 @@ nfpms:
       - src: "scripts/ntppool-monitor@.service"
         dst: "/etc/systemd/system/ntppool-monitor@.service"
 
+      - src: "scripts/enable-ntppool-monitors"
+        dst: "/usr/bin/enable-ntppool-monitors"
+
       - src: "scripts/defaults"
         dst: "/etc/default/ntppool-monitor.sample"
         type: config
