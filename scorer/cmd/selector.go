@@ -12,6 +12,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
+	"golang.org/x/exp/slog"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -140,8 +141,8 @@ func (sl *selector) Run() (int, error) {
 	for _, serverID := range ids {
 		changed, err := sl.processServer(db, serverID)
 		if err != nil {
+			// todo: rollback transaction here? Save that we did a review anyway?
 			log.Printf("could not process selection of monitors for server %d: %s", serverID, err)
-			continue
 		}
 		count++
 
@@ -176,7 +177,9 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 
 	targetNumber := 5
 
-	log.Printf("processing server %d", serverID)
+	log := slog.Default().With("serverID", serverID)
+
+	log.Info("processServer")
 
 	// the list comes sorted
 	prilist, err := db.GetMonitorPriority(sl.ctx, serverID)
@@ -231,7 +234,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 			}
 			rtt = x.Float64
 		} else {
-			log.Fatalf("could not decode avg_rtt type %T", candidate.AvgRtt)
+			return false, fmt.Errorf("could not decode avg_rtt type %T", candidate.AvgRtt)
 		}
 
 		newStatus := newStatus{
@@ -298,8 +301,8 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 
 	}
 
-	log.Printf("inp list / new       : %d / %d", len(prilist), len(nsl))
-	log.Printf("ok / active / blocked: %d / %d / %d", okMonitors, currentActiveMonitors, blockedMonitors)
+	log.Info("monitor counts", "input", len(prilist), "new", len(nsl))
+	log.Info("monitor status", "ok", okMonitors, "active", currentActiveMonitors, "blocked", blockedMonitors)
 
 	allowedChanges := 1
 	toAdd := targetNumber - currentActiveMonitors
@@ -317,12 +320,12 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 	}
 
 	for _, ns := range nsl {
-		log.Printf("nsl: %d (%s, %s) => %s, ", ns.MonitorID, ns.MonitorStatus, ns.CurrentStatus, ns.NewState)
+		log.Info("nsl", "monitorID", ns.MonitorID, "monitorStatus", ns.MonitorStatus, "currentStatus", ns.CurrentStatus, "newState", ns.NewState)
 	}
 
 	maxRemovals := allowedChanges
 
-	log.Printf("toAdd: %d, maxRemovals: %d", toAdd, maxRemovals)
+	log.Info("changes allowed", "toAdd", toAdd, "maxRemovals", maxRemovals)
 
 	changed := false
 
@@ -336,7 +339,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 				continue
 			}
 			if nsl[i].NewState == stateToRemove {
-				log.Printf("removing %d", nsl[i].MonitorID)
+				log.Info("removing", "monitorID", nsl[i].MonitorID)
 				db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
 					MonitorID: nsl[i].MonitorID,
 					ServerID:  serverID,
@@ -351,18 +354,18 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 		}
 	}
 
-	log.Printf("toAdd after removals: %d", toAdd)
+	log.Info("work after removals", "toAdd", toAdd)
 
 	// replace removed monitors
 	for _, ns := range nsl {
-		log.Printf("add loop toAdd: %d, allowedChanges: %d", toAdd, allowedChanges)
+		log.Info("add loop", "toAdd", toAdd, "allowedChanges", allowedChanges)
 		if allowedChanges <= 0 || toAdd <= 0 {
 			break
 		}
 		if ns.NewState != candidateIn || ns.CurrentStatus == ntpdb.ServerScoresStatusActive {
 			continue
 		}
-		log.Printf("adding %d: %+v", ns.MonitorID, ns)
+		log.Info("adding", "monitorID", ns.MonitorID)
 		db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
 			MonitorID: ns.MonitorID,
 			ServerID:  serverID,
@@ -401,9 +404,9 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 				return changed, err
 			}
 			toAdd--
-			log.Printf("replaced %d with %d", replace, better)
+			log.Info("replaced", "replacedMonitorID", replace, "monitorID", better)
 		} else {
-			log.Printf("removed %d", replace)
+			log.Info("removed", "monitorID", replace)
 		}
 
 		changed = true

@@ -480,7 +480,7 @@ const getServersMonitorReview = `-- name: GetServersMonitorReview :many
 select server_id from servers_monitor_review
 where (next_review <= NOW() OR next_review is NULL)
 order by next_review
-limit 1
+limit 10
 `
 
 func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]int32, error) {

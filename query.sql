@@ -176,7 +176,7 @@ select m.id, m.tls_name,
 select server_id from servers_monitor_review
 where (next_review <= NOW() OR next_review is NULL)
 order by next_review
-limit 1;
+limit 10;
 
 -- name: UpdateServersMonitorReview :exec
 update servers_monitor_review

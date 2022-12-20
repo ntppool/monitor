@@ -3,11 +3,13 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/cristalhq/aconfig"
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
+	"golang.org/x/exp/slog"
 )
 
 type CLI struct {
@@ -85,6 +87,9 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobr
 			fmt.Printf("Could not load config: %s", err)
 			return err
 		}
+
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout)))
+
 		err = fn(cmd, args)
 		if err != nil {
 			fmt.Printf("error: %s", err)
