@@ -16,6 +16,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 
 	cmd.AddCommand(version.VersionCmd())
 	cmd.AddCommand(cli.scorerCmd())
+	cmd.AddCommand(cli.selectorCmd())
 	cmd.AddCommand(cli.dbCmd())
 
 	return cmd

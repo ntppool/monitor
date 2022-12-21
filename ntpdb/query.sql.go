@@ -23,6 +23,71 @@ func (q *Queries) GetMinLogScoreID(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+const getMonitorPriority = `-- name: GetMonitorPriority :many
+select m.id, m.tls_name,
+    avg(ls.rtt) / 1000 as avg_rtt,
+    round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
+    avg(ls.step) as avg_step,
+    if(avg(ls.step) < 0, false, true) as healthy,
+    m.status as monitor_status, ss.status as status,
+    count(*) as count
+  from log_scores ls
+  inner join monitors m
+  left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
+  where
+    m.id = ls.monitor_id
+  and ls.server_id = ?
+  and m.type = 'monitor'
+  and ls.ts > date_sub(now(), interval 12 hour)
+  group by m.id, m.tls_name, m.status, ss.status
+  order by healthy desc, monitor_priority, avg_step desc, avg_rtt
+`
+
+type GetMonitorPriorityRow struct {
+	ID              int32                  `json:"id"`
+	TlsName         sql.NullString         `json:"tls_name"`
+	AvgRtt          interface{}            `json:"avg_rtt"`
+	MonitorPriority float64                `json:"monitor_priority"`
+	AvgStep         interface{}            `json:"avg_step"`
+	Healthy         interface{}            `json:"healthy"`
+	MonitorStatus   MonitorsStatus         `json:"monitor_status"`
+	Status          NullServerScoresStatus `json:"status"`
+	Count           int64                  `json:"count"`
+}
+
+func (q *Queries) GetMonitorPriority(ctx context.Context, serverID int32) ([]GetMonitorPriorityRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMonitorPriority, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMonitorPriorityRow
+	for rows.Next() {
+		var i GetMonitorPriorityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TlsName,
+			&i.AvgRtt,
+			&i.MonitorPriority,
+			&i.AvgStep,
+			&i.Healthy,
+			&i.MonitorStatus,
+			&i.Status,
+			&i.Count,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMonitorTLSName = `-- name: GetMonitorTLSName :one
 SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 WHERE tls_name = ? LIMIT 1
@@ -340,10 +405,12 @@ SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum,
         ON (s.id=ss.server_id)
 WHERE (monitor_id = ?
     AND s.ip_version = ?
-    AND (ss.score_ts IS NULL OR
-          (ss.score_raw > -90 AND ss.score_ts <
-            DATE_SUB( NOW(), INTERVAL ? minute)
-            OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 65 minute)) ) )
+    AND (ss.score_ts IS NULL
+          OR (ss.score_raw > -90 AND ss.status = "active"
+               AND ss.score_ts < DATE_SUB( NOW(), INTERVAL ? minute))
+          OR (ss.score_raw > -90 AND ss.status = "testing"
+              AND ss.score_ts < DATE_SUB( NOW(), INTERVAL ? minute))
+          OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL ? minute) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
@@ -353,12 +420,13 @@ OFFSET ?
 `
 
 type GetServersParams struct {
-	MonitorID          int32            `json:"monitor_id"`
-	IpVersion          ServersIpVersion `json:"ip_version"`
-	IntervalMinutes    interface{}      `json:"interval_minutes"`
-	IntervalMinutesAll interface{}      `json:"interval_minutes_all"`
-	Limit              int32            `json:"limit"`
-	Offset             int32            `json:"offset"`
+	MonitorID              int32            `json:"monitor_id"`
+	IpVersion              ServersIpVersion `json:"ip_version"`
+	IntervalMinutes        interface{}      `json:"interval_minutes"`
+	IntervalMinutesTesting interface{}      `json:"interval_minutes_testing"`
+	IntervalMinutesAll     interface{}      `json:"interval_minutes_all"`
+	Limit                  int32            `json:"limit"`
+	Offset                 int32            `json:"offset"`
 }
 
 func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Server, error) {
@@ -366,6 +434,7 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 		arg.MonitorID,
 		arg.IpVersion,
 		arg.IntervalMinutes,
+		arg.IntervalMinutesTesting,
 		arg.IntervalMinutesAll,
 		arg.Limit,
 		arg.Offset,
@@ -397,6 +466,36 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getServersMonitorReview = `-- name: GetServersMonitorReview :many
+select server_id from servers_monitor_review
+where (next_review <= NOW() OR next_review is NULL)
+order by next_review
+limit 1
+`
+
+func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]int32, error) {
+	rows, err := q.db.QueryContext(ctx, getServersMonitorReview)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var server_id int32
+		if err := rows.Scan(&server_id); err != nil {
+			return nil, err
+		}
+		items = append(items, server_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -649,6 +748,23 @@ func (q *Queries) UpdateServerScore(ctx context.Context, arg UpdateServerScorePa
 	return err
 }
 
+const updateServerScoreStatus = `-- name: UpdateServerScoreStatus :exec
+update server_scores
+  set status = ?
+  where monitor_id = ? and server_id = ?
+`
+
+type UpdateServerScoreStatusParams struct {
+	Status    ServerScoresStatus `json:"status"`
+	MonitorID int32              `json:"monitor_id"`
+	ServerID  int32              `json:"server_id"`
+}
+
+func (q *Queries) UpdateServerScoreStatus(ctx context.Context, arg UpdateServerScoreStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateServerScoreStatus, arg.Status, arg.MonitorID, arg.ServerID)
+	return err
+}
+
 const updateServerScoreStratum = `-- name: UpdateServerScoreStratum :exec
 UPDATE server_scores
   SET stratum  = ?
@@ -678,5 +794,37 @@ type UpdateServerStratumParams struct {
 
 func (q *Queries) UpdateServerStratum(ctx context.Context, arg UpdateServerStratumParams) error {
 	_, err := q.db.ExecContext(ctx, updateServerStratum, arg.Stratum, arg.ID)
+	return err
+}
+
+const updateServersMonitorReview = `-- name: UpdateServersMonitorReview :exec
+update servers_monitor_review
+  set last_review=NOW(), next_review=?
+  where server_id=?
+`
+
+type UpdateServersMonitorReviewParams struct {
+	NextReview sql.NullTime `json:"next_review"`
+	ServerID   int32        `json:"server_id"`
+}
+
+func (q *Queries) UpdateServersMonitorReview(ctx context.Context, arg UpdateServersMonitorReviewParams) error {
+	_, err := q.db.ExecContext(ctx, updateServersMonitorReview, arg.NextReview, arg.ServerID)
+	return err
+}
+
+const updateServersMonitorReviewChanged = `-- name: UpdateServersMonitorReviewChanged :exec
+update servers_monitor_review
+  set last_review=NOW(), last_change=NOW(), next_review=?
+  where server_id=?
+`
+
+type UpdateServersMonitorReviewChangedParams struct {
+	NextReview sql.NullTime `json:"next_review"`
+	ServerID   int32        `json:"server_id"`
+}
+
+func (q *Queries) UpdateServersMonitorReviewChanged(ctx context.Context, arg UpdateServersMonitorReviewChangedParams) error {
+	_, err := q.db.ExecContext(ctx, updateServersMonitorReviewChanged, arg.NextReview, arg.ServerID)
 	return err
 }

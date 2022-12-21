@@ -107,19 +107,21 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	intervalMinutes := 8
+	intervalMinutesTesting := 60
 	intervalMinutesAll := 2
 
 	if monitor.Status != ntpdb.MonitorsStatusActive {
-		intervalMinutes = 60
+		intervalMinutes = intervalMinutesTesting
 	}
 
 	p := ntpdb.GetServersParams{
-		MonitorID:          monitor.ID,
-		IpVersion:          ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
-		IntervalMinutes:    intervalMinutes,
-		IntervalMinutesAll: intervalMinutesAll,
-		Limit:              10,
-		Offset:             0,
+		MonitorID:              monitor.ID,
+		IpVersion:              ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
+		IntervalMinutes:        intervalMinutes,
+		IntervalMinutesTesting: intervalMinutesTesting,
+		IntervalMinutesAll:     intervalMinutesAll,
+		Limit:                  10,
+		Offset:                 0,
 	}
 
 	now := time.Now()

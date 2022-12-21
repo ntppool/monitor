@@ -29,6 +29,11 @@ insert into server_scores
   (monitor_id, server_id, score_raw, created_on)
   values (?, ?, ?, ?);
 
+-- name: UpdateServerScoreStatus :exec
+update server_scores
+  set status = ?
+  where monitor_id = ? and server_id = ?;
+
 -- name: UpdateServerScoreStratum :exec
 UPDATE server_scores
   SET stratum  = ?
@@ -135,13 +140,50 @@ SELECT s.*
         ON (s.id=ss.server_id)
 WHERE (monitor_id = sqlc.arg('monitor_id')
     AND s.ip_version = sqlc.arg('ip_version')
-    AND (ss.score_ts IS NULL OR
-          (ss.score_raw > -90 AND ss.score_ts <
-            DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes') minute)
-            OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 65 minute)) ) )
+    AND (ss.score_ts IS NULL
+          OR (ss.score_raw > -90 AND ss.status = "active"
+               AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes') minute))
+          OR (ss.score_raw > -90 AND ss.status = "testing"
+              AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes_testing') minute))
+          OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes_all') minute) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
 ORDER BY score_ts
 LIMIT  ?
 OFFSET ?;
+
+-- name: GetMonitorPriority :many
+select m.id, m.tls_name,
+    avg(ls.rtt) / 1000 as avg_rtt,
+    round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
+    avg(ls.step) as avg_step,
+    if(avg(ls.step) < 0, false, true) as healthy,
+    m.status as monitor_status, ss.status as status,
+    count(*) as count
+  from log_scores ls
+  inner join monitors m
+  left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
+  where
+    m.id = ls.monitor_id
+  and ls.server_id = ?
+  and m.type = 'monitor'
+  and ls.ts > date_sub(now(), interval 12 hour)
+  group by m.id, m.tls_name, m.status, ss.status
+  order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
+
+-- name: GetServersMonitorReview :many
+select server_id from servers_monitor_review
+where (next_review <= NOW() OR next_review is NULL)
+order by next_review
+limit 1;
+
+-- name: UpdateServersMonitorReview :exec
+update servers_monitor_review
+  set last_review=NOW(), next_review=?
+  where server_id=?;
+
+-- name: UpdateServersMonitorReviewChanged :exec
+update servers_monitor_review
+  set last_review=NOW(), last_change=NOW(), next_review=?
+  where server_id=?;

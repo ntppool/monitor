@@ -234,9 +234,9 @@ func (ns NullMonitorsType) Value() (driver.Value, error) {
 type ServerScoresStatus string
 
 const (
-	ServerScoresStatusInactive ServerScoresStatus = "inactive"
-	ServerScoresStatusTesting  ServerScoresStatus = "testing"
-	ServerScoresStatusActive   ServerScoresStatus = "active"
+	ServerScoresStatusNew     ServerScoresStatus = "new"
+	ServerScoresStatusTesting ServerScoresStatus = "testing"
+	ServerScoresStatusActive  ServerScoresStatus = "active"
 )
 
 func (e *ServerScoresStatus) Scan(src interface{}) error {
