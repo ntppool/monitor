@@ -118,6 +118,7 @@ type newStatus struct {
 	MonitorStatus ntpdb.MonitorsStatus
 	CurrentStatus ntpdb.ServerScoresStatus
 	NewState      candidateState
+	RTT           float64
 }
 
 type newStatusList []newStatus
@@ -241,6 +242,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 			MonitorID:     candidate.ID,
 			MonitorStatus: candidate.MonitorStatus,
 			CurrentStatus: currentStatus,
+			RTT:           rtt,
 		}
 
 		switch candidate.MonitorStatus {
@@ -252,9 +254,11 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 			case healthy == 0:
 				s = candidateOut
 
-			case rtt < 0.5:
-				// no succesful probes
-				s = candidateOut
+			// case rtt < 0.01:
+			//  rtt is low when there were no successful probes,
+			//  but this should also result in healthy == 0 because
+			//  the average step value is low.
+			// 	s = candidateOut
 
 			case candidate.Count < 5:
 				s = candidateOut
@@ -320,7 +324,13 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 	}
 
 	for _, ns := range nsl {
-		log.Info("nsl", "monitorID", ns.MonitorID, "monitorStatus", ns.MonitorStatus, "currentStatus", ns.CurrentStatus, "newState", ns.NewState)
+		log.Info("nsl",
+			"monitorID", ns.MonitorID,
+			"monitorStatus", ns.MonitorStatus,
+			"currentStatus", ns.CurrentStatus,
+			"newState", ns.NewState,
+			"rtt", ns.RTT,
+		)
 	}
 
 	maxRemovals := allowedChanges
