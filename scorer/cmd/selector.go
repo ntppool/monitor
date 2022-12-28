@@ -76,8 +76,9 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 		if err != nil {
 			return err
 		}
-		log.Printf("Processed %d servers", count)
-
+		if count > 0 || !continuous {
+			log.Printf("Processed %d servers", count)
+		}
 		if !continuous {
 			break
 		}

@@ -79,7 +79,9 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 		if err != nil {
 			return err
 		}
-		log.Printf("Processed %d log scores", count)
+		if count > 0 || !continuous {
+			log.Printf("Processed %d log scores", count)
+		}
 
 		if !continuous {
 			break
