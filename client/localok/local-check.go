@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
 	"go.ntppool.org/monitor/api/pb"
-	"inet.af/netaddr"
+	"go4.org/netipx"
 
 	"go.ntppool.org/monitor/client/monitor"
 )
@@ -94,7 +95,7 @@ func (l *LocalOK) update() bool {
 
 	type namedIP struct {
 		Name string
-		IP   *netaddr.IP
+		IP   *netip.Addr
 	}
 
 	hosts := []namedIP{}
@@ -110,12 +111,12 @@ func (l *LocalOK) update() bool {
 			log.Printf("dns lookup for '%s': %s", h, err)
 			continue
 		}
-		var ip *netaddr.IP
+		var ip *netip.Addr
 
 		// log.Printf("got IPs for %s: %s", h, ips)
 
 		for _, dnsIP := range ips {
-			i, ok := netaddr.FromStdIP(dnsIP)
+			i, ok := netipx.FromStdIP(dnsIP)
 			if !ok {
 				continue
 			}
@@ -180,7 +181,7 @@ func (l *LocalOK) update() bool {
 	return true
 }
 
-func (l *LocalOK) sanityCheckHost(name string, ip *netaddr.IP) (bool, error) {
+func (l *LocalOK) sanityCheckHost(name string, ip *netip.Addr) (bool, error) {
 	status, err := monitor.CheckHost(ip, l.cfg)
 	if err != nil {
 		return false, err

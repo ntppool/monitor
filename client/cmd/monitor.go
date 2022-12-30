@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -21,7 +22,6 @@ import (
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"inet.af/netaddr"
 )
 
 // Todo:
@@ -210,7 +210,7 @@ func run(api pb.Monitor) (bool, error) {
 
 		wg.Add(1)
 
-		go func(s *netaddr.IP, ticket []byte) {
+		go func(s *netip.Addr, ticket []byte) {
 			status, err := monitor.CheckHost(s, serverlist.Config)
 			if status == nil {
 				status = &pb.ServerStatus{

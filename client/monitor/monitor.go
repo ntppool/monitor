@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"net/netip"
 	"time"
 	"unicode/utf8"
 
@@ -11,11 +12,10 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"inet.af/netaddr"
 )
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
+func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
@@ -122,7 +122,7 @@ func CheckHost(ip *netaddr.IP, cfg *pb.Config) (*pb.ServerStatus, error) {
 	return best, nil
 }
 
-func ntpResponseToStatus(ip *netaddr.IP, resp *ntp.Response) *pb.ServerStatus {
+func ntpResponseToStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {
 	//log.Printf("Leap: %d", resp.Leap)
 	status := &pb.ServerStatus{
 		TS:         timestamppb.Now(),

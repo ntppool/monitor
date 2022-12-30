@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
-	"inet.af/netaddr"
 
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
@@ -162,7 +162,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	for _, server := range servers {
 		pServer := &pb.Server{}
 
-		ip, err := netaddr.ParseIP(server.Ip)
+		ip, err := netip.ParseAddr(server.Ip)
 		if err != nil {
 			return nil, err
 		}

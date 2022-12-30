@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/netip"
 	"os"
 	"path"
 	"strconv"
@@ -18,7 +19,6 @@ import (
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
-	"inet.af/netaddr"
 )
 
 // On the server we use vault-agent to authenticate and
@@ -95,7 +95,7 @@ func getSignatureVersion(sig []byte) (int, error) {
 	return version, nil
 }
 
-func (tm *TokenManager) Validate(monitorID int32, batchID []byte, ip *netaddr.IP, sig []byte) (bool, error) {
+func (tm *TokenManager) Validate(monitorID int32, batchID []byte, ip *netip.Addr, sig []byte) (bool, error) {
 	version, err := getSignatureVersion(sig)
 	if err != nil || version == 0 {
 		return false, err
@@ -120,7 +120,7 @@ func (tm *TokenManager) Validate(monitorID int32, batchID []byte, ip *netaddr.IP
 	return false, fmt.Errorf("could not validate signature")
 }
 
-func (tm *TokenManager) Sign(monitorID int32, batchID []byte, ip *netaddr.IP) ([]byte, error) {
+func (tm *TokenManager) Sign(monitorID int32, batchID []byte, ip *netip.Addr) ([]byte, error) {
 
 	token, err := tm.getToken(context.Background())
 	if err != nil {
@@ -131,7 +131,7 @@ func (tm *TokenManager) Sign(monitorID int32, batchID []byte, ip *netaddr.IP) ([
 	return tm.signWith(monitorID, batchID, ip, token)
 }
 
-func (tm *TokenManager) signWith(monitorID int32, batchID []byte, ip *netaddr.IP, token *token) ([]byte, error) {
+func (tm *TokenManager) signWith(monitorID int32, batchID []byte, ip *netip.Addr, token *token) ([]byte, error) {
 
 	hm := hmac.New(sha256.New, []byte(token.Secret))
 
