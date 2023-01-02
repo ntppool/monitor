@@ -15,6 +15,7 @@ type MonitorConfig struct {
 	NatIP      string   `json:"nat_ip,omitempty"` // have the monitor bind to a different IP
 	BaseChecks []string `json:"base_checks,omitempty"`
 	ip         string
+	MQTT       *pb.MQTTConfig
 }
 
 func (m *Monitor) IsLive() bool {
@@ -80,6 +81,10 @@ func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {
 		return nil, err
 	}
 	rcfg.IPBytes, _ = ip.MarshalBinary()
+
+	if cfg.MQTT != nil {
+		rcfg.MQTTConfig = cfg.MQTT
+	}
 
 	return rcfg, nil
 }

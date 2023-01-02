@@ -16,6 +16,8 @@ service Monitor {
 
   // SubmitResults returns the specified list ServerStatus to the monitoring server
   rpc SubmitResults(ServerStatusList) returns (ServerStatusResult) {}
+
+
 }
 
 message GetConfigParams {}
@@ -27,17 +29,25 @@ message Config {
   bytes  IPBytes = 2;
   bytes  IPNatBytes = 3;
   repeated bytes BaseChecks = 4;
+  MQTTConfig MQTTConfig = 5;
+}
+
+message MQTTConfig {
+  bytes Host = 1;
+  int32 Port = 2;
+  bytes JWT  = 3;
 }
 
 message Server {
   bytes  IPBytes = 1;
   bytes  Ticket = 2;
+  bool   Trace = 3;
 }
 
 message ServerList {
   Config config  = 1;
   repeated Server Servers = 2;
-  bytes BatchID = 3;
+  bytes BatchID = 3;  // todo future api: move this first
 }
 
 message ServerStatusList {

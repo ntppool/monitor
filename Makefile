@@ -1,3 +1,6 @@
+generate: sqlc
+	go generate ./...
+
 sqlc:
 	sqlc compile
 	sqlc generate

@@ -1,7 +1,6 @@
 package cmd
 
-//go:generate stringer -type=candidateStatus
-//go:generate stringer -type=newStatusOption
+//go:generate stringer -type=candidateState
 
 import (
 	"context"

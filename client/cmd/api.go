@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
+	"go.ntppool.org/monitor/mqtt"
 )
 
 func (cli *CLI) apiCmd() *cobra.Command {
@@ -89,8 +91,58 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Println("Got valid config; API access validated")
 	}
 
+	var mq *mqtt.MQTT
+
+	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
+
+		statusChannel := fmt.Sprintf("/devel/monitors/status/%s", cauth.Name)
+
+		mq, err = mqtt.New(cauth.Name, statusChannel, cfg, cauth)
+		if err != nil {
+			log.Fatalf("mqtt: %s", err)
+		}
+		log.Printf("mq: %+v", mq)
+		ok, token := mq.Connect()
+		if ok {
+			log.Printf("mq connected!")
+		} else {
+			token.WaitTimeout(5 * time.Second)
+			if err := token.Error(); err != nil {
+				log.Printf("mqtt connect error: %s", err)
+			} else {
+				log.Printf("publishing")
+				msg := fmt.Sprintf(
+					"online - %s", time.Now(),
+				)
+				token := mq.Publish(statusChannel, 1, true, msg)
+				token.WaitTimeout(5 * time.Second)
+				if err := token.Error(); err != nil {
+					log.Printf("mqtt publish error: %s", err)
+				} else {
+					log.Printf("published")
+				}
+			}
+		}
+
+		log.Printf("sending offline message")
+		token = mq.Publish(statusChannel+"/bye", 1, true, "offline")
+		log.Printf("offline message queued")
+
+		token.WaitTimeout(2 * time.Second)
+		if err := token.Error(); err != nil {
+			log.Printf("mqtt publish error: %s", err)
+		}
+		log.Printf("offline token done")
+
+		time.Sleep(2 * time.Second)
+		os.Exit(0)
+	}
+
 	cancel()
-	time.Sleep(time.Millisecond * 100)
+
+	// mq.Disconnect()
+
+	time.Sleep(time.Millisecond * 2000)
 
 	log.Printf("done!")
 

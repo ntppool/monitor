@@ -15,6 +15,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
+	"go.ntppool.org/monitor/server/jwt"
 )
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
@@ -64,7 +65,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	// the client always starts by getting a config, so we just track the user-agent here
+	// the client always starts by getting a config, so we track the user-agent here
 	if err = srv.updateUserAgent(ctx, monitor); err != nil {
 		log.Printf("error updating user-agent: %s", err)
 	}
@@ -84,6 +85,22 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 			return nil, err
 		}
 		span.AddEvent("Single Config")
+	}
+
+	if key := srv.cfg.JWTKey; len(key) > 0 {
+		jwtToken, err := jwt.GetToken(key, monitor.TlsName.String, false)
+		if err != nil {
+			log.Printf("error generating jwtToken: %s", err)
+		}
+		if len(jwtToken) > 0 {
+			cfg.MQTT = &pb.MQTTConfig{
+				Host: []byte("mqtt.ntppool.net"),
+				Port: 1883,
+				JWT:  []byte(jwtToken),
+			}
+		}
+	} else {
+		log.Printf("JWTKey not configured")
 	}
 
 	return cfg.PbConfig()

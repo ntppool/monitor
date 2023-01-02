@@ -34,6 +34,7 @@ type Server struct {
 type Config struct {
 	DeploymentEnv string
 	Listen        string
+	JWTKey        string
 	CertProvider  apitls.CertificateProvider
 }
 

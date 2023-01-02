@@ -16,12 +16,15 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"go.ntppool.org/pingtrace/traceroute"
+
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Todo:
@@ -210,7 +213,27 @@ func run(api pb.Monitor) (bool, error) {
 
 		wg.Add(1)
 
-		go func(s *netip.Addr, ticket []byte) {
+		go func(s *netip.Addr, trace bool, ticket []byte) {
+
+			if trace {
+				// todo: get psuedo lock from channel to manage parallel traceroutes
+
+				tr, err := traceroute.New(*s)
+				if err != nil {
+					log.Printf("traceroute: %s", err)
+				}
+				tr.Start(ctx)
+				x, err := tr.ReadAll()
+				if err != nil {
+					log.Printf("traceroute: %s", err)
+				}
+
+				log.Printf("traceroute: %+v", x)
+
+				wg.Done()
+				return
+			}
+
 			status, err := monitor.CheckHost(s, serverlist.Config)
 			if status == nil {
 				status = &pb.ServerStatus{
@@ -234,7 +257,7 @@ func run(api pb.Monitor) (bool, error) {
 			status.TS = timestamppb.Now()
 			statuses = append(statuses, status)
 			wg.Done()
-		}(s.IP(), s.Ticket)
+		}(s.IP(), s.Trace, s.Ticket)
 	}
 
 	wg.Wait()

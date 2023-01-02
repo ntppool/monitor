@@ -27,6 +27,8 @@ type APIConfig struct {
 
 	DeploymentMode string `default:"" usage:"prod, test or devel" flag:"deployment-mode"`
 
+	JWTKey string `default:"" usage:"JWT signing key" flag:"jwtkey"`
+
 	loaded bool
 	loader *aconfig.Loader
 	args   []string

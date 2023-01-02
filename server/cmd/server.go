@@ -54,6 +54,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	scfg := server.Config{
 		Listen:        cfg.Listen,
 		CertProvider:  cm,
+		JWTKey:        cfg.JWTKey,
 		DeploymentEnv: cfg.DeploymentMode,
 	}
 
