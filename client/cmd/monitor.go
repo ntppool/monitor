@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
@@ -25,6 +27,7 @@ import (
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
+	"go.ntppool.org/monitor/mqttcm"
 )
 
 // Todo:
@@ -114,6 +117,25 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("could not get config: %s", err)
 	}
 
+	var mq *autopaho.ConnectionManager
+	statusChannel := fmt.Sprintf("%s/status/%s/status", cfg.MQTTConfig.Prefix, cauth.Name)
+
+	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
+
+		router := paho.NewSingleHandlerRouter(func(m *paho.Publish) {
+			log.Printf("mqtt client message on %q: %s", m.Topic, m.Payload)
+		})
+
+		mq, err = mqttcm.Setup(ctx, cauth.Name, statusChannel, []string{}, router, cfg.MQTTConfig, cauth)
+		if err != nil {
+			log.Fatalf("mqtt: %s", err)
+		}
+		err := mq.AwaitConnection(ctx)
+		if err != nil {
+			log.Fatalf("mqtt connection error: %s", err)
+		}
+	}
+
 	localOK := localok.NewLocalOK(cfg)
 
 	if *sanityOnlyFlag {
@@ -127,10 +149,19 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		}
 	}
 
+	if mq != nil {
+		msg, _ := mqttcm.StatusMessageJSON(true)
+		mq.Publish(ctx, &paho.Publish{
+			Topic:   statusChannel,
+			Payload: msg,
+			QoS:     1,
+			Retain:  true,
+		})
+	}
+
 	i := 0
 
 	for {
-
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
 		boff.InitialInterval = 3 * time.Second
@@ -167,6 +198,18 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		if i > 0 && *onceFlag {
 			log.Printf("Asked to only run once, so bye now.")
 			break
+		}
+	}
+
+	mq.Disconnect(ctx)
+
+	cancelMonitor()
+
+	if mq != nil {
+		// wait until the mqtt connection is done; or two seconds
+		select {
+		case <-mq.Done():
+		case <-time.After(2 * time.Second):
 		}
 	}
 

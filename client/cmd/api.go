@@ -7,13 +7,15 @@ import (
 	"os"
 	"time"
 
+	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/paho"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
-	"go.ntppool.org/monitor/mqtt"
+	"go.ntppool.org/monitor/mqttcm"
 )
 
 func (cli *CLI) apiCmd() *cobra.Command {
@@ -91,60 +93,54 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Println("Got valid config; API access validated")
 	}
 
-	var mq *mqtt.MQTT
+	var mq *autopaho.ConnectionManager
 
 	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
 
-		statusChannel := fmt.Sprintf("/devel/monitors/status/%s", cauth.Name)
-
-		mq, err = mqtt.New(cauth.Name, statusChannel, cfg, cauth)
+		mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, cfg.MQTTConfig, cauth)
 		if err != nil {
 			log.Fatalf("mqtt: %s", err)
 		}
-		log.Printf("mq: %+v", mq)
-		ok, token := mq.Connect()
-		if ok {
-			log.Printf("mq connected!")
-		} else {
-			token.WaitTimeout(5 * time.Second)
-			if err := token.Error(); err != nil {
-				log.Printf("mqtt connect error: %s", err)
-			} else {
-				log.Printf("publishing")
-				msg := fmt.Sprintf(
-					"online - %s", time.Now(),
-				)
-				token := mq.Publish(statusChannel, 1, true, msg)
-				token.WaitTimeout(5 * time.Second)
-				if err := token.Error(); err != nil {
-					log.Printf("mqtt publish error: %s", err)
-				} else {
-					log.Printf("published")
-				}
-			}
+		err := mq.AwaitConnection(ctx)
+		if err != nil {
+			log.Fatalf("mqtt connection error: %s", err)
+		}
+		msg := []byte(fmt.Sprintf(
+			"API test - %s", time.Now(),
+		))
+		channel := fmt.Sprintf("%s/status/%s/api-test", cfg.MQTTConfig.Prefix, cauth.Name)
+
+		_, err = mq.Publish(ctx, &paho.Publish{
+			QoS:     1,
+			Topic:   channel,
+			Payload: msg,
+			Retain:  false,
+		})
+		if err != nil {
+			log.Printf("publish error: %s", err)
 		}
 
-		log.Printf("sending offline message")
-		token = mq.Publish(statusChannel+"/bye", 1, true, "offline")
-		log.Printf("offline message queued")
+		// log.Printf("sending offline message")
+		// token = mq.Publish(statusChannel+"/bye", 1, true, "offline")
+		// log.Printf("offline message queued")
 
-		token.WaitTimeout(2 * time.Second)
-		if err := token.Error(); err != nil {
-			log.Printf("mqtt publish error: %s", err)
-		}
-		log.Printf("offline token done")
+	}
 
-		time.Sleep(2 * time.Second)
-		os.Exit(0)
+	if mq != nil {
+		mq.Disconnect(ctx)
 	}
 
 	cancel()
 
-	// mq.Disconnect()
+	if mq != nil {
+		// wait until the mqtt connection is done; or two seconds
+		select {
+		case <-mq.Done():
+		case <-time.After(2 * time.Second):
+		}
+	}
 
-	time.Sleep(time.Millisecond * 2000)
-
-	log.Printf("done!")
+	log.Printf("done")
 
 	return nil
 }

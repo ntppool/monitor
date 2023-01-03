@@ -1,2 +1,6 @@
 ntppool-monitor.toml
+ntppool-monitor.json
 state/
+devel
+*.dev.json
+*.ntppool.dev/

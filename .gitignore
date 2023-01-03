@@ -8,3 +8,9 @@
 dist/
 vendor/
 devel/
+
+
+devspace.yaml
+devspace_start.sh
+dev-dsn
+devsync

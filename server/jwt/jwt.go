@@ -2,7 +2,6 @@ package jwt
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	gjwt "github.com/golang-jwt/jwt/v4"
@@ -25,11 +24,22 @@ func GetToken(key, subject string, admin bool) (string, error) {
 	subscribe := []string{}
 	expireAt := time.Now().Add(24 * time.Hour)
 	notBefore := time.Now().Add(-30 * time.Second)
-	log.Printf("not before: %s", notBefore)
+	// log.Printf("not before: %s", notBefore)
 
-	depEnv, err := api.GetDeploymentEnvironment(subject)
-	if err != nil {
-		return "", err
+	depEnv := ""
+	var err error
+
+	switch subject {
+	case "monitor-api-dev.ntppool.net":
+		depEnv = "devel"
+	case "mqtt-admin.mon.ntppool.dev":
+		depEnv = "" // for admin cli tool
+
+	default:
+		depEnv, err = api.GetDeploymentEnvironment(subject)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	if admin {
@@ -56,15 +66,15 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		gjwt.RegisteredClaims{
 			ExpiresAt: gjwt.NewNumericDate(expireAt),
 			// IssuedAt:  gjwt.NewNumericDate(notBefore),
-			// NotBefore: gjwt.NewNumericDate(notBefore),
+			NotBefore: gjwt.NewNumericDate(notBefore),
+			Subject:   subject,
 			// Issuer:  "ntppool-monitor",
-			Subject: subject,
 			// Audience:  []string{"mqtt.ntppool.net"},
 			// ID:        "1",
 		},
 	}
 
-	log.Printf("claims: %+v", claims)
+	// log.Printf("claims: %+v", claims)
 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
 	ss, err := token.SignedString(mySigningKey)

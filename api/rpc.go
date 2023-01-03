@@ -52,11 +52,6 @@ func GetDeploymentEnvironment(clientName string) (string, error) {
 
 	clientName = strings.ToLower(clientName)
 
-	switch clientName {
-	case "mqtt-admin.mon.ntppool.dev":
-		return "", nil
-	}
-
 	if !strings.HasSuffix(clientName, ".mon.ntppool.dev") {
 		return "", fmt.Errorf("invalid client name %s", clientName)
 	}

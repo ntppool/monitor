@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/netip"
 	"strings"
@@ -92,11 +93,15 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		if err != nil {
 			log.Printf("error generating jwtToken: %s", err)
 		}
+
+		mqttPrefix := fmt.Sprintf("/%s/monitors", srv.cfg.DeploymentEnv)
+
 		if len(jwtToken) > 0 {
 			cfg.MQTT = &pb.MQTTConfig{
-				Host: []byte("mqtt.ntppool.net"),
-				Port: 1883,
-				JWT:  []byte(jwtToken),
+				Host:   []byte("mqtt.ntppool.net"),
+				Port:   1883,
+				JWT:    []byte(jwtToken),
+				Prefix: []byte(mqttPrefix),
 			}
 		}
 	} else {

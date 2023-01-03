@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/twitchtv/twirp"
 	otrace "go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
@@ -66,7 +68,10 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 	return srv, nil
 }
 
-func (srv *Server) Run() error {
+func (srv *Server) Run(ctx context.Context) error {
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.TextFormatter{})
@@ -141,9 +146,15 @@ func (srv *Server) Run() error {
 		Handler: srv.m.Handler(),
 	}
 
-	go func() {
-		log.Printf("metrics server: %s", metricsServer.ListenAndServe())
-	}()
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		err := metricsServer.ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("metrics server: %w", err)
+		}
+		return nil
+	})
 
 	server := &http.Server{
 		Addr: ":8000",
@@ -157,7 +168,17 @@ func (srv *Server) Run() error {
 		IdleTimeout:       240 * time.Second,
 	}
 
-	return server.ListenAndServeTLS("", "")
+	g.Go(func() error {
+		err := server.ListenAndServeTLS("", "")
+		if err != nil {
+			return fmt.Errorf("server listen: %w", err)
+		}
+		return nil
+	})
+
+	err = g.Wait()
+
+	return err
 }
 
 func NewLoggingServerHooks() *twirp.ServerHooks {

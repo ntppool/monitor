@@ -33,9 +33,10 @@ message Config {
 }
 
 message MQTTConfig {
-  bytes Host = 1;
-  int32 Port = 2;
-  bytes JWT  = 3;
+  bytes Host   = 1;
+  int32 Port   = 2;
+  bytes JWT    = 3;
+  bytes Prefix = 4; // base prefix for topic ("/devel/monitors/" for example)
 }
 
 message Server {
