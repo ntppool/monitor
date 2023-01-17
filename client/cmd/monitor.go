@@ -60,21 +60,22 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Fatalf("auth error: %s", err)
 	}
 
+	deployEnv, err := api.GetDeploymentEnvironmentFromName(cauth.Name)
+	if err != nil {
+		log.Printf("error: %s", err)
+	}
+
 	err = cauth.Login()
 	if err != nil {
 		var aerr auth.AuthenticationError
 		if errors.As(err, &aerr) {
 			var url string
-			deployEnv, err := api.GetDeploymentEnvironment(cauth.Name)
-			if err != nil {
-				log.Printf("error: %s", err)
-			}
 			switch deployEnv {
-			case "devel":
+			case api.DeployDevel:
 				url = "https://manage.askdev.grundclock.com/manage/monitors"
-			case "test":
+			case api.DeployTest:
 				url = "https://manage.beta.grundclock.com/manage/monitors"
-			case "prod":
+			case api.DeployProd:
 				url = "https://manage.ntppool.org/manage/monitors"
 			default:
 				url = "the management site"
@@ -118,7 +119,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	}
 
 	var mq *autopaho.ConnectionManager
-	statusChannel := fmt.Sprintf("%s/status/%s/status", cfg.MQTTConfig.Prefix, cauth.Name)
+	topics := mqttcm.NewTopics(deployEnv)
+	statusChannel := topics.Status(cauth.Name)
 
 	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
 
@@ -126,10 +128,18 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			log.Printf("mqtt client message on %q: %s", m.Topic, m.Payload)
 		})
 
-		mq, err = mqttcm.Setup(ctx, cauth.Name, statusChannel, []string{}, router, cfg.MQTTConfig, cauth)
+		// todo: once a day get a new mqtt config / JWT
+
+		mq, err = mqttcm.Setup(
+			ctx, cauth.Name, statusChannel,
+			[]string{
+				topics.RequestSubscription(cauth.Name),
+			}, router, cfg.MQTTConfig, cauth,
+		)
 		if err != nil {
 			log.Fatalf("mqtt: %s", err)
 		}
+
 		err := mq.AwaitConnection(ctx)
 		if err != nil {
 			log.Fatalf("mqtt connection error: %s", err)
@@ -157,6 +167,17 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			QoS:     1,
 			Retain:  true,
 		})
+
+		// old, clear retained message
+		// oldChannel := fmt.Sprintf("%s/status/%s/online", cfg.MQTTConfig.Prefix, cauth.Name)
+		// for _, qos := range []byte{0, 1, 2} {
+		// 	mq.Publish(ctx, &paho.Publish{
+		// 		Topic:   oldChannel,
+		// 		Payload: []byte{},
+		// 		QoS:     qos,
+		// 		Retain:  true,
+		// 	})
+		// }
 	}
 
 	i := 0

@@ -20,7 +20,7 @@ type ClientAuth struct {
 
 	Cert *tls.Certificate `json:"-"`
 
-	deploymentEnv string
+	deploymentEnv api.DeploymentEnvironment
 
 	// CertRaw []byte `json:"Cert"`
 	// KeyRaw  []byte `json:"Key"`
@@ -32,7 +32,7 @@ type ClientAuth struct {
 
 func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error) {
 
-	depEnv, err := api.GetDeploymentEnvironment(name)
+	depEnv, err := api.GetDeploymentEnvironmentFromName(name)
 	if err != nil {
 		return nil, err
 	}

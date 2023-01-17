@@ -2,11 +2,13 @@ package jwt
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	gjwt "github.com/golang-jwt/jwt/v4"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/mqttcm"
 )
 
 type MosquittoClaims struct {
@@ -26,39 +28,47 @@ func GetToken(key, subject string, admin bool) (string, error) {
 	notBefore := time.Now().Add(-30 * time.Second)
 	// log.Printf("not before: %s", notBefore)
 
-	depEnv := ""
+	depEnv := api.DeployUndefined
 	var err error
 
 	switch subject {
 	case "monitor-api-dev.ntppool.net":
-		depEnv = "devel"
+		depEnv = api.DeployDevel
 	case "mqtt-admin.mon.ntppool.dev":
-		depEnv = "" // for admin cli tool
+		// for admin cli tool
 
 	default:
-		depEnv, err = api.GetDeploymentEnvironment(subject)
+		depEnv, err = api.GetDeploymentEnvironmentFromName(subject)
 		if err != nil {
 			return "", err
 		}
 	}
 
+	topics := mqttcm.NewTopics(depEnv)
+
 	if admin {
 		expireAt = time.Now().Add(168 * time.Hour)
-		subscribe = append(subscribe, "#", "/#", "/devel/#", "/devel/monitors/monitor-status")
+		subscribe = append(subscribe, "#", "/#", "devel/#")
 		publish = append(publish, "#", "/#")
 	} else {
 		subscribe = append(subscribe,
 			// "#", "/#",
-			fmt.Sprintf("/%s/monitors/requests/%s", depEnv, subject),
+			topics.RequestSubscription(subject),
 		)
 
 		publish = append(publish,
 			// %u and %c aren't supported
-			fmt.Sprintf("/%s/monitors/status/%s/+", depEnv, subject),
-			fmt.Sprintf("/%s/monitors/data/%s", depEnv, subject),
+
+			topics.Status(subject),
+			topics.StatusAPITest(subject),
+
 			fmt.Sprintf("/%s/monitors/data/%s/+", depEnv, subject),
+			fmt.Sprintf("/%s/monitors/data/%s/+/+", depEnv, subject),
 		)
 	}
+
+	log.Printf("subscribe topics: %+v", subscribe)
+	log.Printf("publish   topics: %+v", publish)
 
 	claims := MosquittoClaims{
 		subscribe,
@@ -74,7 +84,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		},
 	}
 
-	// log.Printf("claims: %+v", claims)
+	log.Printf("claims: %+v", claims)
 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
 	ss, err := token.SignedString(mySigningKey)

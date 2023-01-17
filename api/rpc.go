@@ -16,12 +16,6 @@ import (
 	"go.ntppool.org/monitor/version"
 )
 
-var apiServers = map[string]string{
-	"devel": "https://api.devel.mon.ntppool.dev",
-	"test":  "https://api.test.mon.ntppool.dev",
-	"prod":  "https://api.mon.ntppool.dev",
-}
-
 func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 
 	capool, err := apitls.CAPool()
@@ -48,25 +42,25 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 	return client, nil
 }
 
-func GetDeploymentEnvironment(clientName string) (string, error) {
+func GetDeploymentEnvironmentFromName(clientName string) (DeploymentEnvironment, error) {
 
 	clientName = strings.ToLower(clientName)
 
 	if !strings.HasSuffix(clientName, ".mon.ntppool.dev") {
-		return "", fmt.Errorf("invalid client name %s", clientName)
+		return DeployUndefined, fmt.Errorf("invalid client name %s", clientName)
 	}
 
 	prefix := clientName[:strings.Index(clientName, ".mon.ntppool.dev")]
 	parts := strings.Split(prefix, ".")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid client name %s", clientName)
+		return DeployUndefined, fmt.Errorf("invalid client name %s", clientName)
 	}
 
-	if _, ok := apiServers[parts[1]]; ok {
-		return parts[1], nil
+	if d, err := DeploymentEnvironmentFromString(parts[1]); err == nil {
+		return d, nil
 	}
 
-	return "", fmt.Errorf("invalid client name %s (unknown environment %s)", clientName, parts[1])
+	return DeployUndefined, fmt.Errorf("invalid client name %s (unknown environment %s)", clientName, parts[1])
 
 }
 
@@ -76,7 +70,7 @@ func getServerName(clientName string) (string, error) {
 		return e, nil
 	}
 
-	depEnv, err := GetDeploymentEnvironment(clientName)
+	depEnv, err := GetDeploymentEnvironmentFromName(clientName)
 	if err != nil {
 		return "", err
 	}

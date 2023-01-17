@@ -155,12 +155,12 @@ func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []b
 		"ttl":         "120h",
 	}
 
-	depEnv, err := api.GetDeploymentEnvironment(name)
+	depEnv, err := api.GetDeploymentEnvironmentFromName(name)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	issuePath := "pki_servers/issue/monitors-" + depEnv
+	issuePath := "pki_servers/issue/monitors-" + depEnv.String()
 
 	rv, err := v.client.Logical().WriteWithContext(ctx, issuePath, data)
 	if err != nil {

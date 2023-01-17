@@ -97,7 +97,7 @@ func NewServerHooks(registerer prometheus.Registerer) *twirp.ServerHooks {
 		responsesSent.WithLabelValues(method, status, client).Inc()
 
 		if start, ok := getReqStart(ctx); ok {
-			dur := time.Now().Sub(start).Seconds()
+			dur := time.Since(start).Seconds()
 			rpcDurations.WithLabelValues(method, status, client).Observe(dur)
 		}
 	}

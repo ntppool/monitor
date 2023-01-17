@@ -1,4 +1,4 @@
-package server
+package ulid
 
 import (
 	cryptorand "crypto/rand"
@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	oklid "github.com/oklog/ulid/v2"
 )
 
 var monotonicPool = sync.Pool{
@@ -29,16 +29,16 @@ var monotonicPool = sync.Pool{
 		// log.Printf("inc:  %d", inc)
 
 		// inc = inc & ^uint64(1<<63) // only want 63 bits
-		mono := ulid.Monotonic(rand, inc)
+		mono := oklid.Monotonic(rand, inc)
 		return mono
 	},
 }
 
-func makeULID(t time.Time) (*ulid.ULID, error) {
+func MakeULID(t time.Time) (*oklid.ULID, error) {
 
 	mono := monotonicPool.Get().(io.Reader)
 
-	id, err := ulid.New(ulid.Timestamp(t), mono)
+	id, err := oklid.New(oklid.Timestamp(t), mono)
 	if err != nil {
 		return nil, err
 	}

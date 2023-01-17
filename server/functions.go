@@ -17,6 +17,7 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
+	"go.ntppool.org/monitor/server/ulid"
 )
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
@@ -147,7 +148,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	now := time.Now()
-	batchID, err := makeULID(now)
+	batchID, err := ulid.MakeULID(now)
 	if err != nil {
 		return nil, err
 	}

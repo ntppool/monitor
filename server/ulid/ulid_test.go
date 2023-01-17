@@ -1,4 +1,4 @@
-package server
+package ulid
 
 import (
 	"log"
@@ -8,14 +8,14 @@ import (
 
 func TestULID(t *testing.T) {
 	tm := time.Now()
-	ul1, err := makeULID(tm)
+	ul1, err := MakeULID(tm)
 	if err != nil {
 		t.Logf("makeULID failed: %s", err)
 		t.Fail()
 	}
-	ul2, err := makeULID(tm)
+	ul2, err := MakeULID(tm)
 	if err != nil {
-		t.Logf("makeULID failed: %s", err)
+		t.Logf("MakeULID failed: %s", err)
 		t.Fail()
 	}
 	if ul1.String() == ul2.String() {

@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"time"
 
+	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
+	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
 	"go.ntppool.org/monitor/server/mqserver"
 	"golang.org/x/sync/errgroup"
@@ -94,6 +96,13 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	depEnv, err := api.DeploymentEnvironmentFromString(cfg.DeploymentMode)
+	if err != nil {
+		log.Fatalf("unknown deployment mode %q: %s", cfg.DeploymentMode, err)
+	}
+
+	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
+
 	jwttoken, err := jwt.GetToken(cfg.JWTKey, tlsName, true)
 	if err != nil {
 		log.Fatalf("jwt token: %s", err)
@@ -110,14 +119,16 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	statusTopic := fmt.Sprintf("/%s/monitors/status/#", cfg.DeploymentMode)
+	topicPrefix := fmt.Sprintf("/%s/monitors", cfg.DeploymentMode)
 
-	router := mqs.MQTTRouter(ctx, statusTopic)
+	log.Printf("ctx: %+v", ctx)
+
+	router := mqs.MQTTRouter(ctx, topicPrefix)
 
 	mq, err := mqttcm.Setup(
 		ctx, tlsName,
-		"",                    // status channel
-		[]string{statusTopic}, // subscriptions
+		"",                           // status channel
+		[]string{topicPrefix + "/#"}, // subscriptions
 		router, mqcfg, cm,
 	)
 	if err != nil {
@@ -128,6 +139,8 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		log.Printf("could not setup mqtt connection: %s", err)
 	}
 
+	mqs.SetConnectionManager(mq)
+
 	ctx, cancel := context.WithCancel(ctx)
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -135,6 +148,10 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		<-mq.Done()
 		log.Printf("mqtt connection done")
 		return nil
+	})
+
+	g.Go(func() error {
+		return mqs.Run(ctx)
 	})
 
 	// todo: ctx + errgroup

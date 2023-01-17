@@ -74,12 +74,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 
 	log.Printf("API key expires %s, created %s, remaining uses: %s", secretInfo["expiration_time"], secretInfo["creation_time"], secretInfo["secret_id_num_uses"])
 
-	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
+	ctx, apiC, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		log.Fatalf("Could not setup API: %s", err)
 	}
 
-	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
+	cfg, err := apiC.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
@@ -87,6 +87,11 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 			}
 		}
 		log.Fatalf("could not get config: %s", err)
+	}
+
+	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	if cfg.Samples > 0 {
@@ -108,11 +113,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		msg := []byte(fmt.Sprintf(
 			"API test - %s", time.Now(),
 		))
-		channel := fmt.Sprintf("%s/status/%s/api-test", cfg.MQTTConfig.Prefix, cauth.Name)
+
+		topics := mqttcm.NewTopics(depEnv)
 
 		_, err = mq.Publish(ctx, &paho.Publish{
 			QoS:     1,
-			Topic:   channel,
+			Topic:   topics.StatusAPITest(cauth.Name),
 			Payload: msg,
 			Retain:  false,
 		})

@@ -14,32 +14,34 @@ func TestClientState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mqs.MQTTHandler(&paho.Publish{
-		Topic:   "/devel/monitors/status/uspao-abc/online",
+	mqs.MQTTStatusHandler(&paho.Publish{
+		Topic:   "/devel/monitors/status/uspao-abc/status",
 		Payload: []byte("{\"Online\":true}"),
 	})
 
 	var lastSeen time.Time
 
-	if c, ok := mqs.clients["uspao-abc"]; !ok {
+	c, ok := mqs.clients["uspao-abc"]
+
+	if !ok {
 		t.Log("client didn't get registered")
-		t.Fail()
-
-		lastSeen = c.LastSeen
-
-		if !c.Online {
-			t.Log("client didn't get set online")
-			t.Fail()
-		}
-
-		if !c.LastSeen.After(time.Now().Add(-2 * time.Second)) {
-			t.Log("client didn't set LastSeen")
-			t.Fail()
-		}
+		t.FailNow()
 	}
 
-	mqs.MQTTHandler(&paho.Publish{
-		Topic:   "/devel/monitors/status/uspao-abc/online",
+	lastSeen = c.LastSeen
+
+	if !c.Online {
+		t.Log("client didn't get set online")
+		t.Fail()
+	}
+
+	if !c.LastSeen.After(time.Now().Add(-2 * time.Second)) {
+		t.Log("client didn't set LastSeen")
+		t.Fail()
+	}
+
+	mqs.MQTTStatusHandler(&paho.Publish{
+		Topic:   "/devel/monitors/status/uspao-abc/status",
 		Payload: []byte("{\"Online\":false}"),
 	})
 
