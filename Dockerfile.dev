@@ -1,13 +1,12 @@
-FROM golang:1.19.3-alpine AS build
+FROM golang:1.19.5-alpine AS build
 
 ADD . /go/src/monitor/
 WORKDIR /go/src/monitor
 RUN go install -v ./...
 
-FROM alpine:3.16.2
+FROM alpine:3.17.1
 
-#RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
-RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl
+RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
 RUN apk --no-cache upgrade --ignore alpine-baselayout
 
 RUN addgroup -g 1000 ntpmon && adduser -u 1000 -D -G ntpmon ntpmon

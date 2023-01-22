@@ -1,7 +1,7 @@
-FROM alpine:3.17.0
+FROM alpine:3.17.1
 
 RUN apk --no-cache upgrade
-RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl go
+RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl
 
 RUN addgroup -g 1000 ntpmon && adduser -u 1000 -D -G ntpmon ntpmon
 RUN touch ~ntpmon/.zshrc ~root/.zshrc; chown ntpmon:ntpmon ~ntpmon/.zshrc
