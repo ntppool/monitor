@@ -43,7 +43,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	cfg := cli.Config
 	ctx := context.Background()
 
-	log.Printf("acfg: %+v", cfg)
+	//log.Printf("acfg: %+v", cfg)
 
 	if len(cfg.DeploymentMode) == 0 {
 		return fmt.Errorf("deployment_mode configuration required")
@@ -114,7 +114,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		JWT:  []byte(jwttoken),
 	}
 
-	mqs, err := mqserver.Setup()
+	mqs, err := mqserver.Setup(dbconn)
 	if err != nil {
 		return err
 	}
@@ -157,20 +157,14 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	// todo: ctx + errgroup
 	go healthCheckListener()
 
-	log.Printf("xxx NewServer next")
-
 	g.Go(func() error {
-		log.Printf("NewServer()")
 		srv, err := server.NewServer(scfg, dbconn)
 		if err != nil {
 			log.Printf("NewServer() error: %s", err)
 			return fmt.Errorf("srv setup: %s", err)
 		}
-		log.Printf("xxx Run() next")
 		return srv.Run(ctx)
 	})
-
-	log.Printf("Wait()'ing")
 
 	err = g.Wait()
 	if err != nil {

@@ -9,7 +9,7 @@ import (
 
 func TestClientState(t *testing.T) {
 
-	mqs, err := Setup()
+	mqs, err := Setup(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

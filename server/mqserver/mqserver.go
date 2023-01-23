@@ -2,6 +2,7 @@ package mqserver
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,13 +23,16 @@ import (
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/mqttcm"
+	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/ulid"
 )
 
 type server struct {
-	cm  *autopaho.ConnectionManager
-	ctx context.Context
+	cm     *autopaho.ConnectionManager
+	db     *ntpdb.Queries
+	dbconn *sql.DB
+	ctx    context.Context
 
 	clients map[string]*client
 	cmux    sync.RWMutex
@@ -37,13 +41,20 @@ type server struct {
 }
 
 type client struct {
+	Name     string
 	Online   bool
 	LastSeen time.Time
+	Data     *ntpdb.Monitor
 }
 
-func Setup() (*server, error) {
+func Setup(dbconn *sql.DB) (*server, error) {
 	clients := map[string]*client{}
-	mqs := &server{clients: clients}
+	mqs := &server{clients: clients, dbconn: dbconn}
+	if dbconn != nil {
+		// tests run without the db
+		mqs.db = ntpdb.New(dbconn)
+	}
+
 	return mqs, nil
 }
 
@@ -84,7 +95,6 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	log.Printf("server got status message %d on %q: %s", p.PacketID, p.Topic, p.Payload)
 
 	path := strings.Split(p.Topic, "/")
-	log.Printf("l: %d, p: %+v", len(path), path)
 
 	if t := path[len(path)-1]; t != "status" {
 		log.Printf("skipping %q message from %q (%s)", t, p.Topic, p.Payload)
@@ -109,11 +119,23 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		mqs.clients[name] = cs
 	}
 
-	log.Printf("parsed status: %+v", status)
-
 	if status.Online {
 		cs.Online = true
 		cs.LastSeen = time.Now()
+
+		ctx := context.Background()
+
+		if mqs.db != nil {
+			mon, err := mqs.db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
+			if err != nil {
+				log.Printf("fetching monitor details: %s", err)
+			}
+			if mon.ID != 0 {
+				cs.Data = &mon
+				cs.Name = mon.TlsName.String
+			}
+		}
+
 	} else {
 		cs.Online = false
 	}
@@ -123,19 +145,14 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 }
 
-func (mqs *server) onlineClients() []string {
+func (mqs *server) seenClients() []client {
 	mqs.cmux.RLock()
 	defer mqs.cmux.RUnlock()
 
-	online := []string{}
+	online := []client{}
 
-	log.Printf("onlineClients: %+v", mqs.clients)
-
-	for n, c := range mqs.clients {
-		if !c.Online {
-			continue
-		}
-		online = append(online, n)
+	for _, c := range mqs.clients {
+		online = append(online, *c)
 	}
 
 	// todo: shuffle list
@@ -181,13 +198,21 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 		wg.Go(func() error {
 
-			for _, clientName := range mqs.onlineClients() {
+			for _, cl := range mqs.seenClients() {
 
-				log.Printf("sending request for %s", clientName)
-				span.AddEvent(fmt.Sprintf("sending request for %s", clientName))
+				if !cl.Online || cl.Data == nil {
+					continue
+				}
 
-				topic := topics.Request(clientName, "ntp")
-				responseTopic := topics.DataResponse(clientName, id.String())
+				if cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4() {
+					continue
+				}
+
+				log.Printf("sending request for %s", cl.Name)
+				span.AddEvent(fmt.Sprintf("sending request for %s", cl.Name))
+
+				topic := topics.Request(cl.Name, "ntp")
+				responseTopic := topics.DataResponse(cl.Name, id.String())
 
 				log.Printf("topics: %s => %s", topic, responseTopic)
 
@@ -277,19 +302,26 @@ func (mqs *server) setupEcho() error {
 	r.Use(otelecho.Middleware("mqserver"))
 
 	r.GET("/monitors/online", func(c echo.Context) error {
-		mqs.cmux.RLock()
-		defer mqs.cmux.RUnlock()
+		type onlineJSON struct {
+			Name      string
+			IpVersion string
+			LastSeen  time.Time
+			Online    bool
+		}
+		r := []onlineJSON{}
 
-		online := map[string]*client{}
-
-		for n, c := range mqs.clients {
-			if !c.Online {
-				continue
+		for _, o := range mqs.seenClients() {
+			if o.Data != nil {
+				r = append(r, onlineJSON{
+					Name:      o.Data.TlsName.String,
+					IpVersion: o.Data.IpVersion.MonitorsIpVersion.String(),
+					Online:    o.Online,
+					LastSeen:  o.LastSeen,
+				})
 			}
-			online[n] = c
 		}
 
-		return c.JSON(200, online)
+		return c.JSON(200, r)
 	})
 
 	r.POST("/check/ntp/:ip", mqs.CheckNTP())

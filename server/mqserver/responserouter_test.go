@@ -18,7 +18,7 @@ func TestResponseHandler(t *testing.T) {
 
 	ctx := context.Background()
 
-	mqs, err := Setup()
+	mqs, err := Setup(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
