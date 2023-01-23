@@ -3,18 +3,24 @@ package mqserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/beevik/ntp"
-	"github.com/eclipse/paho.golang/autopaho"
-	"github.com/eclipse/paho.golang/paho"
-	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/paho"
+
+	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel/attribute"
+	otrace "go.opentelemetry.io/otel/trace"
+
+	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/mqttcm"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/ulid"
@@ -144,10 +150,19 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 	return func(c echo.Context) error {
 
-		ctx, cancel := context.WithTimeout(mqs.ctx, time.Second*10)
+		ip, err := netip.ParseAddr(c.Param("ip"))
+		if err != nil {
+			return c.JSON(400, err)
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*10)
 		defer cancel()
 
-		var r ntp.Response
+		// spanContext := otrace.SpanContextFromContext(ctx)
+
+		span := otrace.SpanFromContext(ctx)
+
+		var r []*api.NTPResponse
 
 		wg, ctx := errgroup.WithContext(ctx)
 
@@ -160,6 +175,7 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 		log.Printf("request ID %s", id)
 
+		span.SetAttributes(attribute.String("Request ID", id.String()))
 		mqs.rr.AddResponseID(id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
@@ -168,11 +184,23 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 			for _, clientName := range mqs.onlineClients() {
 
 				log.Printf("sending request for %s", clientName)
+				span.AddEvent(fmt.Sprintf("sending request for %s", clientName))
 
 				topic := topics.Request(clientName, "ntp")
 				responseTopic := topics.DataResponse(clientName, id.String())
 
 				log.Printf("topics: %s => %s", topic, responseTopic)
+
+				data := struct {
+					IP string
+				}{
+					IP: ip.String(),
+				}
+
+				js, err := json.Marshal(&data)
+				if err != nil {
+					return c.JSON(500, err)
+				}
 
 				publishPacket := &paho.Publish{
 					Topic: topic,
@@ -180,11 +208,14 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 						ResponseTopic: responseTopic,
 						User:          paho.UserProperties{},
 					},
-					QoS:    0,
-					Retain: false,
+					QoS:     0,
+					Retain:  false,
+					Payload: js,
 				}
 
-				publishPacket.Properties.User.Add("name", "example")
+				publishPacket.Properties.User.Add("ID", id.String())
+				publishPacket.Properties.User.Add("TraceID", span.SpanContext().TraceID().String())
+				publishPacket.Properties.User.Add("SpanID", span.SpanContext().SpanID().String())
 
 				log.Printf("cm: %+v", mqs.cm)
 
@@ -193,10 +224,31 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 				select {
 
 				case p := <-rc:
-					log.Printf("got response publish message: %+v", p)
 
-					return nil
-				case <-time.After(time.Second * 2):
+					_, host, err := topics.ParseRequestTopic(p.Topic)
+					if err != nil {
+						log.Printf("could not parse servername from %s", p.Topic)
+						continue
+					}
+
+					host = host[:strings.Index(host, ".")]
+
+					log.Printf("got response publish message from %s : %+v", host, p)
+					span.AddEvent("got response from " + p.Topic)
+
+					resp := api.NTPResponse{}
+
+					err = json.Unmarshal(p.Payload, &resp)
+					if err != nil {
+						// todo: track the error but just log it if
+						// another response works?
+						continue
+					}
+					resp.Server = host
+					r = append(r, &resp)
+					continue
+
+				case <-time.After(time.Second * 10):
 					log.Printf("per client timeout")
 					continue
 
@@ -240,7 +292,7 @@ func (mqs *server) setupEcho() error {
 		return c.JSON(200, online)
 	})
 
-	r.POST("/check/ntp", mqs.CheckNTP())
+	r.POST("/check/ntp/:ip", mqs.CheckNTP())
 
 	err := r.Start(":8095")
 	return err

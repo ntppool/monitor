@@ -70,6 +70,8 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 
 func (srv *Server) Run(ctx context.Context) error {
 
+	log.Printf("Run()")
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -167,6 +169,8 @@ func (srv *Server) Run(ctx context.Context) error {
 		WriteTimeout:      20 * time.Second,
 		IdleTimeout:       240 * time.Second,
 	}
+
+	log.Printf("Starting gRPC server")
 
 	g.Go(func() error {
 		err := server.ListenAndServeTLS("", "")

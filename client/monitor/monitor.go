@@ -14,9 +14,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
+type response struct {
+	Response *ntp.Response
+	Status   *pb.ServerStatus
+	Error    error
+}
 
+// CheckHost runs the configured queries to the IP and returns one ServerStatus
+func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response, error) {
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
 	}
@@ -35,7 +40,7 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 		log.Printf("Did not get valid local configuration IP: %+v", configIP)
 	}
 
-	statuses := []*pb.ServerStatus{}
+	responses := []*response{}
 
 	for i := int32(0); i < cfg.Samples; i++ {
 
@@ -46,13 +51,16 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 
 		resp, err := ntp.QueryWithOptions(ip.String(), opts)
 		if err != nil {
-			status := &pb.ServerStatus{}
-			status.SetIP(ip)
-			if resp != nil {
-				status = ntpResponseToStatus(ip, resp)
+			r := &response{
+				Status: &pb.ServerStatus{},
 			}
-			status.Error = err.Error()
-			statuses = append(statuses, status)
+			r.Status.SetIP(ip)
+			if resp != nil {
+				r.Response = resp
+				r.Status = ntpResponseToStatus(ip, resp)
+			}
+			r.Error = err
+			responses = append(responses, r)
 			continue
 		}
 
@@ -63,7 +71,7 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {
 			if len(resp.KissCode) > 0 {
-				return status, fmt.Errorf("%s", resp.KissCode)
+				return status, resp, fmt.Errorf("%s", resp.KissCode)
 			}
 
 			refText := fmt.Sprintf("%#x", resp.ReferenceID)
@@ -73,38 +81,41 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 				refText = refText + ", " + refIDStr
 			}
 
-			return status,
+			return status, resp,
 				fmt.Errorf("bad stratum %d (referenceID: %s)",
 					resp.Stratum, refText)
 		}
 
 		if resp.Stratum > 6 {
-			return status, fmt.Errorf("bad stratum %d", resp.Stratum)
+			return status, resp, fmt.Errorf("bad stratum %d", resp.Stratum)
 		}
 
-		statuses = append(statuses, status)
+		responses = append(responses, &response{
+			Status:   status,
+			Response: resp,
+		})
 	}
 
-	var best *pb.ServerStatus
+	var best *response
 
 	// log.Printf("for %s we collected %d samples, now find the best result", ip.String(), len(statuses))
 
 	// todo: if there are more than 2 (3?) samples with an offset, throw
 	// away the offset outlier(s)
 
-	for _, status := range statuses {
+	for _, r := range responses {
 
 		// log.Printf("status for %s / %d: offset: %s rtt: %s err: %q", ip.String(), i, status.Offset.AsDuration(), status.RTT.AsDuration(), status.Error)
 
 		if best == nil {
-			best = status
+			best = r
 			continue
 		}
 
 		// todo: ... and it's otherwise a valid response
 
-		if len(status.Error) == 0 && (len(best.Error) > 0 || (status.RTT.AsDuration() < best.RTT.AsDuration())) {
-			best = status
+		if (r.Error == nil && r.Error != nil) || (r.Status.RTT.AsDuration() < best.Status.RTT.AsDuration()) {
+			best = r
 		}
 	}
 
@@ -115,11 +126,11 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, error) {
 	// log.Printf("best result for %s - offset: %s rtt: %s%s",
 	// 	ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
 
-	if len(best.Error) > 0 {
-		return best, fmt.Errorf("%s", best.Error)
+	if best.Error != nil {
+		return best.Status, best.Response, fmt.Errorf("%s", best.Error)
 	}
 
-	return best, nil
+	return best.Status, best.Response, nil
 }
 
 func ntpResponseToStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {

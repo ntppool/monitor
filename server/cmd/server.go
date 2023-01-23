@@ -157,15 +157,25 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	// todo: ctx + errgroup
 	go healthCheckListener()
 
+	log.Printf("xxx NewServer next")
+
 	g.Go(func() error {
+		log.Printf("NewServer()")
 		srv, err := server.NewServer(scfg, dbconn)
 		if err != nil {
+			log.Printf("NewServer() error: %s", err)
 			return fmt.Errorf("srv setup: %s", err)
 		}
+		log.Printf("xxx Run() next")
 		return srv.Run(ctx)
 	})
 
+	log.Printf("Wait()'ing")
+
 	err = g.Wait()
+	if err != nil {
+		log.Printf("server error: %s", err)
+	}
 
 	mq.Disconnect(ctx)
 

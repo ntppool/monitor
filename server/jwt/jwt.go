@@ -24,7 +24,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 
 	publish := []string{}
 	subscribe := []string{}
-	expireAt := time.Now().Add(24 * time.Hour)
+	expireAt := time.Now().Add(365 * 24 * time.Hour)
 	notBefore := time.Now().Add(-30 * time.Second)
 	// log.Printf("not before: %s", notBefore)
 

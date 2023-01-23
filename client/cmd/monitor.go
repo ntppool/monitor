@@ -124,9 +124,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
 
-		router := paho.NewSingleHandlerRouter(func(m *paho.Publish) {
-			log.Printf("mqtt client message on %q: %s", m.Topic, m.Payload)
-		})
+		mqc := monitor.NewMQClient(topics, cfg)
+		router := paho.NewSingleHandlerRouter(mqc.Handler)
 
 		// todo: once a day get a new mqtt config / JWT
 
@@ -144,6 +143,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		if err != nil {
 			log.Fatalf("mqtt connection error: %s", err)
 		}
+
+		mqc.SetMQ(mq)
+
 	}
 
 	localOK := localok.NewLocalOK(cfg)
@@ -298,7 +300,7 @@ func run(api pb.Monitor) (bool, error) {
 				return
 			}
 
-			status, err := monitor.CheckHost(s, serverlist.Config)
+			status, _, err := monitor.CheckHost(s, serverlist.Config)
 			if status == nil {
 				status = &pb.ServerStatus{
 					NoResponse: true,

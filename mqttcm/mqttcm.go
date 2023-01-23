@@ -62,7 +62,9 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				fmt.Println("mqtt subscription made")
 			}
 		},
-		OnConnectError: func(err error) { fmt.Printf("error whilst attempting connection: %s\n", err) },
+		OnConnectError: func(err error) {
+			fmt.Printf("error whilst attempting connection: %s\n", err)
+		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: clientID,
 			OnClientError: func(err error) {
@@ -91,9 +93,13 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	// completely or make it an option
 	if len(subscribe) > 0 {
 		mqttcfg.Debug = log.Default()
-		mqttcfg.PahoDebug = log.Default()
+		//  mqttcfg.PahoDebug = log.Default()
 	}
 
+	mqttcfg.SetConnectPacketConfigurator(func(pc *paho.Connect) *paho.Connect {
+		// todo: set pc.Password from recently fetched config
+		return pc
+	})
 	mqttcfg.SetUsernamePassword(name, cfg.JWT)
 
 	offlineMessage, err := StatusMessageJSON(false)
@@ -102,8 +108,8 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	}
 	mqttcfg.SetWillMessage(statusChannel, offlineMessage, 1, true)
 
-	log.Printf("mqtt user name: %s", name)
-	log.Printf("mqtt credentials: %q", string(cfg.JWT))
+	// log.Printf("mqtt user name: %s", name)
+	// log.Printf("mqtt credentials: %q", string(cfg.JWT))
 
 	cm, err := autopaho.NewConnection(ctx, mqttcfg)
 	return cm, err
