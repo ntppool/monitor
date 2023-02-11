@@ -54,7 +54,7 @@ DROP TABLE IF EXISTS `account_subscriptions`;
 CREATE TABLE `account_subscriptions` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `account_id` int(10) unsigned NOT NULL,
-  `stripe_subscription_id` varchar(255) DEFAULT NULL,
+  `stripe_subscription_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
   `status` enum('incomplete','incomplete_expired','trialing','active','past_due','canceled','unpaid','ended') DEFAULT NULL,
   `name` varchar(255) NOT NULL,
   `max_zones` int(10) unsigned NOT NULL,
@@ -102,7 +102,7 @@ CREATE TABLE `accounts` (
   `url_slug` varchar(150) DEFAULT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `stripe_customer_id` varchar(255) DEFAULT NULL,
+  `stripe_customer_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `url_slug_idx` (`url_slug`),
   UNIQUE KEY `stripe_customer_id` (`stripe_customer_id`)
@@ -510,7 +510,7 @@ CREATE TABLE `servers_monitor_review` (
   `last_review` datetime DEFAULT NULL,
   `next_review` datetime DEFAULT NULL,
   `last_change` datetime DEFAULT NULL,
-  `config` text NOT NULL,
+  `config` varchar(4096) NOT NULL DEFAULT '',
   PRIMARY KEY (`server_id`),
   KEY `next_review` (`next_review`),
   CONSTRAINT `server_monitor_review_server_id_fk` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
@@ -714,4 +714,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-12-20  9:07:28
+-- Dump completed on 2023-02-05  7:24:06
