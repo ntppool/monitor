@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,6 +113,36 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	return cfg.PbConfig()
 }
 
+func (srv *Server) signatureIPData(monitorID int32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
+
+	monIDb := strconv.AppendInt([]byte{}, int64(monitorID), 10)
+
+	ipb, err := ip.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	data := [][]byte{monIDb, batchID, ipb}
+
+	return data, nil
+}
+
+func (srv *Server) SignIPs(monitorID int32, batchID []byte, ip *netip.Addr) ([]byte, error) {
+	data, err := srv.signatureIPData(monitorID, batchID, ip)
+	if err != nil {
+		return nil, err
+	}
+	return srv.tokens.SignBytes(data...)
+}
+
+func (srv *Server) ValidateIPs(signature []byte, monitorID int32, batchID []byte, ip *netip.Addr) (bool, error) {
+	data, err := srv.signatureIPData(monitorID, batchID, ip)
+	if err != nil {
+		return false, err
+	}
+	return srv.tokens.ValidateBytes(signature, data...)
+}
+
 func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
 	span := otrace.SpanFromContext(ctx)
 
@@ -191,7 +222,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		}
 		pServer.IPBytes, _ = ip.MarshalBinary()
 
-		pServer.Ticket, err = srv.tokens.Sign(monitor.ID, bidb, &ip)
+		pServer.Ticket, err = srv.SignIPs(monitor.ID, bidb, &ip)
 		if err != nil {
 			return nil, err
 		}

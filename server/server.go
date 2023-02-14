@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/sirupsen/logrus"
 	"github.com/twitchtv/twirp"
 	otrace "go.opentelemetry.io/otel/trace"
@@ -21,12 +23,13 @@ import (
 	"go.ntppool.org/monitor/server/metrics"
 	twirpmetrics "go.ntppool.org/monitor/server/metrics/twirp"
 	twirptrace "go.ntppool.org/monitor/server/twirptrace"
-	"go.ntppool.org/monitor/server/vault"
+	vtm "go.ntppool.org/vault-token-manager"
 )
 
 type Server struct {
+	ctx    context.Context
 	cfg    *Config
-	tokens *vault.TokenManager
+	tokens *vtm.TokenManager
 	m      *metrics.Metrics
 	tracer otrace.Tracer
 	db     *ntpdb.Queries
@@ -40,10 +43,19 @@ type Config struct {
 	CertProvider  apitls.CertificateProvider
 }
 
-func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
+func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB) (*Server, error) {
 	db := ntpdb.New(dbconn)
 
-	tm, err := vault.New("monitor-tokens", cfg.DeploymentEnv)
+	vaultClient, err := vaultClient()
+	if err != nil {
+		return nil, err
+	}
+
+	tm, err := vtm.New(ctx,
+		&vtm.Config{
+			Vault: vaultClient,
+			Path:  fmt.Sprintf("kv/data/ntppool/%s/%s", cfg.DeploymentEnv, "monitor-tokens"),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +63,7 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 	metrics := metrics.New()
 
 	srv := &Server{
+		ctx:    ctx,
 		cfg:    &cfg,
 		db:     db,
 		dbconn: dbconn,
@@ -68,11 +81,11 @@ func NewServer(cfg Config, dbconn *sql.DB) (*Server, error) {
 	return srv, nil
 }
 
-func (srv *Server) Run(ctx context.Context) error {
+func (srv *Server) Run() error {
 
 	log.Printf("Run()")
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(srv.ctx)
 	defer cancel()
 
 	logger := logrus.New()
@@ -148,7 +161,7 @@ func (srv *Server) Run(ctx context.Context) error {
 		Handler: srv.m.Handler(),
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		err := metricsServer.ListenAndServe()
@@ -230,4 +243,34 @@ func NewLoggingServerHooks() *twirp.ServerHooks {
 				d.MethodName, d.CN, d.Span.SpanContext().TraceID(), duration)
 		},
 	}
+}
+
+var hasOutputVaultEnvMessage bool
+
+func vaultClient() (*vaultapi.Client, error) {
+
+	c := vaultapi.DefaultConfig()
+
+	if c.Address == "https://127.0.0.1:8200" {
+		c.Address = "https://vault.ntppool.org"
+	}
+
+	cl, err := vaultapi.NewClient(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// VAULT_TOKEN is read automatically from the environment if set
+	// so we just try the file here
+	token, err := os.ReadFile("/vault/secrets/token")
+	if err == nil {
+		cl.SetToken(string(token))
+	} else {
+		if !hasOutputVaultEnvMessage {
+			hasOutputVaultEnvMessage = true
+			log.Printf("could not read /vault/secrets/token (%s), using VAULT_TOKEN", err)
+		}
+	}
+
+	return cl, nil
 }

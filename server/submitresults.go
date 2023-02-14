@@ -115,7 +115,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	for i, status := range in.List {
 
 		if in.Version > 2 {
-			ticketOk, err := srv.tokens.Validate(monitor.ID, bidb, status.GetIP(), status.Ticket)
+			ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
 			if err != nil || !ticketOk {
 				span.AddEvent("signature validation failed")
 				log.Printf("monitor %d signature validation failed for %q %s", monitor.ID, status.GetIP().String(), err)
