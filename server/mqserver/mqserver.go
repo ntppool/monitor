@@ -141,7 +141,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	}
 
 	log.Printf("new status: %+v", cs)
-	log.Printf("new map: %+v", mqs.clients)
+	// log.Printf("new map: %+v", mqs.clients)
 
 }
 
