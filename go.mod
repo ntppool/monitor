@@ -1,6 +1,6 @@
 module go.ntppool.org/monitor
 
-go 1.19
+go 1.20
 
 // replace go.ntppool.org/pingtrace => /Users/ask/go/src/go.ntppool.org/pingtrace
 

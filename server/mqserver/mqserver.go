@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/eclipse/paho.golang/autopaho"
@@ -71,7 +72,7 @@ func (srv *server) Run(ctx context.Context) error {
 
 func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Router {
 	router := paho.NewStandardRouter()
-	router.SetDebugLogger(log.Default())
+	// router.SetDebugLogger(log.Default())
 
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 
@@ -92,12 +93,12 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 }
 
 func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
-	log.Printf("server got status message %d on %q: %s", p.PacketID, p.Topic, p.Payload)
+	slog.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
 
 	path := strings.Split(p.Topic, "/")
 
 	if t := path[len(path)-1]; t != "status" {
-		log.Printf("skipping %q message from %q (%s)", t, p.Topic, p.Payload)
+		slog.Info("skipping mqtt message", "parsed-topic", t, "topic", p.Topic, "payload", p.Payload)
 		return
 	}
 
@@ -140,7 +141,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		cs.Online = false
 	}
 
-	log.Printf("new status: %+v", cs)
+	slog.Debug("new status", "status", cs)
 	// log.Printf("new map: %+v", mqs.clients)
 
 }
@@ -167,10 +168,19 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 	return func(c echo.Context) error {
 
+		id, err := ulid.MakeULID(time.Now())
+		if err != nil {
+			return err
+		}
+
+		log := slog.With("requestID", id)
+
 		ip, err := netip.ParseAddr(c.Param("ip"))
 		if err != nil {
 			return c.JSON(400, err)
 		}
+
+		log = log.With("ip", ip)
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*10)
 		defer cancel()
@@ -184,13 +194,6 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 		wg, ctx := errgroup.WithContext(ctx)
 
 		rc := make(chan *paho.Publish)
-
-		id, err := ulid.MakeULID(time.Now())
-		if err != nil {
-			return err
-		}
-
-		log.Printf("request ID %s", id)
 
 		span.SetAttributes(attribute.String("Request ID", id.String()))
 		mqs.rr.AddResponseID(id.String(), rc)
@@ -208,13 +211,13 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 					continue
 				}
 
-				log.Printf("sending request for %s", cl.Name)
+				log.Info("sending request", "name", cl.Name)
 				span.AddEvent(fmt.Sprintf("sending request for %s", cl.Name))
 
 				topic := topics.Request(cl.Name, "ntp")
 				responseTopic := topics.DataResponse(cl.Name, id.String())
 
-				log.Printf("topics: %s => %s", topic, responseTopic)
+				log.Debug("topics", "topic", topic, "responseTopic", responseTopic)
 
 				data := struct {
 					IP string
@@ -242,7 +245,7 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 				publishPacket.Properties.User.Add("TraceID", span.SpanContext().TraceID().String())
 				publishPacket.Properties.User.Add("SpanID", span.SpanContext().SpanID().String())
 
-				log.Printf("cm: %+v", mqs.cm)
+				// log.Printf("cm: %+v", mqs.cm)
 
 				mqs.cm.Publish(ctx, publishPacket)
 
@@ -252,13 +255,13 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 					_, host, err := topics.ParseRequestTopic(p.Topic)
 					if err != nil {
-						log.Printf("could not parse servername from %s", p.Topic)
+						log.Error("could not parse servername", "topic", p.Topic)
 						continue
 					}
 
 					host = host[:strings.Index(host, ".")]
 
-					log.Printf("got response publish message from %s : %+v", host, p)
+					log.Info("response publish message", "from", host, "payload", p)
 					span.AddEvent("got response from " + p.Topic)
 
 					resp := api.NTPResponse{}
@@ -274,11 +277,11 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 					continue
 
 				case <-time.After(time.Second * 10):
-					log.Printf("per client timeout")
+					log.Info("per client timeout")
 					continue
 
 				case <-ctx.Done():
-					log.Printf("overall timeout")
+					log.Info("overall timeout")
 					return ctx.Err()
 				}
 
