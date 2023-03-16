@@ -65,7 +65,7 @@ func (cfg *APIConfig) setLoader(args []string) {
 	acfg := aconfig.Config{
 		// MergeFiles: true,
 		FileFlag: "config",
-		Files:    []string{"monitor-api.yaml", "/vault/secrets/database.yaml"},
+		Files:    []string{"/vault/secrets/database.yaml"},
 		FileDecoders: map[string]aconfig.FileDecoder{
 			".yaml": aconfigyaml.New(),
 			".env":  aconfigdotenv.New(),
