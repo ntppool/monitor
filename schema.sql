@@ -1,4 +1,4 @@
--- MariaDB dump 10.19  Distrib 10.6.11-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.19  Distrib 10.6.12-MariaDB, for Linux (x86_64)
 --
 -- Host: ntp-db-mysql-master.ntpdb.svc.cluster.local    Database: askntp
 -- ------------------------------------------------------
@@ -625,10 +625,12 @@ CREATE TABLE `vendor_zones` (
   `status` enum('New','Pending','Approved','Rejected') NOT NULL DEFAULT 'New',
   `user_id` int(10) unsigned DEFAULT NULL,
   `organization_name` varchar(255) DEFAULT NULL,
-  `client_type` enum('ntp','sntp','all') NOT NULL DEFAULT 'ntp',
+  `client_type` enum('ntp','sntp','legacy') NOT NULL DEFAULT 'sntp',
   `contact_information` text,
   `request_information` text,
   `device_count` int(10) unsigned DEFAULT NULL,
+  `opensource` tinyint(1) NOT NULL DEFAULT '0',
+  `opensource_info` text,
   `rt_ticket` smallint(5) unsigned DEFAULT NULL,
   `approved_on` datetime DEFAULT NULL,
   `created_on` datetime NOT NULL,
@@ -714,4 +716,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-02-05  7:24:06
+-- Dump completed on 2023-03-16  1:39:45
