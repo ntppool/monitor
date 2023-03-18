@@ -50,6 +50,10 @@ func GetDeploymentEnvironmentFromName(clientName string) (DeploymentEnvironment,
 		return DeployUndefined, fmt.Errorf("invalid client name %s", clientName)
 	}
 
+	if clientName == "api.mon.ntppool.dev" {
+		return DeployProd, nil
+	}
+
 	prefix := clientName[:strings.Index(clientName, ".mon.ntppool.dev")]
 	parts := strings.Split(prefix, ".")
 	if len(parts) != 2 {
