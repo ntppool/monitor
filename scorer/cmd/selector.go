@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -76,7 +75,7 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 			return err
 		}
 		if count > 0 || !continuous {
-			log.Printf("Processed %d servers", count)
+			slog.Info("Processed %d servers", count)
 		}
 		if !continuous {
 			break
@@ -84,7 +83,6 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 
 		if count == 0 {
 			sl := expback.NextBackOff()
-			// log.Printf("going to sleep %s", sl)
 			time.Sleep(sl)
 		} else {
 			expback.Reset()
@@ -143,7 +141,7 @@ func (sl *selector) Run() (int, error) {
 		changed, err := sl.processServer(db, serverID)
 		if err != nil {
 			// todo: rollback transaction here? Save that we did a review anyway?
-			log.Printf("could not process selection of monitors for server %d: %s", serverID, err)
+			slog.Info("could not process selection of monitors", "serverID", serverID, "err", err)
 		}
 		count++
 
@@ -319,8 +317,8 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 		allowedChanges = (targetNumber / 2) + 1
 	}
 
-	if targetNumber > okMonitors {
-		return false, fmt.Errorf("not enough healthy and active monitors for server %d", serverID)
+	if targetNumber > okMonitors && okMonitors < currentActiveMonitors {
+		return false, fmt.Errorf("not enough healthy and active monitors")
 	}
 
 	for _, ns := range nsl {
