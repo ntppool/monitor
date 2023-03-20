@@ -22,8 +22,8 @@ type LocalOK struct {
 	mu         sync.RWMutex
 }
 
-const localCacheTTL = 120 * time.Second
-const maxOffset = 3500 * time.Microsecond
+const localCacheTTL = 180 * time.Second
+const maxOffset = 10 * time.Millisecond
 
 func NewLocalOK(cfg *pb.Config) *LocalOK {
 	var isv4 bool
