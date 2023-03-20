@@ -99,13 +99,17 @@ LIMIT ?;
  select ls.*
    from log_scores ls
    inner join
-   (select monitor_id, max(ls2.ts) as sts
-      from log_scores ls2, monitors m
+   (select ls2.monitor_id, max(ls2.ts) as sts
+      from log_scores ls2,
+         monitors m,
+         server_scores ss
       where ls2.server_id = sqlc.arg('server_id')
          and ls2.monitor_id=m.id and m.type = 'monitor'
+         and (ls2.monitor_id=ss.monitor_id and ls2.server_id=ss.server_id)
+         and ss.status = 'active'
          and ls2.ts <= sqlc.arg('ts')
          and ls2.ts >= date_sub(sqlc.arg('ts'), interval sqlc.arg('time_lookback') second)
-      group by monitor_id
+      group by ls2.monitor_id
    ) as g
    where
      ls.server_id = sqlc.arg('server_id') AND

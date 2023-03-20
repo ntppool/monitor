@@ -169,13 +169,17 @@ const getScorerRecentScores = `-- name: GetScorerRecentScores :many
  select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes
    from log_scores ls
    inner join
-   (select monitor_id, max(ls2.ts) as sts
-      from log_scores ls2, monitors m
+   (select ls2.monitor_id, max(ls2.ts) as sts
+      from log_scores ls2,
+         monitors m,
+         server_scores ss
       where ls2.server_id = ?
          and ls2.monitor_id=m.id and m.type = 'monitor'
+         and (ls2.monitor_id=ss.monitor_id and ls2.server_id=ss.server_id)
+         and ss.status = 'active'
          and ls2.ts <= ?
          and ls2.ts >= date_sub(?, interval ? second)
-      group by monitor_id
+      group by ls2.monitor_id
    ) as g
    where
      ls.server_id = ? AND
