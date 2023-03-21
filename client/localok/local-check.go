@@ -10,6 +10,7 @@ import (
 
 	"go.ntppool.org/monitor/api/pb"
 	"go4.org/netipx"
+	"golang.org/x/exp/slog"
 
 	"go.ntppool.org/monitor/client/monitor"
 )
@@ -42,7 +43,7 @@ func (l *LocalOK) NextCheckIn() time.Duration {
 	defer l.mu.RUnlock()
 
 	nextCheck := l.lastCheck.Add(localCacheTTL)
-	wait := nextCheck.Sub(time.Now())
+	wait := time.Until(nextCheck)
 
 	if wait < 0 {
 		return time.Second * 0
@@ -90,7 +91,7 @@ func (l *LocalOK) update() bool {
 			allHosts = append(allHosts, string(s))
 		}
 	} else {
-		log.Printf("Did not get BaseChecks from API, using built-in defaults")
+		slog.Info("did not get BaseChecks from API, using built-in defaults")
 	}
 
 	type namedIP struct {
@@ -160,7 +161,7 @@ func (l *LocalOK) update() bool {
 		go func(h namedIP) {
 			ok, err := l.sanityCheckHost(h.Name, h.IP)
 			if err != nil {
-				log.Printf("Failure for %q %q: %s", h.Name, h.IP.String(), err)
+				slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
 			}
 			results <- ok
 			wg.Done()
@@ -172,13 +173,9 @@ func (l *LocalOK) update() bool {
 	close(results)
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
-	log.Printf("failures: %d, threshold: %d, hosts: %d", fails, failureThreshold, len(hosts))
+	slog.Info("local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
 
-	if fails > failureThreshold {
-		return false
-	}
-
-	return true
+	return fails <= failureThreshold
 }
 
 func (l *LocalOK) sanityCheckHost(name string, ip *netip.Addr) (bool, error) {

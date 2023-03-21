@@ -11,6 +11,7 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"golang.org/x/exp/slog"
 
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
@@ -44,7 +45,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		BrokerUrls: []*url.URL{broker},
 		TlsCfg:     tlsConfig,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-			fmt.Println("mqtt connection up")
+			slog.Info("mqtt connection up")
 
 			if len(subscribe) > 0 {
 
@@ -56,25 +57,29 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				suback, err := cm.Subscribe(context.Background(), &paho.Subscribe{
 					Subscriptions: subscriptions})
 				if err != nil {
-					log.Printf("failed to subscribe: %s (%s)", err, suback.Properties.ReasonString)
+					if suback.Properties != nil {
+						slog.Error("mqtt subscribe error", "err", err, "reason", suback.Properties.ReasonString)
+					} else {
+						slog.Error("mqtt subscribe error", "err", err, "reasons", suback.Reasons)
+					}
 					return
 				}
-				fmt.Println("mqtt subscription made")
+				slog.Debug("mqtt subscription setup")
 			}
 		},
 		OnConnectError: func(err error) {
-			fmt.Printf("error whilst attempting connection: %s\n", err)
+			slog.Error("mqtt connect error", "err", err)
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: clientID,
 			OnClientError: func(err error) {
-				log.Printf("server requested disconnect (client error): %s\n", err)
+				slog.Error("mqtt server requested disconnect (client error)", "err", err)
 			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
-					log.Printf("server requested disconnect: %s\n", d.Properties.ReasonString)
+					slog.Error("mqtt server requested disconnect", "reason", d.Properties.ReasonString)
 				} else {
-					log.Printf("server requested disconnect; reason code: %d\n", d.ReasonCode)
+					slog.Error("mqtt server requested disconnect", "reasonCode", d.ReasonCode)
 				}
 			},
 		},
@@ -84,7 +89,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		mqttcfg.Router = router
 	} else {
 		mqttcfg.Router = paho.NewSingleHandlerRouter(func(m *paho.Publish) {
-			log.Printf("got message on %q: %s", m.Topic, m.Payload)
+			slog.Debug("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
 			// h.handle(m)
 		})
 	}

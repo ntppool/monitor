@@ -3,13 +3,13 @@ package monitor
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"net/netip"
 	"time"
 	"unicode/utf8"
 
 	"github.com/beevik/ntp"
 	"go.ntppool.org/monitor/api/pb"
+	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -37,7 +37,7 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			opts.LocalAddress = natIP.String()
 		}
 	} else {
-		log.Printf("Did not get valid local configuration IP: %+v", configIP)
+		slog.Error("Did not get valid local configuration IP", "configIP", configIP)
 	}
 
 	responses := []*response{}
@@ -61,12 +61,15 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			}
 			r.Error = err
 			responses = append(responses, r)
+
+			slog.Debug("ntp query error", "host", ip.String(), "iteration", i, "error", err)
+
 			continue
 		}
 
 		status := ntpResponseToStatus(ip, resp)
 
-		// log.Printf("Query %d for %q: RTT: %s, Offset: %s", i, host, resp.RTT, resp.ClockOffset)
+		slog.Debug("ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
 
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net/netip"
 	"os"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
+	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.ntppool.org/pingtrace/traceroute"
@@ -57,12 +57,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	cauth, err := cli.ClientAuth(ctx)
 	if err != nil {
-		log.Fatalf("auth error: %s", err)
+		return fmt.Errorf("auth: %w", err)
 	}
 
 	deployEnv, err := api.GetDeploymentEnvironmentFromName(cauth.Name)
 	if err != nil {
-		log.Printf("error: %s", err)
+		return err
 	}
 
 	err = cauth.Login()
@@ -81,17 +81,17 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				url = "the management site"
 			}
 
-			log.Printf("Authentication error: %s -- Go to %s to rotate and download new a API secret", aerr, url)
+			slog.Error("authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
 			os.Exit(2)
 		}
 
-		log.Printf("Could not authenticate: %s", err)
+		slog.Error("could not authenticate", "err", err)
 		os.Exit(2)
 	}
 
 	err = cauth.LoadOrIssueCertificates()
 	if err != nil {
-		log.Fatalf("LoadOrIssueCertificates: %s", err)
+		return fmt.Errorf("LoadOrIssueCertificates: %w", err)
 	}
 
 	go cauth.Manager()
@@ -99,23 +99,23 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	// block until we have a valid certificate
 	err = cauth.WaitUntilReady()
 	if err != nil {
-		log.Printf("Failed waiting for authentication to be ready: %s", err)
+		slog.Error("failed waiting for authentication to be ready", "err", err)
 		os.Exit(2)
 	}
 
 	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
-		log.Fatalf("Could not setup API: %s", err)
+		return fmt.Errorf("could not setup API: %w", err)
 	}
 
 	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
-				log.Fatalf("could not get config: %s", twerr.Msg())
+				return fmt.Errorf("could not get config: %w", twerr)
 			}
 		}
-		log.Fatalf("could not get config: %s", err)
+		return fmt.Errorf("could not get config: %s", err)
 	}
 
 	var mq *autopaho.ConnectionManager
@@ -136,12 +136,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			}, router, cfg.MQTTConfig, cauth,
 		)
 		if err != nil {
-			log.Fatalf("mqtt: %s", err)
+			return fmt.Errorf("mqtt: %w", err)
 		}
 
 		err := mq.AwaitConnection(ctx)
 		if err != nil {
-			log.Fatalf("mqtt connection error: %s", err)
+			return fmt.Errorf("mqtt connection error: %w", err)
 		}
 
 		mqc.SetMQ(mq)
@@ -153,10 +153,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	if *sanityOnlyFlag {
 		ok := localOK.Check()
 		if ok {
-			log.Printf("Local clock ok")
+			slog.Info("Local clock ok")
 			return nil
 		} else {
-			log.Printf("Local clock not ok")
+			slog.Info("Local clock not ok")
 			return fmt.Errorf("health check failed")
 		}
 	}
@@ -195,18 +195,17 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 			if !localOK.Check() {
 				wait := localOK.NextCheckIn()
-				log.Printf("Local clock might not be okay, waiting %s", wait.Round(1*time.Second).String())
+				slog.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
 				time.Sleep(wait) // todo: ctx
 				return fmt.Errorf("local clock")
 			}
 
 			if ok, err := run(api); !ok || err != nil {
 				if err != nil {
-					log.Println(err)
+					slog.Error("batch processing", "err", err)
 					boff.MaxInterval = 20 * time.Minute
 					boff.Multiplier = 5
 				}
-				// log.Printf("Got no work, sleeping.")
 				return fmt.Errorf("no work")
 			}
 			boff.Reset()
@@ -214,12 +213,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		}, boff)
 
 		if err != nil {
-			log.Printf("backoff error: %s", err)
+			slog.Info("backoff error", "err", err)
 		}
 
 		i++
 		if i > 0 && *onceFlag {
-			log.Printf("Asked to only run once, so bye now.")
+			slog.Info("Asked to only run once, so bye now.")
 			break
 		}
 	}
@@ -262,7 +261,7 @@ func run(api pb.Monitor) (bool, error) {
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(serverlist.BatchID)
 
-	log.Printf("Batch %s - Servers: %d", batchID.String(), len(serverlist.Servers))
+	slog.Info("processing", "batchID", batchID.String(), "server_count", len(serverlist.Servers))
 
 	// we're testing, so limit how much work ...
 	if *onceFlag {
@@ -286,15 +285,15 @@ func run(api pb.Monitor) (bool, error) {
 
 				tr, err := traceroute.New(*s)
 				if err != nil {
-					log.Printf("traceroute: %s", err)
+					slog.Error("traceroute", "err", err)
 				}
 				tr.Start(ctx)
 				x, err := tr.ReadAll()
 				if err != nil {
-					log.Printf("traceroute: %s", err)
+					slog.Error("traceroute", "err", err)
 				}
 
-				log.Printf("traceroute: %+v", x)
+				slog.Info("traceroute", "output", x)
 
 				wg.Done()
 				return
@@ -309,7 +308,7 @@ func run(api pb.Monitor) (bool, error) {
 			}
 			status.Ticket = ticket
 			if err != nil {
-				log.Printf("Error checking %q: %s", s, err)
+				slog.Info("ntp error", "server", s, "err", err)
 				status.Error = err.Error()
 				if strings.HasPrefix(status.Error, "read udp") {
 					idx := strings.LastIndex(status.Error, ":")
@@ -328,7 +327,7 @@ func run(api pb.Monitor) (bool, error) {
 
 	wg.Wait()
 
-	log.Printf("Submitting %s", serverlist.BatchID)
+	slog.Info("submitting", "batchID", serverlist.BatchID)
 
 	list := &pb.ServerStatusList{
 		Version: 3,
