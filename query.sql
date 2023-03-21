@@ -106,7 +106,7 @@ LIMIT ?;
       where ls2.server_id = sqlc.arg('server_id')
          and ls2.monitor_id=m.id and m.type = 'monitor'
          and (ls2.monitor_id=ss.monitor_id and ls2.server_id=ss.server_id)
-         and ss.status = 'active'
+         and ss.status in (sqlc.arg('monitor_status'),sqlc.narg('monitor_status_2'))
          and ls2.ts <= sqlc.arg('ts')
          and ls2.ts >= date_sub(sqlc.arg('ts'), interval sqlc.arg('time_lookback') second)
       group by ls2.monitor_id

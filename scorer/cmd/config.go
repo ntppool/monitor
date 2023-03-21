@@ -88,7 +88,14 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobr
 			return err
 		}
 
-		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout)))
+		var programLevel = new(slog.LevelVar) // Info by default
+
+		// temp -- should be an option, and maybe have a runtime signal to adjust?
+		// programLevel.Set(slog.LevelDebug)
+
+		logOptions := slog.HandlerOptions{Level: programLevel}
+		logHandler := logOptions.NewTextHandler(os.Stdout)
+		slog.SetDefault(slog.New(logHandler))
 
 		err = fn(cmd, args)
 		if err != nil {

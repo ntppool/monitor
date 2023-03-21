@@ -176,7 +176,7 @@ const getScorerRecentScores = `-- name: GetScorerRecentScores :many
       where ls2.server_id = ?
          and ls2.monitor_id=m.id and m.type = 'monitor'
          and (ls2.monitor_id=ss.monitor_id and ls2.server_id=ss.server_id)
-         and ss.status = 'active'
+         and ss.status in (?,?)
          and ls2.ts <= ?
          and ls2.ts >= date_sub(?, interval ? second)
       group by ls2.monitor_id
@@ -189,14 +189,18 @@ const getScorerRecentScores = `-- name: GetScorerRecentScores :many
 `
 
 type GetScorerRecentScoresParams struct {
-	ServerID     int32       `json:"server_id"`
-	Ts           time.Time   `json:"ts"`
-	TimeLookback interface{} `json:"time_lookback"`
+	ServerID       int32              `json:"server_id"`
+	MonitorStatus  ServerScoresStatus `json:"monitor_status"`
+	MonitorStatus2 ServerScoresStatus `json:"monitor_status_2"`
+	Ts             time.Time          `json:"ts"`
+	TimeLookback   interface{}        `json:"time_lookback"`
 }
 
 func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecentScoresParams) ([]LogScore, error) {
 	rows, err := q.db.QueryContext(ctx, getScorerRecentScores,
 		arg.ServerID,
+		arg.MonitorStatus,
+		arg.MonitorStatus2,
 		arg.Ts,
 		arg.Ts,
 		arg.TimeLookback,

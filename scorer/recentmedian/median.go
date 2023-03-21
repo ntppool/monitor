@@ -10,6 +10,7 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slog"
 )
 
 type RecentMedian struct {
@@ -32,16 +33,30 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	// log.Printf("median, processing ls: %d", latest.ID)
 
 	arg := ntpdb.GetScorerRecentScoresParams{
-		TimeLookback: 1200,
-		ServerID:     serverScore.ServerID,
-		Ts:           latest.Ts,
+		TimeLookback:  1200,
+		ServerID:      serverScore.ServerID,
+		MonitorStatus: ntpdb.ServerScoresStatusActive,
+		Ts:            latest.Ts,
 	}
 
-	// log.Printf("getting recent scores: %+v", arg)
+	slog.Debug("getting recent scores", "serverID", serverScore.ServerID, "Ts", latest.Ts)
 
 	recent, err := db.GetScorerRecentScores(ctx, arg)
 	if err != nil {
 		return score.Score{}, err
+	}
+
+	if len(recent) == 0 {
+		arg.TimeLookback = 2700
+		arg.MonitorStatus2 = ntpdb.ServerScoresStatusTesting
+		recent, err = db.GetScorerRecentScores(ctx, arg)
+		if err != nil {
+			return score.Score{}, err
+		}
+	}
+
+	if len(recent) == 0 {
+		return score.Score{}, fmt.Errorf("no recent scores found for %d", serverScore.ServerID)
 	}
 
 	var ls ntpdb.LogScore
