@@ -112,9 +112,8 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			continue
 		}
 
-		// todo: ... and it's otherwise a valid response
-
-		if (r.Error == nil && r.Error != nil) || (r.Status.RTT.AsDuration() < best.Status.RTT.AsDuration()) {
+		// todo: ... and it's otherwise a valid response?
+		if (r.Error == nil && best.Error != nil) || (r.Status.RTT.AsDuration() < best.Status.RTT.AsDuration()) {
 			best = r
 		}
 	}
