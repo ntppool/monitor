@@ -51,12 +51,6 @@ builds:
 archives:
   - id: a1
     allow_different_binary_count: true
-    replacements:
-      #darwin: Darwin
-      #linux: Linux
-      #windows: Windows
-      #386: i386
-      #amd64: x86_64
   # files:
   #   - LICENSE.txt
   #   - ./client/cmd/ntppool-monitor/README.md
@@ -81,9 +75,8 @@ nfpms:
     # Defaults to `ProjectName`.
     package_name: ntppool-monitor
 
-    # You can change the file name of the package.
-    # Default: `{{ .PackageName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}`
-    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    #file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    file_name_template: "{{ .ConventionalFileName }}"
 
     vendor: NTP Pool Project
     homepage: https://www.ntppool.org/
@@ -94,9 +87,6 @@ nfpms:
       - deb
       - rpm
       - apk
-    replacements:
-      386: i686
-      amd64: x86_64
     dependencies:
       - ntp
     bindir: /usr/bin
