@@ -22,6 +22,17 @@ done
 sudo journalctl -u ntppool-monitor@\* -f
 ```
 
+## Client requirements
+
+A well connected Linux or FreeBSD system (x86_64 or arm64).
+
+Each instance (you need one for each of IPv4 and IPv6, and maybe for
+the beta system and the production system) takes less than 20MB memory
+currently and approximately no CPU.
+
+A future version will either require or work best with traceroute
+installed and available as well.
+
 ## Server / API configuration
 
 ### Environment variables
