@@ -75,7 +75,7 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 			return err
 		}
 		if count > 0 || !continuous {
-			slog.Info("Processed %d servers", count)
+			slog.Info("processed servers", "count", count)
 		}
 		if !continuous {
 			break

@@ -3,12 +3,12 @@ package statusscore
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
 	"time"
 
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
+	"golang.org/x/exp/slog"
 )
 
 type StatusScorer struct{}
@@ -27,16 +27,15 @@ func (s *StatusScorer) calc(server *ntpdb.Server, status *pb.ServerStatus) (*sco
 	attributeStr := sql.NullString{}
 
 	if status.Leap > 0 || len(status.Error) > 0 {
-		log.Printf("Got attributes! %+v", status)
+		slog.Debug("Got attributes", "status", status)
 		attributes := ntpdb.LogScoreAttributes{
 			Leap:  int8(status.Leap),
 			Error: status.Error,
 		}
 		b, err := json.Marshal(attributes)
 		if err != nil {
-			log.Printf("could not marshal attributes %+v: %s", attributes, err)
+			slog.Warn("could not marshal attributes", "attributes", attributes, "err", err)
 		}
-		// log.Printf("attribute JSON for %d %s", server.ID, b)
 		attributeStr.String = string(b)
 		attributeStr.Valid = true
 	}
