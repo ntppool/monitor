@@ -93,8 +93,9 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobr
 		// temp -- should be an option, and maybe have a runtime signal to adjust?
 		// programLevel.Set(slog.LevelDebug)
 
-		logOptions := slog.HandlerOptions{Level: programLevel}
-		logHandler := logOptions.NewTextHandler(os.Stdout)
+		logOptions := &slog.HandlerOptions{Level: programLevel}
+
+		logHandler := slog.NewTextHandler(os.Stdout, logOptions)
 		slog.SetDefault(slog.New(logHandler))
 
 		err = fn(cmd, args)

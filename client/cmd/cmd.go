@@ -16,7 +16,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	// temp -- should be an option, and maybe have a runtime signal to adjust?
 	// programLevel.Set(slog.LevelDebug)
 
-	logOptions := slog.HandlerOptions{Level: programLevel}
+	logOptions := &slog.HandlerOptions{Level: programLevel}
 
 	if len(os.Getenv("INVOCATION_ID")) > 0 {
 		// don't add timestamps when running under systemd
@@ -34,7 +34,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 
 	}
 
-	logHandler := logOptions.NewTextHandler(os.Stderr)
+	logHandler := slog.NewTextHandler(os.Stderr, logOptions)
 	slog.SetDefault(slog.New(logHandler))
 
 	cmd := &cobra.Command{

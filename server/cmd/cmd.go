@@ -10,7 +10,7 @@ import (
 
 func (cli *CLI) RootCmd() *cobra.Command {
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	cmd := &cobra.Command{
 		Use:   "monitor-api",
