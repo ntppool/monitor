@@ -422,7 +422,7 @@ WHERE (monitor_id = ?
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL ? second) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
-ORDER BY score_ts
+ORDER BY ss.score_ts
 LIMIT  ?
 OFFSET ?
 `

@@ -153,7 +153,7 @@ WHERE (monitor_id = sqlc.arg('monitor_id')
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds_all') second) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
-ORDER BY score_ts
+ORDER BY ss.score_ts
 LIMIT  ?
 OFFSET ?;
 
