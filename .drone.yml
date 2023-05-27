@@ -52,6 +52,9 @@ steps:
         path: /go
       - name: gopkg
         path: /cache
+    environment:
+      GITHUB_TOKEN:
+        from_secret: GITHUB_TOKEN
     commands:
       # curl -sf https://goreleaser.com/static/latest
       - go install github.com/goreleaser/goreleaser@v1.18.2
@@ -174,6 +177,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 8356269e8809071ea9404476a3e692493b0d830922babb38ebe44b70189cbc55
+hmac: 9a0586e38f20457acb004773e3798b2c0dfbb0ff2bb0ccbe9143ef71e0011cd6
 
 ...
