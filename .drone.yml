@@ -43,16 +43,18 @@ steps:
     resources:
       requests:
         cpu: 4000
-        memory: 512MiB
+        memory: 1024MiB
       limits:
         cpu: 10000
-        memory: 2048MiB
+        memory: 4096MiB
     volumes:
       - name: go
         path: /go
       - name: gopkg
         path: /cache
     commands:
+      # curl -sf https://goreleaser.com/static/latest
+      - go install github.com/goreleaser/goreleaser@v1.18.2
       - ./scripts/run-goreleaser
       - echo Done
     depends_on: [test]
@@ -172,6 +174,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 38e46438bd2a83630fe6b0b96e2eaf557385e75fae7d798b0411e1edfa59a8b6
+hmac: 8356269e8809071ea9404476a3e692493b0d830922babb38ebe44b70189cbc55
 
 ...
