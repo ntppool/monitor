@@ -146,12 +146,12 @@ WHERE (monitor_id = sqlc.arg('monitor_id')
     AND s.ip_version = sqlc.arg('ip_version')
     AND (ss.score_ts IS NULL
           OR (ss.score_raw > -90 AND ss.status = "active"
-               AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes') minute))
+               AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds') second))
           OR (ss.score_raw > -90 AND ss.status = "testing"
-              AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes_testing') minute))
+              AND ss.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds_testing') second))
           OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
-        (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_minutes_all') minute) ))
+        (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds_all') second) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
 ORDER BY score_ts
 LIMIT  ?

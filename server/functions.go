@@ -160,20 +160,20 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	intervalMinutes := 8
-	intervalMinutesTesting := 60
-	intervalMinutesAll := 2
+	interval := 9 * time.Minute
+	intervalTesting := 45 * time.Minute
+	intervalAll := 75 * time.Second
 
 	if monitor.Status != ntpdb.MonitorsStatusActive {
-		intervalMinutes = intervalMinutesTesting
+		interval = intervalTesting
 	}
 
 	p := ntpdb.GetServersParams{
 		MonitorID:              monitor.ID,
 		IpVersion:              ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
-		IntervalMinutes:        intervalMinutes,
-		IntervalMinutesTesting: intervalMinutesTesting,
-		IntervalMinutesAll:     intervalMinutesAll,
+		IntervalSeconds:        interval.Seconds(),
+		IntervalSecondsTesting: intervalTesting.Seconds(),
+		IntervalSecondsAll:     intervalAll.Seconds(),
 		Limit:                  10,
 		Offset:                 0,
 	}
