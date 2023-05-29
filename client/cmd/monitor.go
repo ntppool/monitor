@@ -38,6 +38,8 @@ var (
 	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
 )
 
+const MaxInterval = time.Minute * 2
+
 func (cli *CLI) monitorCmd() *cobra.Command {
 
 	monitorCmd := &cobra.Command{
@@ -188,7 +190,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
 		boff.InitialInterval = 3 * time.Second
-		boff.MaxInterval = 120 * time.Second
+		boff.MaxInterval = MaxInterval
 		boff.MaxElapsedTime = 0
 
 		err := backoff.Retry(func() error {
@@ -203,7 +205,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			if ok, err := run(api); !ok || err != nil {
 				if err != nil {
 					slog.Error("batch processing", "err", err)
-					boff.MaxInterval = 20 * time.Minute
+					boff.MaxInterval = 10 * time.Minute
 					boff.Multiplier = 5
 				}
 				return fmt.Errorf("no work")
