@@ -142,7 +142,6 @@ func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
 
 	vaultConfig := &vaultapi.Config{
 		Address:   vaultAddr,
-		SRVLookup: true,
 	}
 
 	client, err := vaultapi.NewClient(vaultConfig)
