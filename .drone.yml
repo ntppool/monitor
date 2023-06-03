@@ -144,7 +144,7 @@ name: publish-production
 
 steps:
   - name: download
-    image: golang:1.20.4
+    image: fedora:38 # curl version 7.83 or later 
     commands:
       - ./scripts/download-release test/${DRONE_BUILD_PARENT} dist/
     resources:
@@ -175,6 +175,7 @@ steps:
       strip_prefix: dist/
       endpoint: https://minio-ewr1.develooper.com/
       path_style: true
+    depends_on: ["download"]
 
   - name: fury-publish
     image: golang:1.20.4
@@ -199,6 +200,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 887aa613f22574ee0813e1c603e3ce071708c2308d8e8825c2ab412daa397373
+hmac: 06d666fff36ee6b56527742513943da11a0faea5f77821823af5e839398de98f
 
 ...
