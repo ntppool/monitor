@@ -47,15 +47,12 @@ builds:
       - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
       - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
 
-
 archives:
   - id: a1
     allow_different_binary_count: true
   # files:
   #   - LICENSE.txt
   #   - ./client/cmd/ntppool-monitor/README.md
-
-
 
 checksum:
   name_template: "checksums.txt"
@@ -88,7 +85,7 @@ nfpms:
       - rpm
       - apk
     dependencies:
-      - ntp
+      - chrony
     bindir: /usr/bin
 
     overrides:
@@ -98,7 +95,7 @@ nfpms:
 
       rpm:
         # this is supposed to work, but I couldn't figure it out.
-        # so, ... ntp only on redhat flavors for now.
+        # so, ... chrony only on redhat flavors for now.
         #dependencies:
         #  - (ntp or chrony)
 
