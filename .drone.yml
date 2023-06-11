@@ -42,7 +42,7 @@ steps:
     image: golang:1.20.5
     resources:
       requests:
-        cpu: 4000
+        cpu: 6000
         memory: 1024MiB
       limits:
         cpu: 10000
@@ -56,7 +56,7 @@ steps:
       GITHUB_TOKEN:
         from_secret: GITHUB_TOKEN
     commands:
-      - go env
+      # - go env
       # curl -sf https://goreleaser.com/static/latest
       - go install github.com/goreleaser/goreleaser@v1.18.2
       - ./scripts/run-goreleaser
@@ -200,6 +200,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 8223eef40595fdf34efc3d939a09ae8d27df9119031b924667e422ae4409c39c
+hmac: fb42050788a14b99170be51b7ed61f2cec33f4ec98c7fd2fe3327504185ab635
 
 ...
