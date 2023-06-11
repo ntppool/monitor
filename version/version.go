@@ -21,6 +21,9 @@ func init() {
 	if len(VERSION) == 0 {
 		VERSION = "dev-snapshot"
 	} else {
+		if !strings.HasPrefix(VERSION, "v") {
+			VERSION = "v" + VERSION
+		}
 		if !semver.IsValid(VERSION) {
 			logger.Setup().Warn("invalid version number", "version", VERSION)
 		}
