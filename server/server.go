@@ -11,9 +11,9 @@ import (
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
-	"github.com/sirupsen/logrus"
 	"github.com/twitchtv/twirp"
 	otrace "go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/monitor/api/pb"
@@ -88,10 +88,6 @@ func (srv *Server) Run() error {
 	ctx, cancel := context.WithCancel(srv.ctx)
 	defer cancel()
 
-	logger := logrus.New()
-	logger.SetFormatter(&logrus.TextFormatter{})
-	// logrusEntry := logrus.NewEntry(logger)
-
 	// todo: make this function actually quit on shutdown...
 	// defer srv.tracer.Close() // flush buffered spans
 
@@ -154,7 +150,7 @@ func (srv *Server) Run() error {
 		),
 	)
 
-	logger.Infof("starting server")
+	slog.Info("starting server")
 
 	metricsServer := &http.Server{
 		Addr:    ":9000",
