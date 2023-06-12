@@ -32,16 +32,16 @@ func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
 
 func (mqc *mqclient) Handler(m *paho.Publish) {
 
-	mqc.log.Info("mqtt handler active")
+	log := mqc.log
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	mqc.log.Info("mqtt client message", "topic", m.Topic, "payload", m.Payload, "properties", m.Properties)
+	log.Debug("mqtt client message", "topic", m.Topic, "payload", m.Payload, "properties", m.Properties)
 
 	requestType, _, err := mqc.topics.ParseRequestTopic(m.Topic)
 	if err != nil {
-		mqc.log.Error("mqtt request error", "err", err)
+		log.Error("mqtt request error", "err", err)
 		return
 	}
 
@@ -49,18 +49,20 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 	err = json.Unmarshal(m.Payload, &msg)
 	if err != nil {
-		mqc.log.Error("mqtt request error", "err", err)
+		log.Error("mqtt request error", "err", err)
 		return
 	}
 
 	if requestType == "ntp" {
-		mqc.log.Info("mqtt check ntp", "ip", msg.IP)
+		log.Info("mqtt check ntp", "ip", msg.IP)
 
 		ip, err := netip.ParseAddr(msg.IP)
 		if err != nil {
-			mqc.log.Error("mqtt request error, invalid ip", "ip", msg.IP, "err", err)
+			log.Error("request error, invalid ip", "ip", msg.IP, "err", err)
 			return
 		}
+
+		log.With("ip", ip.String())
 
 		cfg := &pb.Config{
 			IPBytes:    mqc.cfg.IPBytes,
@@ -69,21 +71,23 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		}
 
 		_, resp, err := CheckHost(&ip, cfg)
-		if err != nil {
-			mqc.log.Error("mqtt ntp check error", "ip", msg.IP, "err", err)
-			return
-		}
-
 		r := &api.NTPResponse{
-			NTP:   resp,
-			Error: err,
+			NTP: resp,
+		}
+		if err != nil {
+			log.Info("ntp check error", "err", err)
+			r.Error = err.Error()
+		} else {
+			r.NTP = resp
 		}
 
 		responseData, err := json.Marshal(r)
 		if err != nil {
-			mqc.log.Error("mqtt json error", "err", err)
+			log.Error("json error", "err", err)
 			return
 		}
+
+		log.Debug("response", "payload", responseData)
 
 		rmsg := &paho.Publish{
 			Topic:   m.Properties.ResponseTopic,
@@ -98,11 +102,11 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		}
 
 		if mqc.mq == nil {
-			mqc.log.Error("mqtt mq==nil")
+			log.Error("mq==nil")
 		}
 
 		mqc.mq.AwaitConnection(ctx)
-		mqc.log.Info("mqtt connection for response established")
+		log.Debug("connection for response established")
 
 		mqc.mq.Publish(ctx, rmsg)
 

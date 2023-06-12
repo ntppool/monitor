@@ -5,7 +5,7 @@ import (
 )
 
 type NTPResponse struct {
-	Server string
-	NTP    *ntp.Response
-	Error  error
+	Server string        `json:",omitempty"`
+	NTP    *ntp.Response `json:",omitempty"`
+	Error  string        `json:",omitempty"`
 }

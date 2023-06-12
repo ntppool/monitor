@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +52,7 @@ type client struct {
 
 func Setup(log *slog.Logger, dbconn *sql.DB) (*server, error) {
 	clients := map[string]*client{}
-	mqs := &server{clients: clients, dbconn: dbconn, log: log}
+	mqs := &server{clients: clients, dbconn: dbconn, log: log.WithGroup("mqtt")}
 	if dbconn != nil {
 		// tests run without the db
 		mqs.db = ntpdb.New(dbconn)
@@ -180,16 +182,24 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 			return c.JSON(400, err)
 		}
 
-		log = log.With("ip", ip)
+		getAll := false
+		if t, err := strconv.ParseBool(c.FormValue("all")); t || err != nil {
+			if err != nil {
+				log.Debug("parseBool error", "err", err, "t", t)
+			}
+			if t {
+				getAll = t
+			}
+		}
 
-		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*10)
+		log = log.With("check-ip", ip)
+
+		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*20)
 		defer cancel()
 
 		// spanContext := otrace.SpanContextFromContext(ctx)
 
 		span := otrace.SpanFromContext(ctx)
-
-		var r []*api.NTPResponse
 
 		wg, ctx := errgroup.WithContext(ctx)
 
@@ -199,11 +209,17 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 		mqs.rr.AddResponseID(id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
+		counter := sync.WaitGroup{}
+
+		counter.Add(1) // count one for the goroutine running
+
 		wg.Go(func() error {
+
+			i := 0
 
 			for _, cl := range mqs.seenClients() {
 
-				log.Debug("evaluating mqtt client", "client", cl.Name)
+				log.Debug("considering mqtt client", "client", cl.Name)
 
 				if !cl.Online || cl.Data == nil {
 					continue
@@ -212,6 +228,21 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 				if cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4() {
 					continue
 				}
+
+				if !getAll && i > 0 {
+
+					log.Debug("taking a pause")
+
+					select {
+					case <-time.After(400 * time.Millisecond):
+					case <-ctx.Done():
+						log.Debug("context done, don't send more requests")
+						return nil
+					}
+
+				}
+
+				i++
 
 				log.Info("sending request", "name", cl.Name)
 				span.AddEvent(fmt.Sprintf("sending request for %s", cl.Name))
@@ -249,11 +280,46 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 				// log.Printf("cm: %+v", mqs.cm)
 
-				mqs.cm.Publish(ctx, publishPacket)
+				counter.Add(1)
+				pubResp, err := mqs.cm.Publish(ctx, publishPacket)
+				if err != nil {
+					log.Warn("error sending request", "err", err)
+					counter.Done()
+				}
+				if pubResp != nil && pubResp.ReasonCode != 0 {
+					log.Warn("unexpected reasoncode in mqtt response", "code", pubResp.ReasonCode)
+				}
+			}
+			counter.Done()
+			return nil
+		})
 
+		var r []*api.NTPResponse
+		healthyResponses := 0
+
+		waitCh := make(chan struct{})
+
+		go func() {
+			counter.Wait()
+			close(waitCh)
+		}()
+
+		wg.Go(func() error {
+			log.Debug("waiting for mqtt responses")
+
+			for {
 				select {
 
-				case p := <-rc:
+				case <-waitCh:
+					log.Debug("got all responses")
+					return nil
+
+				case p, ok := <-rc:
+					if !ok {
+						return nil
+					}
+
+					counter.Done()
 
 					_, host, err := topics.ParseRequestTopic(p.Topic)
 					if err != nil {
@@ -270,30 +336,41 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 					err = json.Unmarshal(p.Payload, &resp)
 					if err != nil {
-						// todo: track the error but just log it if
-						// another response works?
+						log.Warn("could not unmarshal payload", "err", err)
 						continue
 					}
 					resp.Server = host
-					r = append(r, &resp)
-					continue
 
-				case <-time.After(time.Second * 10):
-					log.Info("per client timeout")
+					log.Debug("queuing response", "resp", resp)
+
+					if resp.NTP != nil && resp.Error == "" {
+						if resp.NTP.Leap < 4 && resp.NTP.Stratum > 0 && resp.NTP.Stratum < 8 {
+							healthyResponses++
+						}
+					}
+					r = append(r, &resp)
+
+					if !getAll && healthyResponses >= 3 {
+						cancel()
+					}
+
 					continue
 
 				case <-ctx.Done():
-					log.Info("overall timeout")
+					log.Debug("request cancelled")
 					return ctx.Err()
 				}
-
 			}
-			return nil
 		})
 
 		err = wg.Wait()
 
-		if err != nil {
+		log.Debug("done waiting, sending response", "len", len(r), "r", r)
+
+		if err != nil &&
+			!errors.Is(err, context.DeadlineExceeded) &&
+			!errors.Is(err, context.Canceled) {
+			log.Warn("check/ntp error", "err", err)
 			return c.JSON(500, err)
 		}
 
