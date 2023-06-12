@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"math"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/statusscore"
 )
@@ -35,15 +35,19 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	span := otrace.SpanFromContext(ctx)
 	now := time.Now()
 
+	log := logger.FromContext(ctx)
+
 	rv := &pb.ServerStatusResult{
 		Ok: false,
 	}
 
 	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
-		log.Printf("get monitor error: %s", err)
+		log.Error("get monitor error", "err", err)
 		return rv, err
 	}
+
+	log = log.With("mon_id", monitor.ID)
 
 	if !monitor.IsLive() {
 		return rv, twirp.PermissionDenied.Error("monitor not active")
@@ -75,25 +79,21 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	batchID.UnmarshalText(in.BatchID)
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
-
-	log.Printf("method=SubmitResults cn=%s traceID=%s batchID=%s",
-		monitor.TlsName.String, span.SpanContext().TraceID(), batchID.String())
+	log = log.With("batchID", batchID.String())
 
 	batchTime := ulid.Time(batchID.Time())
 
 	lastSubmit := monitor.LastSubmit
 	if lastSubmit.Valid {
-		log.Printf("monitor %d previous batch was %s", monitor.ID, lastSubmit.Time.String())
+		log.Debug("previous batch timestamp", "last_submit", lastSubmit.Time.String())
 	} else {
-		log.Printf("monitor %d had no last seen!", monitor.ID)
+		log.Info("monitor had no last seen!")
 	}
 
 	if batchTime.Before(lastSubmit.Time) {
-		log.Printf("monitor %d previous batch was %s; new batch is older %s (%s)",
-			monitor.ID,
-			lastSubmit.Time.String(),
-			batchTime.String(),
-			batchID.String(),
+		log.Warn("new batch is older than previous batch",
+			"last_submit", lastSubmit.Time.String(),
+			"new_submit", batchTime.String(),
 		)
 		// todo: add safety check of setting the monitor status to 'testing' ?
 
@@ -118,7 +118,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
 			if err != nil || !ticketOk {
 				span.AddEvent("signature validation failed")
-				log.Printf("monitor %d signature validation failed for %q %s", monitor.ID, status.GetIP().String(), err)
+				log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
 				counters.Sig.Counter += len(in.List) - i
 				return nil, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
 			}
@@ -127,7 +127,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		err = srv.processStatus(ctx, monitor, status, counters)
 		if err != nil {
 			span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
-			log.Printf("error processing status %+v: %s", status, err)
+			log.Error("error processing status", "status", status, "err", err)
 			return rv, twirp.InternalErrorWith(err)
 		}
 	}

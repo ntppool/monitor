@@ -2,7 +2,6 @@ package ntpdb
 
 import (
 	"encoding/json"
-	"fmt"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"inet.af/netaddr"
@@ -34,7 +33,7 @@ func (m *Monitor) GetConfigWithDefaults(defaults []byte) (*MonitorConfig, error)
 		return nil, err
 	}
 
-	fmt.Printf("mx: %s\n", merged)
+	// fmt.Printf("mx: %s\n", merged)
 
 	return m.getConfig(merged)
 

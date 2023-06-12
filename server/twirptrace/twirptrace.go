@@ -2,10 +2,11 @@ package ottwirp
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net/http"
 	"strconv"
 
+	"go.ntppool.org/monitor/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -156,7 +157,8 @@ func interfaceToAttribute(k string, value interface{}) attribute.KeyValue {
 	case bool:
 		return attribute.Bool(k, v)
 	default:
-		log.Printf("need interfaceToAttribute for type %s=%T", k, value)
+		logger.Setup().Error("need interfaceToAttribute implementation",
+			"key", k, "value", value, "type", fmt.Sprintf("%T", value))
 		return attribute.Bool(k, true)
 	}
 }

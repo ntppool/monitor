@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 
 	"github.com/spf13/cobra"
 	"go.ntppool.org/monitor/ntpdb"
@@ -54,7 +53,6 @@ func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
 
 	smon, err := db.GetSystemMonitor(ctx, "settings", mon.IpVersion)
 	if err == nil {
-		log.Printf("system defaults: %s", smon.Config)
 		mconf, err := mon.GetConfigWithDefaults([]byte(smon.Config))
 		if err != nil {
 			return err

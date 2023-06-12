@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
-	"log"
 	"net/http"
 
+	"go.ntppool.org/monitor/logger"
 	sctx "go.ntppool.org/monitor/server/context"
 )
 
@@ -13,7 +13,7 @@ func getCertificateName(ctx context.Context) string {
 	if name, ok := cn.(string); ok {
 		return name
 	}
-	log.Fatalf("certificateKey didn't return a string")
+	logger.Setup().Error("certificateKey didn't return a string")
 	return ""
 }
 

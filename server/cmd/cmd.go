@@ -1,16 +1,14 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/version"
-	"golang.org/x/exp/slog"
 )
 
 func (cli *CLI) RootCmd() *cobra.Command {
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	logger.Setup()
 
 	cmd := &cobra.Command{
 		Use:   "monitor-api",

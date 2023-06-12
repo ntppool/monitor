@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -18,6 +17,7 @@ import (
 
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
@@ -34,6 +34,7 @@ type Server struct {
 	tracer otrace.Tracer
 	db     *ntpdb.Queries
 	dbconn *sql.DB
+	log    *slog.Logger
 }
 
 type Config struct {
@@ -43,7 +44,7 @@ type Config struct {
 	CertProvider  apitls.CertificateProvider
 }
 
-func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB) (*Server, error) {
+func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB) (*Server, error) {
 	db := ntpdb.New(dbconn)
 
 	vaultClient, err := vaultClient()
@@ -65,6 +66,7 @@ func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB) (*Server, error)
 	srv := &Server{
 		ctx:    ctx,
 		cfg:    &cfg,
+		log:    log,
 		db:     db,
 		dbconn: dbconn,
 		tokens: tm,
@@ -82,8 +84,6 @@ func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB) (*Server, error)
 }
 
 func (srv *Server) Run() error {
-
-	log.Printf("Run()")
 
 	ctx, cancel := context.WithCancel(srv.ctx)
 	defer cancel()
@@ -150,7 +150,7 @@ func (srv *Server) Run() error {
 		),
 	)
 
-	slog.Info("starting server")
+	srv.log.Info("starting server")
 
 	metricsServer := &http.Server{
 		Addr:    ":9000",
@@ -179,7 +179,7 @@ func (srv *Server) Run() error {
 		IdleTimeout:       240 * time.Second,
 	}
 
-	log.Printf("Starting gRPC server")
+	srv.log.Info("Starting gRPC server")
 
 	g.Go(func() error {
 		err := server.ListenAndServeTLS("", "")
@@ -220,23 +220,23 @@ func NewLoggingServerHooks() *twirp.ServerHooks {
 
 			ctx = context.WithValue(ctx, sctx.RequestStartKey, time.Now())
 
-			log.Printf("method=%s cn=%s TraceID=%s", d.MethodName, d.CN, d.Span.SpanContext().TraceID())
+			log := logger.Setup()
+			log = log.With("request", d.MethodName, "cn", d.CN, "TraceID", d.Span.SpanContext().TraceID())
+			ctx = logger.NewContext(ctx, log)
+
 			return ctx, nil
 		},
 		Error: func(ctx context.Context, twerr twirp.Error) context.Context {
-			d := logDataFn(ctx)
-			log.Printf("method=%s cn=%s TraceID=%s error=%q message=%q",
-				d.MethodName, d.CN, d.Span.SpanContext().TraceID(),
-				string(twerr.Code()), twerr.Msg())
+			log := logger.FromContext(ctx)
+			log.Error("request error", "error", string(twerr.Code()), "msg", twerr.Msg())
 			return ctx
 		},
 		ResponseSent: func(ctx context.Context) {
-			d := logDataFn(ctx)
 			requestStart, _ := ctx.Value(sctx.RequestStartKey).(time.Time)
 			duration := time.Since(requestStart)
 
-			log.Printf("method=%s cn=%s TraceID=%s duration=%s",
-				d.MethodName, d.CN, d.Span.SpanContext().TraceID(), duration)
+			log := logger.FromContext(ctx)
+			log.Info("completed", "duration", duration)
 		},
 	}
 }
@@ -264,7 +264,7 @@ func vaultClient() (*vaultapi.Client, error) {
 	} else {
 		if !hasOutputVaultEnvMessage {
 			hasOutputVaultEnvMessage = true
-			log.Printf("could not read /vault/secrets/token (%s), using VAULT_TOKEN", err)
+			logger.Setup().Error("could not read /vault/secrets/token, using VAULT_TOKEN", "err", err)
 		}
 	}
 

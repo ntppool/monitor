@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
-	"log"
 	"os"
 
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/version"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,6 +27,8 @@ func (srv *Server) NewTracer() trace.Tracer {
 }
 
 func (srv *Server) initTracer(depEnv string) error {
+
+	log := logger.Setup()
 
 	// exporter, err := srv.newStdoutExporter(os.Stdout)
 
@@ -53,17 +55,16 @@ func (srv *Server) initTracer(depEnv string) error {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	} else {
-		log.Println("tracing not configured")
+		log.Warn("tracing not configured")
 	}
 
 	return nil
 }
 
 func (srv *Server) newJaegerExporter() (sdktrace.SpanExporter, error) {
-
 	exporter, err := jaeger.New(jaeger.WithAgentEndpoint())
 	if err != nil {
-		log.Fatalf("creating jaeger trace exporter: %v", err)
+		logger.Setup().Error("creating jaeger trace exporter", "err", err)
 	}
 	return exporter, err
 }
@@ -73,7 +74,7 @@ func (srv *Server) newOLTPExporter() (sdktrace.SpanExporter, error) {
 	client := otlptracehttp.NewClient()
 	exporter, err := otlptrace.New(ctx, client)
 	if err != nil {
-		log.Fatalf("creating OTLP trace exporter: %v", err)
+		logger.Setup().Error("creating OTLP trace exporter", "err", err)
 	}
 	return exporter, err
 }
@@ -103,8 +104,6 @@ func (srv *Server) newResource(depEnv string) *resource.Resource {
 	if err != nil {
 		panic(err)
 	}
-
-	log.Printf("merged resource: %+v", r)
 
 	return r
 }

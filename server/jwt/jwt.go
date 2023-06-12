@@ -2,12 +2,12 @@ package jwt
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	gjwt "github.com/golang-jwt/jwt/v4"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -19,6 +19,8 @@ type MosquittoClaims struct {
 }
 
 func GetToken(key, subject string, admin bool) (string, error) {
+
+	log := logger.Setup()
 
 	mySigningKey := []byte(key)
 
@@ -67,8 +69,8 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		)
 	}
 
-	log.Printf("subscribe topics: %+v", subscribe)
-	log.Printf("publish   topics: %+v", publish)
+	log.Debug("jwt setup", "subscribe", subscribe)
+	log.Debug("jwt setup", "publish", publish)
 
 	claims := MosquittoClaims{
 		subscribe,
@@ -84,7 +86,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		},
 	}
 
-	log.Printf("claims: %+v", claims)
+	log.Debug("jwt claims", "claims", claims)
 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
 	ss, err := token.SignedString(mySigningKey)

@@ -3,12 +3,12 @@ package cmd
 import (
 	"context"
 	"database/sql"
-	"log"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
 )
@@ -56,6 +56,8 @@ func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
 
 func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
 
+	log := logger.Setup()
+
 	ctx := context.Background()
 
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
@@ -63,7 +65,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 		return err
 	}
 
-	sc, err := scorer.New(ctx, dbconn)
+	sc, err := scorer.New(ctx, log, dbconn)
 	if err != nil {
 		return nil
 	}
@@ -80,7 +82,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 			return err
 		}
 		if count > 0 || !continuous {
-			log.Printf("Processed %d log scores", count)
+			log.Debug("Processed log scores", "count", count)
 		}
 
 		if !continuous {
@@ -89,7 +91,6 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 
 		if count == 0 {
 			sl := expback.NextBackOff()
-			// log.Printf("going to sleep %s", sl)
 			time.Sleep(sl)
 		} else {
 			expback.Reset()
@@ -103,6 +104,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
+	log := logger.Setup()
 
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
@@ -117,7 +119,7 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 
 	db := ntpdb.New(dbconn).WithTx(tx)
 
-	scr, err := scorer.New(ctx, dbconn)
+	scr, err := scorer.New(ctx, log, dbconn)
 	if err != nil {
 		return err
 	}
@@ -132,7 +134,7 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 		existingScorers[dbS.Name] = true
 	}
 
-	log.Printf("dbScorers: %+v", dbScorers)
+	log.Debug("dbScorers", "scorers", dbScorers)
 
 	codeScorers := scr.Scorers()
 
@@ -143,10 +145,10 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 
 	for name := range codeScorers {
 		if _, ok := existingScorers[name]; ok {
-			log.Printf("%s already configured", name)
+			log.Info("scorer already configured", "name", name)
 			continue
 		}
-		log.Printf("setting up %s", name)
+		log.Info("setting up scorer", "name", name)
 
 		insert, err := db.InsertScorer(ctx, ntpdb.InsertScorerParams{
 			Name:    name,

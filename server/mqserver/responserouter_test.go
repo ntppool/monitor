@@ -3,11 +3,11 @@ package mqserver
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"testing"
 	"time"
 
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/server/ulid"
 
 	"github.com/eclipse/paho.golang/packets"
@@ -18,7 +18,7 @@ func TestResponseHandler(t *testing.T) {
 
 	ctx := context.Background()
 
-	mqs, err := Setup(nil)
+	mqs, err := Setup(logger.Setup(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +50,9 @@ func TestResponseHandler(t *testing.T) {
 
 		select {
 		case p := <-rc:
-			log.Printf("got publish message: %+v", p)
+			t.Logf("got publish message: %+v", p)
 		case <-time.After(2 * time.Second):
-			log.Printf("didn't get a message")
+			t.Log("didn't get a message")
 			t.Fail()
 		}
 	}()
@@ -67,7 +67,7 @@ func TestResponseHandler(t *testing.T) {
 		}
 		msg.InitProperties(&packets.Properties{})
 
-		log.Printf("sending message: %+v", msg)
+		t.Logf("sending message: %+v", msg)
 
 		h := rr.Handler()
 		h(msg)

@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.golang/paho"
+	"golang.org/x/exp/slog"
 )
 
 func TestClientState(t *testing.T) {
 
-	mqs, err := Setup(nil)
+	mqs, err := Setup(slog.Default(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

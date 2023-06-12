@@ -2,9 +2,9 @@ package sctx
 
 import (
 	"context"
-	"log"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/logger"
 )
 
 func GetDeploymentEnvironment(ctx context.Context) api.DeploymentEnvironment {
@@ -12,6 +12,6 @@ func GetDeploymentEnvironment(ctx context.Context) api.DeploymentEnvironment {
 	if e, ok := depEnv.(api.DeploymentEnvironment); ok {
 		return e
 	}
-	log.Fatalf("DeploymentEnv unavailable in context")
+	logger.Setup().Error("DeploymentEnv unavailable in context")
 	return api.DeployUndefined
 }

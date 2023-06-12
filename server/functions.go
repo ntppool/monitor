@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -23,9 +22,11 @@ import (
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
 
+	log := srv.log
+
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
 		if mon == nil {
-			log.Printf("got cached nil mon")
+			log.Error("got cached nil mon")
 		}
 		return mon, ctx, nil
 	}
@@ -51,8 +52,10 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Cont
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
 	span := otrace.SpanFromContext(ctx)
 
+	log := srv.log
+
 	ua := ctx.Value(sctx.ClientVersionKey).(string)
-	log.Printf("user agent: %v", ua)
+	log.Debug("GetConfig", "user-agent", ua)
 
 	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
@@ -70,7 +73,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 
 	// the client always starts by getting a config, so we track the user-agent here
 	if err = srv.updateUserAgent(ctx, monitor); err != nil {
-		log.Printf("error updating user-agent: %s", err)
+		log.Error("error updating user-agent", "err", err)
 	}
 
 	var cfg *ntpdb.MonitorConfig
@@ -93,7 +96,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	if key := srv.cfg.JWTKey; len(key) > 0 {
 		jwtToken, err := jwt.GetToken(key, monitor.TlsName.String, false)
 		if err != nil {
-			log.Printf("error generating jwtToken: %s", err)
+			log.Error("error generating jwtToken", "err", err)
 		}
 
 		mqttPrefix := fmt.Sprintf("/%s/monitors", srv.cfg.DeploymentEnv)
@@ -107,7 +110,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 			}
 		}
 	} else {
-		log.Printf("JWTKey not configured")
+		log.Error("JWTKey not configured")
 	}
 
 	return cfg.PbConfig()
@@ -145,6 +148,8 @@ func (srv *Server) ValidateIPs(signature []byte, monitorID int32, batchID []byte
 
 func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
 	span := otrace.SpanFromContext(ctx)
+
+	log := srv.log
 
 	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
@@ -186,8 +191,10 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
-	log.Printf("method=GetServers cn=%s traceID=%s batchID=%s",
-		monitor.TlsName.String, span.SpanContext().TraceID(), batchID.String())
+	log = log.With("traceID", span.SpanContext().TraceID(),
+		"batchID", batchID.String(),
+		"cn", monitor.TlsName.String,
+	)
 
 	mcfg, err := monitor.GetConfig()
 	if err != nil {

@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
+	"golang.org/x/exp/slog"
 )
 
 const batchSize = 2000
@@ -18,6 +18,7 @@ const mainScorer = "recentmedian"
 type runner struct {
 	ctx      context.Context
 	dbconn   *sql.DB
+	log      *slog.Logger
 	registry map[string]*ScorerMap
 }
 
@@ -26,7 +27,7 @@ type lastUpdate struct {
 	score float64
 }
 
-func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
+func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB) (*runner, error) {
 
 	m := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
@@ -38,13 +39,14 @@ func New(ctx context.Context, dbconn *sql.DB) (*runner, error) {
 	}
 
 	if _, ok := m[mainScorer]; !ok {
-		log.Printf("invalid main scorer %s", mainScorer)
+		log.Warn("invalid main scorer", "name", mainScorer)
 	}
 
 	return &runner{
 		ctx:      ctx,
 		dbconn:   dbconn,
 		registry: m,
+		log:      log,
 	}, nil
 }
 
@@ -53,6 +55,8 @@ func (r *runner) Scorers() map[string]*ScorerMap {
 }
 
 func (r *runner) Run() (int, error) {
+
+	log := r.log
 
 	registry := r.Scorers()
 
@@ -64,27 +68,28 @@ func (r *runner) Run() (int, error) {
 	}
 
 	for _, sc := range scorers {
-		log.Printf("setting up scorer: %s (last ls id: %d)", sc.Name, sc.LogScoreID.Int64)
+		log.Debug("setting up scorer", "name", sc.Name, "last_id", sc.LogScoreID.Int64)
 		if s, ok := registry[sc.Name]; ok {
 			s.Scorer.Setup(sc.ID)
 			s.ScorerID = sc.ID
 			s.LastID = sc.LogScoreID.Int64
 		} else {
-			log.Printf("scorer %q not implemented", sc.Name)
+			log.Warn("scorer not implemented", "name", sc.Name)
 		}
 	}
 
 	count := 0
 
 	for name, sm := range registry {
+		log = log.With("name", name)
 		if sm.ScorerID == 0 {
 			continue
 		}
-		log.Printf("processing %q from %d", name, sm.LastID)
+		log.Debug("processing", "from_id", sm.LastID)
 		scount, err := r.process(name, sm)
 		count += scount
 		if err != nil {
-			log.Printf("process error: %s", err)
+			log.Error("process error", "err", err)
 			return count, err
 		}
 	}
@@ -93,6 +98,8 @@ func (r *runner) Run() (int, error) {
 }
 
 func (r *runner) process(name string, sm *ScorerMap) (int, error) {
+
+	log := r.log.With("name", name)
 
 	tx, err := r.dbconn.BeginTx(r.ctx, nil)
 	if err != nil {
@@ -114,7 +121,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	log.Printf("got %d scores", len(logscores))
+	log.Debug("got scores", "count", len(logscores))
 
 	count = len(logscores)
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/netip"
 	"strings"
 	"sync"
@@ -34,6 +33,7 @@ type server struct {
 	db     *ntpdb.Queries
 	dbconn *sql.DB
 	ctx    context.Context
+	log    *slog.Logger
 
 	clients map[string]*client
 	cmux    sync.RWMutex
@@ -48,9 +48,9 @@ type client struct {
 	Data     *ntpdb.Monitor
 }
 
-func Setup(dbconn *sql.DB) (*server, error) {
+func Setup(log *slog.Logger, dbconn *sql.DB) (*server, error) {
 	clients := map[string]*client{}
-	mqs := &server{clients: clients, dbconn: dbconn}
+	mqs := &server{clients: clients, dbconn: dbconn, log: log}
 	if dbconn != nil {
 		// tests run without the db
 		mqs.db = ntpdb.New(dbconn)
@@ -84,7 +84,7 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 	rr := mqs.setupResponseRouter(ctx, responseTopic)
 	mqs.rr = rr
 
-	log.Printf("statusTopic: %q", statusTopic)
+	mqs.log.Debug("statusTopic", "name", statusTopic)
 
 	router.RegisterHandler(statusTopic, mqs.MQTTStatusHandler)
 	router.RegisterHandler(responseTopic, rr.Handler())
@@ -93,19 +93,19 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 }
 
 func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
-	slog.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
+	mqs.log.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
 
 	path := strings.Split(p.Topic, "/")
 
 	if t := path[len(path)-1]; t != "status" {
-		slog.Info("skipping mqtt message", "parsed-topic", t, "topic", p.Topic, "payload", p.Payload)
+		mqs.log.Info("skipping mqtt message", "parsed-topic", t, "topic", p.Topic, "payload", p.Payload)
 		return
 	}
 
 	status := mqttcm.StatusMessage{}
 	err := json.Unmarshal(p.Payload, &status)
 	if err != nil {
-		log.Printf("could not unmarshal status message: %s", err)
+		mqs.log.Error("could not unmarshal status message", "err", err)
 		return
 	}
 
@@ -129,7 +129,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		if mqs.db != nil {
 			mon, err := mqs.db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
 			if err != nil {
-				log.Printf("fetching monitor details: %s", err)
+				mqs.log.Error("fetching monitor details", "err", err)
 			}
 			if mon.ID != 0 {
 				cs.Data = &mon
@@ -141,7 +141,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		cs.Online = false
 	}
 
-	slog.Debug("new status", "status", cs)
+	mqs.log.Debug("new status", "status", cs)
 	// log.Printf("new map: %+v", mqs.clients)
 
 }
@@ -173,7 +173,7 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 			return err
 		}
 
-		log := slog.With("requestID", id)
+		log := mqs.log.With("requestID", id)
 
 		ip, err := netip.ParseAddr(c.Param("ip"))
 		if err != nil {
@@ -202,6 +202,8 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 		wg.Go(func() error {
 
 			for _, cl := range mqs.seenClients() {
+
+				log.Debug("evaluating mqtt client", "client", cl.Name)
 
 				if !cl.Online || cl.Data == nil {
 					continue

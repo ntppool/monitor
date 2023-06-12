@@ -4,21 +4,25 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/binary"
 	"io"
-	"log"
 	mathrand "math/rand"
+	"os"
 	"sync"
 	"time"
 
 	oklid "github.com/oklog/ulid/v2"
+	"go.ntppool.org/monitor/logger"
 )
 
 var monotonicPool = sync.Pool{
 	New: func() interface{} {
 
+		log := logger.Setup()
+
 		var seed int64
 		err := binary.Read(cryptorand.Reader, binary.BigEndian, &seed)
 		if err != nil {
-			log.Fatalf("crypto/rand error: %s", err)
+			log.Error("crypto/rand error", "err", err)
+			os.Exit(10)
 		}
 
 		rand := mathrand.New(mathrand.NewSource(seed))

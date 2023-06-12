@@ -126,7 +126,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
 
-		mqc := monitor.NewMQClient(topics, cfg)
+		log := slog.Default().WithGroup("mqtt")
+
+		mqc := monitor.NewMQClient(log, topics, cfg)
 		router := paho.NewSingleHandlerRouter(mqc.Handler)
 
 		// todo: once a day get a new mqtt config / JWT
@@ -263,7 +265,9 @@ func run(api pb.Monitor) (bool, error) {
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(serverlist.BatchID)
 
-	slog.Info("processing", "batchID", batchID.String(), "server_count", len(serverlist.Servers))
+	log := slog.With("batchID", batchID.String())
+
+	log.Debug("processing", "server_count", len(serverlist.Servers))
 
 	// we're testing, so limit how much work ...
 	if *onceFlag {
@@ -287,15 +291,15 @@ func run(api pb.Monitor) (bool, error) {
 
 				tr, err := traceroute.New(*s)
 				if err != nil {
-					slog.Error("traceroute", "err", err)
+					log.Error("traceroute", "err", err)
 				}
 				tr.Start(ctx)
 				x, err := tr.ReadAll()
 				if err != nil {
-					slog.Error("traceroute", "err", err)
+					log.Error("traceroute", "err", err)
 				}
 
-				slog.Info("traceroute", "output", x)
+				log.Info("traceroute", "output", x)
 
 				wg.Done()
 				return
@@ -310,7 +314,7 @@ func run(api pb.Monitor) (bool, error) {
 			}
 			status.Ticket = ticket
 			if err != nil {
-				slog.Info("ntp error", "server", s, "err", err)
+				log.Info("ntp error", "server", s, "err", err)
 				status.Error = err.Error()
 				if strings.HasPrefix(status.Error, "read udp") {
 					idx := strings.LastIndex(status.Error, ":")
@@ -329,7 +333,7 @@ func run(api pb.Monitor) (bool, error) {
 
 	wg.Wait()
 
-	slog.Info("submitting", "batchID", serverlist.BatchID)
+	log.Info("submitting")
 
 	list := &pb.ServerStatusList{
 		Version: 3,

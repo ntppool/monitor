@@ -3,7 +3,6 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/netip"
 	"time"
 
@@ -13,16 +12,18 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/mqttcm"
+	"golang.org/x/exp/slog"
 )
 
 type mqclient struct {
 	mq     *autopaho.ConnectionManager
 	topics *mqttcm.MQTTTopics
 	cfg    *pb.Config
+	log    *slog.Logger
 }
 
-func NewMQClient(topics *mqttcm.MQTTTopics, cfg *pb.Config) *mqclient {
-	return &mqclient{topics: topics, cfg: cfg}
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, cfg *pb.Config) *mqclient {
+	return &mqclient{topics: topics, cfg: cfg, log: log}
 }
 
 func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
@@ -31,14 +32,16 @@ func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
 
 func (mqc *mqclient) Handler(m *paho.Publish) {
 
+	mqc.log.Info("mqtt handler active")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	log.Printf("mqtt client message on %q: %s\n%+v", m.Topic, m.Payload, m.Properties)
+	mqc.log.Info("mqtt client message", "topic", m.Topic, "payload", m.Payload, "properties", m.Properties)
 
 	requestType, _, err := mqc.topics.ParseRequestTopic(m.Topic)
 	if err != nil {
-		log.Printf("mqtt request error: %s", err)
+		mqc.log.Error("mqtt request error", "err", err)
 		return
 	}
 
@@ -46,16 +49,16 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 	err = json.Unmarshal(m.Payload, &msg)
 	if err != nil {
-		log.Printf("mqtt request error: %s", err)
+		mqc.log.Error("mqtt request error", "err", err)
 		return
 	}
 
 	if requestType == "ntp" {
-		log.Printf("check ntp for %s", msg.IP)
+		mqc.log.Info("mqtt check ntp", "ip", msg.IP)
 
 		ip, err := netip.ParseAddr(msg.IP)
 		if err != nil {
-			log.Printf("mqtt request error, invalid ip %q: %s", msg.IP, err)
+			mqc.log.Error("mqtt request error, invalid ip", "ip", msg.IP, "err", err)
 			return
 		}
 
@@ -67,7 +70,7 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 		_, resp, err := CheckHost(&ip, cfg)
 		if err != nil {
-			log.Printf("ntp check error %q: %s", msg.IP, err)
+			mqc.log.Error("mqtt ntp check error", "ip", msg.IP, "err", err)
 			return
 		}
 
@@ -78,7 +81,7 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 		responseData, err := json.Marshal(r)
 		if err != nil {
-			log.Printf("json error: %s", err)
+			mqc.log.Error("mqtt json error", "err", err)
 			return
 		}
 
@@ -95,11 +98,11 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		}
 
 		if mqc.mq == nil {
-			log.Printf("mq==nil!")
+			mqc.log.Error("mqtt mq==nil")
 		}
 
 		mqc.mq.AwaitConnection(ctx)
-		log.Printf("have mqtt connection")
+		mqc.log.Info("mqtt connection for response established")
 
 		mqc.mq.Publish(ctx, rmsg)
 

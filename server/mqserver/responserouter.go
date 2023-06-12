@@ -3,25 +3,27 @@ package mqserver
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 
 	"github.com/eclipse/paho.golang/paho"
 	"go.opentelemetry.io/otel"
 	otrace "go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slog"
 )
 
 type mqttResponseRouter struct {
 	prefix string
-	mu     sync.RWMutex
+	log    *slog.Logger
 	rm     map[string]chan<- *paho.Publish
+	mu     sync.RWMutex
 }
 
 func (mqs *server) setupResponseRouter(ctx context.Context, topicPrefix string) *mqttResponseRouter {
 	topicPrefix = strings.TrimSuffix(topicPrefix, "#")
 	return &mqttResponseRouter{
 		prefix: topicPrefix,
+		log:    mqs.log,
 		rm:     make(map[string]chan<- *paho.Publish, 100),
 	}
 }
@@ -30,6 +32,8 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 
 	prefixLength := len(rr.prefix)
 	tp := otel.GetTracerProvider().Tracer("mqserver")
+
+	log := rr.log
 
 	return func(p *paho.Publish) {
 
@@ -41,6 +45,7 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 		if tr := p.Properties.User.Get("TraceID"); len(tr) > 0 {
 			traceID, _ = otrace.TraceIDFromHex(tr)
 			spanID, _ = otrace.SpanIDFromHex(p.Properties.User.Get("SpanID"))
+			log = log.With("traceID", traceID)
 		}
 
 		spanContext := otrace.NewSpanContext(otrace.SpanContextConfig{
@@ -55,29 +60,27 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 		defer span.End()
 
 		if deadline, ok := ctx.Deadline(); ok {
-			log.Printf("has deadline: %s", deadline)
+			log.Info("context has deadline", "deadline", deadline)
 		}
 
-		log.Printf("handling message: %+v", p)
+		log.Info("handling message", "payload", p)
 		span.AddEvent(fmt.Sprintf("handling message: %+v", p))
 
 		topic := p.Topic
 
 		if len(topic) < prefixLength {
-			log.Printf("message topic too short (%q)", topic)
+			log.Warn("message topic too short", "topic", topic, "len", len(topic))
 			return
 		}
-
-		log.Printf("topic / prefix length: %q / %d", topic, prefixLength)
 
 		topicPath := strings.Split(topic[prefixLength:], "/")
 
 		if len(topicPath) < 2 {
-			log.Printf("could not get host and id from topic: %s", topic)
+			log.Error("could not get host and id from topic", "topic", topic)
 			return
 		}
 
-		log.Printf("topic path: %+v", topicPath)
+		log.Info("topic path", "path", topicPath)
 
 		rr.mu.RLock()
 		defer rr.mu.RUnlock()
@@ -86,21 +89,21 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			// todo: include host from topicPath[0]
 			ch <- p
 		} else {
-			log.Printf("no response channel for %s", topicPath[1])
+			log.Warn("no response channel for", "id", topicPath[1])
 		}
 
 	}
 }
 
 func (rr *mqttResponseRouter) AddResponseID(id string, rc chan<- *paho.Publish) {
-	log.Printf("adding channel for %s", id)
+	rr.log.Info("adding channel", "id", id)
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 	rr.rm[id] = rc
 }
 
 func (rr *mqttResponseRouter) CloseResponseID(id string) {
-	log.Printf("closing channel for %s", id)
+	rr.log.Info("closing channel", "id", id)
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 	close(rr.rm[id])

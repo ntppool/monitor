@@ -4,19 +4,21 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
 	"go.ntppool.org/monitor/server/mqserver"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/spf13/cobra"
@@ -43,6 +45,8 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	cfg := cli.Config
 	ctx := context.Background()
 
+	log := logger.Setup()
+
 	//log.Printf("acfg: %+v", cfg)
 
 	if len(cfg.DeploymentMode) == 0 {
@@ -51,12 +55,14 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cm, err := apitls.GetCertman(cfg.TLS.Cert, cfg.TLS.Key)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("certificate error", "err", err)
+		os.Exit(2)
 	}
 
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Error("database error", "err", err.Error())
+		os.Exit(2)
 	}
 
 	scfg := server.Config{
@@ -80,7 +86,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		r := ""
 
 		if parsed == nil {
-			log.Printf("cert: %+v", parsed)
+			log.Warn("could not parse certificate", "cert", parsed)
 			return "", fmt.Errorf("no certificate?")
 		}
 
@@ -88,7 +94,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 			if len(r) == 0 {
 				r = dnsName
 			}
-			log.Printf("dnsName from cert: %s", dnsName)
+			log.Debug("dnsName from cert", "name", dnsName)
 		}
 		return r, nil
 	}()
@@ -98,14 +104,16 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	depEnv, err := api.DeploymentEnvironmentFromString(cfg.DeploymentMode)
 	if err != nil {
-		log.Fatalf("unknown deployment mode %q: %s", cfg.DeploymentMode, err)
+		log.Error("unknown deployment mode", "deployment_mode", cfg.DeploymentMode, "err", err)
+		os.Exit(2)
 	}
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
 	jwttoken, err := jwt.GetToken(cfg.JWTKey, tlsName, true)
 	if err != nil {
-		log.Fatalf("jwt token: %s", err)
+		log.Error("jwt token", "err", err)
+		os.Exit(2)
 	}
 
 	mqcfg := &pb.MQTTConfig{
@@ -114,14 +122,12 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		JWT:  []byte(jwttoken),
 	}
 
-	mqs, err := mqserver.Setup(dbconn)
+	mqs, err := mqserver.Setup(log, dbconn)
 	if err != nil {
 		return err
 	}
 
 	topicPrefix := fmt.Sprintf("/%s/monitors", cfg.DeploymentMode)
-
-	log.Printf("ctx: %+v", ctx)
 
 	router := mqs.MQTTRouter(ctx, topicPrefix)
 
@@ -136,7 +142,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		// aren't fatal -- unclear if they error out and should be ignored
 		// and Setup() only returns errors that are unrecoverable (and thus
 		// worth not starting on).
-		log.Printf("could not setup mqtt connection: %s", err)
+		log.Error("could not setup mqtt connection", "err", err)
 	}
 
 	mqs.SetConnectionManager(mq)
@@ -146,7 +152,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	g.Go(func() error {
 		<-mq.Done()
-		log.Printf("mqtt connection done")
+		log.Info("mqtt connection done")
 		return nil
 	})
 
@@ -155,12 +161,12 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	})
 
 	// todo: ctx + errgroup
-	go healthCheckListener()
+	go healthCheckListener(ctx, log)
 
 	g.Go(func() error {
-		srv, err := server.NewServer(ctx, scfg, dbconn)
+		srv, err := server.NewServer(ctx, log, scfg, dbconn)
 		if err != nil {
-			log.Printf("NewServer() error: %s", err)
+			log.Error("NewServer() error", "err", err)
 			return fmt.Errorf("srv setup: %s", err)
 		}
 		return srv.Run()
@@ -168,7 +174,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	err = g.Wait()
 	if err != nil {
-		log.Printf("server error: %s", err)
+		log.Error("server error", "err", err)
 	}
 
 	mq.Disconnect(ctx)
@@ -179,7 +185,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 }
 
-func healthCheckListener() {
+func healthCheckListener(ctx context.Context, log *slog.Logger) {
 	serveMux := http.NewServeMux()
 
 	serveMux.HandleFunc("/__health", func(w http.ResponseWriter, r *http.Request) {
@@ -192,10 +198,21 @@ func healthCheckListener() {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 20 * time.Second,
 		IdleTimeout:  120 * time.Second,
-
-		Handler: serveMux,
+		Handler:      serveMux,
 	}
 
-	err := srv.ListenAndServe()
-	log.Printf("http server done listening: %s", err)
+	go func() {
+
+		err := srv.ListenAndServe()
+		if err != http.ErrServerClosed {
+			log.Warn("health check server done listening: %s", err)
+		}
+	}()
+
+	<-ctx.Done()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("health check server shutdown Failed:%+v", err)
+	}
+
 }
