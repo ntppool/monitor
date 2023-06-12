@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/logger"
 )
 
 const vaultAuthPrefix = "/monitors"
@@ -31,6 +31,8 @@ type ClientAuth struct {
 }
 
 func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error) {
+
+	log := logger.FromContext(ctx)
 
 	depEnv, err := api.GetDeploymentEnvironmentFromName(name)
 	if err != nil {
@@ -68,7 +70,7 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 	changed := false
 
 	if ca.Name != name {
-		log.Printf("monitor name changed from the last state (%s => %s)", ca.Name, name)
+		log.Warn("monitor name changed from the last state (%s => %s)", ca.Name, name)
 		ca.Name = name
 		changed = true
 	}
@@ -93,11 +95,12 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 }
 
 func (ca *ClientAuth) Manager() error {
+	log := logger.FromContext(ca.ctx)
 
 	go func() {
 		err := ca.RenewCertificates()
 		if err != nil {
-			log.Printf("RenewCertificates failed: %s", err)
+			log.Error("RenewCertificates failed", "err", err)
 		}
 	}()
 
@@ -133,11 +136,12 @@ func (ca *ClientAuth) Login() error {
 }
 
 func (ca *ClientAuth) WaitUntilReady() error {
+	log := logger.FromContext(ca.ctx)
 	for {
 		if ok, _, _ := ca.checkCertificateValidity(); ok {
 			return nil
 		}
-		log.Printf("Waiting for TLS certificate to be available")
+		log.Info("Waiting for TLS certificate to be available")
 
 		timer := time.NewTimer(5 * time.Second)
 

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -26,7 +25,6 @@ func OpenDB(config DBConfig) (*sql.DB, error) {
 
 	err := dbconn.Ping()
 	if err != nil {
-		log.Printf("Could not connect to database: %s", err)
 		return nil, err
 	}
 

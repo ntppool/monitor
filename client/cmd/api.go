@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -44,58 +44,62 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 
 func (cli *CLI) apiOK(cmd *cobra.Command) error {
 
+	log := logger.Setup()
+
 	timeout := time.Second * 20
 	timeout = time.Minute * 5
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	log.Println("Checking API")
+	log.Info("checking API")
 	cauth, err := cli.ClientAuth(ctx)
 	if err != nil {
-		log.Fatalf("auth setup error: %s", err)
+		log.Error("auth setup error", "err", err)
+		os.Exit(2)
 	}
 
 	err = cauth.Login()
 	if err != nil {
-		log.Printf("Could not authenticate: %s", err)
+		log.Error("could not authenticate to API", "err", err)
 		os.Exit(2)
 	}
 
 	err = cauth.LoadOrIssueCertificates()
 	if err != nil {
-		log.Printf("getting certificates failed: %s", err)
+		log.Error("getting certificates failed", "err", err)
 	}
 
 	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name)
 	if err != nil {
-		log.Fatalf("Could not get secret metadata: %s", err)
+		log.Error("Could not get metadata for API secret", "err", err)
 	}
 
-	log.Printf("API key expires %s, created %s, remaining uses: %s", secretInfo["expiration_time"], secretInfo["creation_time"], secretInfo["secret_id_num_uses"])
+	log.Info("API key information", "expiration", secretInfo["expiration_time"], "created", secretInfo["creation_time"], "remaining_uses", secretInfo["secret_id_num_uses"])
 
 	ctx, apiC, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
-		log.Fatalf("Could not setup API: %s", err)
+		log.Error("could not setup API client", "err", err)
 	}
 
 	cfg, err := apiC.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
-				log.Fatalf("could not get config: %s", twerr.Msg())
+				log.Error("permission error getting config", "err", twerr.Msg())
 			}
 		}
-		log.Fatalf("could not get config: %s", err)
+		log.Error("could not get config", "err", err)
 	}
 
 	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("could not get deployment environment", "err", err)
+		os.Exit(2)
 	}
 
 	if cfg.Samples > 0 {
-		log.Println("Got valid config; API access validated")
+		log.Info("got valid config; API access validated")
 	}
 
 	var mq *autopaho.ConnectionManager
@@ -104,11 +108,13 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 
 		mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, cfg.MQTTConfig, cauth)
 		if err != nil {
-			log.Fatalf("mqtt: %s", err)
+			log.Error("mqtt", "err", err)
+			os.Exit(2)
 		}
 		err := mq.AwaitConnection(ctx)
 		if err != nil {
-			log.Fatalf("mqtt connection error: %s", err)
+			log.Error("mqtt connection error", "err", err)
+			os.Exit(2)
 		}
 		msg := []byte(fmt.Sprintf(
 			"API test - %s", time.Now(),
@@ -123,7 +129,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 			Retain:  false,
 		})
 		if err != nil {
-			log.Printf("publish error: %s", err)
+			log.Error("mqtt publish error", "err", err)
 		}
 
 		// log.Printf("sending offline message")
@@ -146,7 +152,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		}
 	}
 
-	log.Printf("done")
+	log.Info("api test done")
 
 	return nil
 }
@@ -156,7 +162,9 @@ func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
 	stateDir := cfg.StateDir
 	name := cfg.Name
 
-	log.Printf("Configuring %s (%s)", name, cfg.API.Key)
+	log := logger.FromContext(ctx)
+
+	log.Info("configuring authentication", "name", name, "api_key", cfg.API.Key)
 
 	cauth, err := auth.New(ctx, stateDir, name, cfg.API.Key, cfg.API.Secret)
 	if err != nil {

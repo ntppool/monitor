@@ -5,12 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 )
 
 type RecentMedian struct {
@@ -26,6 +25,8 @@ func (s *RecentMedian) Setup(id int32) {
 
 func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, latest ntpdb.LogScore) (score.Score, error) {
 
+	log := logger.Setup()
+
 	if s.scorerID == 0 {
 		return score.Score{}, fmt.Errorf("RecentMedian not Setup()")
 	}
@@ -39,7 +40,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 		Ts:            latest.Ts,
 	}
 
-	slog.Debug("getting recent scores", "serverID", serverScore.ServerID, "Ts", latest.Ts)
+	log.Debug("getting recent scores", "serverID", serverScore.ServerID, "Ts", latest.Ts)
 
 	recent, err := db.GetScorerRecentScores(ctx, arg)
 	if err != nil {
@@ -99,7 +100,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	attributes.FromSSID = int(serverScore.ID)
 	b, err := json.Marshal(attributes)
 	if err != nil {
-		log.Printf("could not marshal attributes %+v: %s", attributes, err)
+		log.Error("could not marshal attributes", "attributes", attributes, "err", err)
 	}
 	attributeStr := sql.NullString{
 		String: string(b),

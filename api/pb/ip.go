@@ -1,8 +1,9 @@
 package pb
 
 import (
-	"log"
 	"net/netip"
+
+	"go.ntppool.org/monitor/logger"
 )
 
 // func (cfg *Config) IP() *netip.Addr {
@@ -24,7 +25,7 @@ func (s *Server) IP() *netip.Addr {
 func (ss *ServerStatus) SetIP(ip *netip.Addr) {
 	b, err := ip.MarshalBinary()
 	if err != nil {
-		log.Printf("Could not set IP %s in ServerStatus: %s ", ip, err)
+		logger.Setup().Error("Could not set IP in ServerStatus", "ip", ip, "err", err)
 		return
 	}
 	ss.IPBytes = b

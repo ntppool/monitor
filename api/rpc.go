@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/twitchtv/twirp"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/version"
 )
 
@@ -84,6 +84,8 @@ func getServerName(clientName string) (string, error) {
 
 func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, pb.Monitor, error) {
 
+	log := logger.FromContext(ctx)
+
 	serverName, err := getServerName(clientName)
 	if err != nil {
 		return ctx, nil, err
@@ -104,7 +106,7 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 	hdr.Set("User-Agent", "ntppool-monitor/"+version.Version())
 	ctx, err = twirp.WithHTTPRequestHeaders(ctx, hdr)
 	if err != nil {
-		log.Printf("twirp error setting headers: %s", err)
+		log.Error("twirp error setting headers", "err", err)
 		return ctx, nil, err
 	}
 

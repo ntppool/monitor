@@ -27,6 +27,7 @@ import (
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -57,6 +58,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	ctx, cancelMonitor := context.WithCancel(context.Background())
 	defer cancelMonitor()
 
+	log := logger.Setup()
+	ctx = logger.NewContext(ctx, log)
+
 	cauth, err := cli.ClientAuth(ctx)
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
@@ -83,11 +87,11 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				url = "the management site"
 			}
 
-			slog.Error("authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
+			log.Error("authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
 			os.Exit(2)
 		}
 
-		slog.Error("could not authenticate", "err", err)
+		log.Error("could not authenticate", "err", err)
 		os.Exit(2)
 	}
 
@@ -101,7 +105,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	// block until we have a valid certificate
 	err = cauth.WaitUntilReady()
 	if err != nil {
-		slog.Error("failed waiting for authentication to be ready", "err", err)
+		log.Error("failed waiting for authentication to be ready", "err", err)
 		os.Exit(2)
 	}
 
@@ -126,7 +130,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
 
-		log := slog.Default().WithGroup("mqtt")
+		log := log.WithGroup("mqtt")
 
 		mqc := monitor.NewMQClient(log, topics, cfg)
 		router := paho.NewSingleHandlerRouter(mqc.Handler)
@@ -157,10 +161,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	if *sanityOnlyFlag {
 		ok := localOK.Check()
 		if ok {
-			slog.Info("Local clock ok")
+			log.Info("Local clock ok")
 			return nil
 		} else {
-			slog.Info("Local clock not ok")
+			log.Info("Local clock not ok")
 			return fmt.Errorf("health check failed")
 		}
 	}
@@ -199,14 +203,14 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 			if !localOK.Check() {
 				wait := localOK.NextCheckIn()
-				slog.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
+				log.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
 				time.Sleep(wait) // todo: ctx
 				return fmt.Errorf("local clock")
 			}
 
 			if ok, err := run(api); !ok || err != nil {
 				if err != nil {
-					slog.Error("batch processing", "err", err)
+					log.Error("batch processing", "err", err)
 					boff.MaxInterval = 10 * time.Minute
 					boff.Multiplier = 5
 				}
@@ -217,12 +221,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		}, boff)
 
 		if err != nil {
-			slog.Info("backoff error", "err", err)
+			log.Error("backoff error", "err", err)
 		}
 
 		i++
 		if i > 0 && *onceFlag {
-			slog.Info("Asked to only run once, so bye now.")
+			log.Info("Asked to only run once")
 			break
 		}
 	}
