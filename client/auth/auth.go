@@ -118,7 +118,14 @@ func (ca *ClientAuth) Login() error {
 
 	updateChannel := make(chan bool, 10)
 
-	go ca.Vault.RenewToken(ca.ctx, authInfo, updateChannel)
+	go func() {
+		err := ca.Vault.RenewToken(ca.ctx, authInfo, updateChannel)
+		if err != nil {
+			logger.Setup().Error("failed in RenewToken, fatal error", "err", err)
+			// todo: handle this more gracefully
+			os.Exit(11)
+		}
+	}()
 
 	go func() {
 		for {

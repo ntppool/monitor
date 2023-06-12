@@ -2,7 +2,6 @@ package mqttcm
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"go.ntppool.org/monitor/api"
@@ -52,8 +51,6 @@ func (t *MQTTTopics) ParseRequestTopic(topic string) (string, string, error) {
 	// /devel/monitors/requests/uspao1-21wase0.devel.mon.ntppool.dev/ntp
 	topic = strings.TrimPrefix(topic, t.prefix())
 	p := strings.Split(topic, "/")
-
-	log.Printf("P: %+v %d", p, len(p))
 
 	if len(p) < 4 {
 		return "", "", fmt.Errorf("could not parse request topic: %q", topic)

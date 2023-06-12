@@ -5,9 +5,9 @@ import (
 	"crypto/x509"
 	_ "embed"
 	"errors"
-	"log"
 
 	"github.com/abh/certman"
+	"go.ntppool.org/monitor/logger"
 )
 
 //go:embed ca.pem
@@ -35,7 +35,8 @@ func GetCertman(certFile, keyFile string) (*certman.CertMan, error) {
 	if err != nil {
 		return nil, err
 	}
-	cm.Logger(log.Default())
+	log := logger.NewStdLog("cm", nil)
+	cm.Logger(log)
 	err = cm.Watch()
 	if err != nil {
 		return nil, err

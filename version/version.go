@@ -30,6 +30,8 @@ func init() {
 				case "vcs.time":
 					buildTime = h.Value
 				case "vcs.revision":
+					// https://blog.carlmjohnson.net/post/2023/golang-git-hash-how-to/
+					// todo: use BuildInfo.Main.Version if revision is empty
 					gitVersion = h.Value
 				case "vcs.modified":
 					if h.Value == "true" {

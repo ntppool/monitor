@@ -3,7 +3,8 @@ package auth
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"log"
+
+	"go.ntppool.org/monitor/logger"
 )
 
 func (ca *ClientAuth) GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error) {
@@ -23,7 +24,8 @@ func (ca *ClientAuth) SetCertificate(cert *tls.Certificate) {
 	defer ca.lock.Unlock()
 
 	if cert == nil || len(cert.Certificate) == 0 {
-		log.Printf("SetCertificate called with no certificate")
+		log := logger.FromContext(ca.ctx)
+		log.Warn("SetCertificate called with no certificate")
 		return
 	}
 

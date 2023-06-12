@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	approle "github.com/hashicorp/vault/api/auth/approle"
+	"go.ntppool.org/monitor/logger"
 )
 
 var vaultAddr = "https://vault.ntppool.org"
@@ -54,7 +54,7 @@ func (v *Vault) Login(ctx context.Context) (*vaultapi.Secret, error) {
 			var verr *vaultapi.ResponseError
 			if errors.As(err, &verr) {
 				if verr.StatusCode != 403 {
-					log.Printf("token renewal error: %s", err)
+					logger.FromContext(ctx).Error("token renewal error", "err", err)
 				}
 			}
 		} else {
@@ -105,7 +105,7 @@ func (v *Vault) Login(ctx context.Context) (*vaultapi.Secret, error) {
 		return nil, fmt.Errorf("no auth info was returned after login")
 	}
 
-	log.Printf("Authenticated API key")
+	// log.Printf("Authenticated API key")
 	// log.Printf("authInfo: %+v", authInfo)
 	// log.Printf("Token: %s", authInfo.Auth.ClientToken)
 
@@ -141,7 +141,7 @@ func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
 	}
 
 	vaultConfig := &vaultapi.Config{
-		Address:   vaultAddr,
+		Address: vaultAddr,
 	}
 
 	client, err := vaultapi.NewClient(vaultConfig)
@@ -197,7 +197,9 @@ func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interf
 	return rv.Data, nil
 }
 
-func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, updateChannel chan<- bool) {
+func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, updateChannel chan<- bool) error {
+
+	log := logger.FromContext(ctx)
 	// log.Printf("starting RenewToken, with authInfo: %+v", authInfo)
 
 	for {
@@ -205,16 +207,19 @@ func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, upda
 		if authInfo == nil {
 			authInfo, err = cr.Login(ctx)
 			if err != nil {
-				log.Fatalf("unable to authenticate to Vault: %v", err)
+				log.Error("unable to authenticate to Vault", "err", err)
+				return err
 			}
 		}
 		tokenErr := cr.manageTokenLifecycle(ctx, authInfo, updateChannel)
 		if tokenErr != nil {
-			log.Fatalf("unable to start managing token lifecycle: %v", tokenErr)
+			log.Error("unable to start managing token lifecycle", "err", tokenErr)
+			return err
+
 		}
 
 		if err = ctx.Err(); err != nil {
-			return
+			return err
 		}
 
 		authInfo = nil
@@ -225,9 +230,11 @@ func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, upda
 // otherwise returns nil so we can attempt login again.
 func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secret, updateChannel chan<- bool) error {
 
+	log := logger.FromContext(ctx)
+
 	renew := token.Auth.Renewable // You may notice a different top-level field called Renewable. That one is used for dynamic secrets renewal, not token renewal.
 	if !renew {
-		log.Printf("Token is not configured to be renewable. Re-attempting login.")
+		log.Info("Token is not configured to be renewable. Re-attempting login.")
 		return nil
 	}
 
@@ -250,20 +257,20 @@ func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secre
 		// needs to attempt to log in again.
 		case err := <-watcher.DoneCh():
 			if err != nil {
-				log.Printf("Failed to renew token: %v. Re-attempting login.", err)
+				log.Warn("failed to renew token. Re-attempting login.", "err", err)
 				return nil
 			}
 			if err = ctx.Err(); err != nil {
 				return nil
 			}
 			// This occurs once the token has reached max TTL.
-			log.Printf("Token can no longer be renewed. Re-attempting login.")
+			log.Warn("token can no longer be renewed. Re-attempting login.")
 			return nil
 
 		// Successfully completed renewal
 		case renewal := <-watcher.RenewCh():
 			updateChannel <- true
-			log.Printf("Successfully renewed token")
+			log.Info("successfully renewed token")
 			// js, err := json.MarshalIndent(renewal, "", "  ")
 			cr.setAuthSecret(renewal.Secret)
 

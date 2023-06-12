@@ -2,13 +2,13 @@ package localok
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/netip"
 	"sync"
 	"time"
 
 	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/logger"
 	"go4.org/netipx"
 	"golang.org/x/exp/slog"
 
@@ -109,7 +109,7 @@ func (l *LocalOK) update() bool {
 
 		ips, err := net.LookupIP(h)
 		if err != nil {
-			log.Printf("dns lookup for '%s': %s", h, err)
+			logger.Setup().Warn("dns lookup failed", "host", h, "err", err)
 			continue
 		}
 		var ip *netip.Addr

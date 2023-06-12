@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.ntppool.org/monitor/logger"
-	"golang.org/x/exp/slog"
 )
 
 type Metrics struct {
@@ -55,20 +54,12 @@ func (m *Metrics) Registry() prometheus.Registerer {
 	return m.r
 }
 
-type promlogger struct {
-	log *slog.Logger
-}
-
-func (pl promlogger) Println(msg ...interface{}) {
-	pl.log.Info("prom http", "msg", msg)
-}
-
 func (m *Metrics) Handler() http.Handler {
 
-	log := logger.Setup()
+	log := logger.NewStdLog("prom http", nil)
 
 	return promhttp.HandlerFor(m.r, promhttp.HandlerOpts{
-		ErrorLog:          promlogger{log: log},
+		ErrorLog:          log,
 		Registry:          m.r,
 		EnableOpenMetrics: true,
 	})

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/logger"
 )
 
 func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, cfg *pb.MQTTConfig, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
@@ -97,7 +97,8 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	// todo: this makes verbose debugging on the server, disable it
 	// completely or make it an option
 	if len(subscribe) > 0 {
-		mqttcfg.Debug = log.Default()
+		stdlog := logger.NewStdLog("mqtt debug", logger.FromContext(ctx))
+		mqttcfg.Debug = stdlog
 		//  mqttcfg.PahoDebug = log.Default()
 	}
 

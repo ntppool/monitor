@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/logger"
 
 	vaultapi "github.com/hashicorp/vault/api"
 )
@@ -19,7 +19,8 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 	err := ca.LoadCertificates(ctx)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("Could not load certificates: %s", err)
+			log := logger.FromContext(ctx)
+			log.Error("could not load certificates", "err", err)
 		}
 	}
 
@@ -77,12 +78,14 @@ func (ca *ClientAuth) checkCertificateValidity() (bool, time.Duration, error) {
 
 func (ca *ClientAuth) RenewCertificates() error {
 
+	log := logger.FromContext(ca.ctx)
+
 	for {
 		valid, wait, _ := ca.checkCertificateValidity()
 		if !valid || wait < 0 {
 			err := ca.IssueCertificates()
 			if err != nil {
-				log.Printf("error issuing certificate: %s", err)
+				log.Error("error issuing certificate", "err", err)
 				wait = 300 * time.Second
 			}
 		}
@@ -90,7 +93,7 @@ func (ca *ClientAuth) RenewCertificates() error {
 		if wait < 0 {
 			wait = 0 * time.Second
 		}
-		log.Printf("RenewCertificates - checking certificate renewal in: %s", wait)
+		log.Info("waiting for certificate renewal", "wait", wait)
 		timer := time.NewTimer(wait)
 		select {
 		case <-timer.C:
