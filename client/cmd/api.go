@@ -98,8 +98,14 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
-	if cfg.Samples > 0 {
-		log.Info("got valid config; API access validated")
+	if cfg == nil {
+		log.Warn("didn't get configuration from the API")
+	} else {
+		if cfg.Samples > 0 {
+			log.Info("got valid config; API access validated")
+		} else {
+			log.Info("configuration didn't have samples configured")
+		}
 	}
 
 	var mq *autopaho.ConnectionManager
