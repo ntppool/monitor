@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -100,7 +101,9 @@ func (ca *ClientAuth) Manager() error {
 	go func() {
 		err := ca.RenewCertificates()
 		if err != nil {
-			log.Error("RenewCertificates failed", "err", err)
+			if !errors.Is(err, context.Canceled) {
+				log.Error("RenewCertificates failed", "err", err)
+			}
 		}
 	}()
 

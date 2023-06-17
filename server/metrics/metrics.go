@@ -56,7 +56,7 @@ func (m *Metrics) Registry() prometheus.Registerer {
 
 func (m *Metrics) Handler() http.Handler {
 
-	log := logger.NewStdLog("prom http", nil)
+	log := logger.NewStdLog("prom http", false, nil)
 
 	return promhttp.HandlerFor(m.r, promhttp.HandlerOpts{
 		ErrorLog:          log,

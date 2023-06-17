@@ -35,7 +35,7 @@ func GetCertman(certFile, keyFile string) (*certman.CertMan, error) {
 	if err != nil {
 		return nil, err
 	}
-	log := logger.NewStdLog("cm", nil)
+	log := logger.NewStdLog("cm", false, nil)
 	cm.Logger(log)
 	err = cm.Watch()
 	if err != nil {

@@ -73,6 +73,11 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("auth: %w", err)
 	}
 
+	go func() {
+		<-ctx.Done()
+		log.Info("Shutting down monitor", "name", cauth.Name)
+	}()
+
 	deployEnv, err := api.GetDeploymentEnvironmentFromName(cauth.Name)
 	if err != nil {
 		return err
@@ -116,7 +121,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
-	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
+	_, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
 		return fmt.Errorf("could not setup API: %w", err)
 	}
