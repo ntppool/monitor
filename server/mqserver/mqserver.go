@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/exp/slog"
+	"golang.org/x/mod/semver"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/eclipse/paho.golang/autopaho"
@@ -222,6 +223,8 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 			for _, cl := range mqs.seenClients() {
 
+				log := log.With("name", cl.Name)
+
 				log.Debug("considering mqtt client", "client", cl.Name)
 
 				if !cl.Online || cl.Data == nil {
@@ -229,6 +232,13 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 				}
 
 				if cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4() {
+					continue
+				}
+
+				// minimum version
+				minimumVersion := "v3.5.0-rc0"
+				if semver.Compare(cl.Version.Version, minimumVersion) < 0 {
+					// log.Debug("version too old", "v", cl.Version.Version)
 					continue
 				}
 
