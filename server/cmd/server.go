@@ -41,11 +41,23 @@ func (cli *CLI) serverCmd() *cobra.Command {
 }
 
 type mqconfig struct {
-	c *pb.MQTTConfig
+	jwtKey, tlsName string
+	host            string
+	port            int
 }
 
 func (mqcfg *mqconfig) GetMQTTConfig() *pb.MQTTConfig {
-	return mqcfg.c
+	jwttoken, err := jwt.GetToken(mqcfg.jwtKey, mqcfg.tlsName, true)
+	if err != nil {
+		slog.Error("jwt token", "err", err)
+		os.Exit(2)
+	}
+
+	return &pb.MQTTConfig{
+		Host: []byte(mqcfg.host),
+		Port: int32(mqcfg.port),
+		JWT:  []byte(jwttoken),
+	}
 }
 
 func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
@@ -118,17 +130,11 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
-	// todo: move this into mqconfig{} so the key gets regenerated more often
-	jwttoken, err := jwt.GetToken(cfg.JWTKey, tlsName, true)
-	if err != nil {
-		log.Error("jwt token", "err", err)
-		os.Exit(2)
-	}
-
-	mqcfg := &pb.MQTTConfig{
-		Host: []byte("mqtt.ntppool.net"),
-		Port: 1883,
-		JWT:  []byte(jwttoken),
+	mqcfg := mqconfig{
+		tlsName: tlsName,
+		host:    "mqtt.ntppool.net",
+		port:    1883,
+		jwtKey:  cfg.JWTKey,
 	}
 
 	mqs, err := mqserver.Setup(log, dbconn)
@@ -144,7 +150,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		ctx, tlsName,
 		"",                           // status channel
 		[]string{topicPrefix + "/#"}, // subscriptions
-		router, &mqconfig{c: mqcfg}, cm,
+		router, &mqcfg, cm,
 	)
 	if err != nil {
 		// todo: autopaho should handle reconnecting, so temporary errors

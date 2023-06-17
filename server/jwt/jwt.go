@@ -26,7 +26,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 
 	publish := []string{}
 	subscribe := []string{}
-	expireAt := time.Now().Add(365 * 24 * time.Hour)
+	expireAt := time.Now().Add(6 * time.Hour)
 	notBefore := time.Now().Add(-30 * time.Second)
 	// log.Printf("not before: %s", notBefore)
 
@@ -49,7 +49,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 	topics := mqttcm.NewTopics(depEnv)
 
 	if admin {
-		expireAt = time.Now().Add(168 * time.Hour)
+		expireAt = time.Now().Add(5 * time.Minute) // server code generates a new one as needed
 		subscribe = append(subscribe, "#", "/#", "devel/#")
 		publish = append(publish, "#", "/#")
 	} else {

@@ -71,7 +71,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 			}
 		},
 		OnConnectError: func(err error) {
-			slog.Error("mqtt connect error", "err", err)
+			slog.Error("mqtt connect", "err", err)
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: clientID,

@@ -162,6 +162,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
+				log.Debug("run loop context done, returning")
 				return
 			}
 		}
