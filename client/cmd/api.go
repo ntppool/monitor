@@ -14,6 +14,7 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
@@ -108,11 +109,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		}
 	}
 
+	conf := config.NewConfigger(cfg)
+
 	var mq *autopaho.ConnectionManager
 
-	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
-
-		mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, cfg.MQTTConfig, cauth)
+	if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
+		mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, conf, cauth)
 		if err != nil {
 			log.Error("mqtt", "err", err)
 			os.Exit(2)

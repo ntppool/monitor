@@ -12,6 +12,7 @@ import (
 	"go4.org/netipx"
 	"golang.org/x/exp/slog"
 
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/monitor"
 )
 
@@ -26,8 +27,10 @@ type LocalOK struct {
 const localCacheTTL = 180 * time.Second
 const maxOffset = 10 * time.Millisecond
 
-func NewLocalOK(cfg *pb.Config) *LocalOK {
+func NewLocalOK(conf config.ConfigUpdater) *LocalOK {
 	var isv4 bool
+
+	cfg := conf.GetConfig()
 
 	if cfg.GetIP().Is4() {
 		isv4 = true

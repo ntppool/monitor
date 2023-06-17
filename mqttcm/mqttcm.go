@@ -12,13 +12,15 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	"golang.org/x/exp/slog"
 
-	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/version"
 )
 
-func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, cfg *pb.MQTTConfig, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
+func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf config.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
+
+	cfg := conf.GetMQTTConfig()
 
 	capool, err := apitls.CAPool()
 	if err != nil {
@@ -90,7 +92,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		mqttcfg.Router = router
 	} else {
 		mqttcfg.Router = paho.NewSingleHandlerRouter(func(m *paho.Publish) {
-			slog.Debug("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
+			slog.Info("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
 			// h.handle(m)
 		})
 	}
@@ -104,9 +106,14 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	}
 
 	mqttcfg.SetConnectPacketConfigurator(func(pc *paho.Connect) *paho.Connect {
-		// todo: set pc.Password from recently fetched config
+		cfg := conf.GetMQTTConfig()
+		if cfg != nil {
+			slog.Debug("Using JWT to authenticate", "jwt", cfg.JWT)
+			pc.Password = cfg.JWT
+		}
 		return pc
 	})
+
 	mqttcfg.SetUsernamePassword(name, cfg.JWT)
 
 	offlineMessage, err := StatusMessageJSON(false)

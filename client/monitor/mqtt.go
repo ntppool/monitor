@@ -10,7 +10,7 @@ import (
 	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/mqttcm"
 	"golang.org/x/exp/slog"
 )
@@ -18,12 +18,12 @@ import (
 type mqclient struct {
 	mq     *autopaho.ConnectionManager
 	topics *mqttcm.MQTTTopics
-	cfg    *pb.Config
+	conf   config.ConfigUpdater
 	log    *slog.Logger
 }
 
-func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, cfg *pb.Config) *mqclient {
-	return &mqclient{topics: topics, cfg: cfg, log: log}
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf config.ConfigUpdater) *mqclient {
+	return &mqclient{topics: topics, conf: conf, log: log}
 }
 
 func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
@@ -64,11 +64,12 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 		log.With("ip", ip.String())
 
-		cfg := &pb.Config{
-			IPBytes:    mqc.cfg.IPBytes,
-			IPNatBytes: mqc.cfg.IPNatBytes,
-			Samples:    1,
+		cfg := mqc.conf.GetConfig()
+		if cfg == nil {
+			log.Error("no config available")
+			return
 		}
+		cfg.Samples = 1
 
 		_, resp, err := CheckHost(&ip, cfg)
 		r := &api.NTPResponse{

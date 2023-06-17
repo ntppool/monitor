@@ -40,6 +40,14 @@ func (cli *CLI) serverCmd() *cobra.Command {
 	return serverCmd
 }
 
+type mqconfig struct {
+	c *pb.MQTTConfig
+}
+
+func (mqcfg *mqconfig) GetMQTTConfig() *pb.MQTTConfig {
+	return mqcfg.c
+}
+
 func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cfg := cli.Config
@@ -110,6 +118,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
+	// todo: move this into mqconfig{} so the key gets regenerated more often
 	jwttoken, err := jwt.GetToken(cfg.JWTKey, tlsName, true)
 	if err != nil {
 		log.Error("jwt token", "err", err)
@@ -135,7 +144,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		ctx, tlsName,
 		"",                           // status channel
 		[]string{topicPrefix + "/#"}, // subscriptions
-		router, mqcfg, cm,
+		router, &mqconfig{c: mqcfg}, cm,
 	)
 	if err != nil {
 		// todo: autopaho should handle reconnecting, so temporary errors

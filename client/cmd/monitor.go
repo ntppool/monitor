@@ -25,6 +25,7 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
 	"go.ntppool.org/monitor/logger"
@@ -118,49 +119,87 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("could not setup API: %w", err)
 	}
 
-	cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
-	if err != nil {
-		if twerr, ok := err.(twirp.Error); ok {
-			if twerr.Code() == twirp.PermissionDenied {
-				return fmt.Errorf("could not get config: %w", twerr)
+	conf := config.NewConfigger(nil)
+
+	initialConfig := sync.WaitGroup{}
+	initialConfig.Add(1)
+
+	go func() {
+		firstRun := true
+
+		fetchInterval := 60 * time.Minute
+		errorFetchInterval := fetchInterval / 3
+		errors := 0
+
+		for {
+			wait := fetchInterval
+
+			cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
+			if err != nil {
+				errors++
+				if twerr, ok := err.(twirp.Error); ok {
+					if twerr.Code() == twirp.PermissionDenied {
+						slog.Error("could not get config: %w", twerr)
+					}
+				}
+				if firstRun {
+					wait = time.Minute * time.Duration(errors)
+					if wait > errorFetchInterval {
+						wait = errorFetchInterval
+					}
+				} else {
+					wait = errorFetchInterval
+				}
+			} else {
+				conf.SetConfig(cfg)
+				if firstRun {
+					initialConfig.Done()
+					firstRun = false
+				}
+			}
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return
 			}
 		}
-		return fmt.Errorf("could not get config: %s", err)
-	}
+	}()
+
+	initialConfig.Wait()
 
 	var mq *autopaho.ConnectionManager
 	topics := mqttcm.NewTopics(deployEnv)
 	statusChannel := topics.Status(cauth.Name)
 
-	if cfg.MQTTConfig != nil && len(cfg.MQTTConfig.Host) > 0 {
+	{
+		cfg := conf.GetConfig()
 
-		log := log.WithGroup("mqtt")
+		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
+			log := log.WithGroup("mqtt")
 
-		mqc := monitor.NewMQClient(log, topics, cfg)
-		router := paho.NewSingleHandlerRouter(mqc.Handler)
+			mqc := monitor.NewMQClient(log, topics, conf)
+			router := paho.NewSingleHandlerRouter(mqc.Handler)
 
-		// todo: once a day get a new mqtt config / JWT
+			mq, err = mqttcm.Setup(
+				ctx, cauth.Name, statusChannel,
+				[]string{
+					topics.RequestSubscription(cauth.Name),
+				}, router, conf, cauth,
+			)
+			if err != nil {
+				return fmt.Errorf("mqtt: %w", err)
+			}
 
-		mq, err = mqttcm.Setup(
-			ctx, cauth.Name, statusChannel,
-			[]string{
-				topics.RequestSubscription(cauth.Name),
-			}, router, cfg.MQTTConfig, cauth,
-		)
-		if err != nil {
-			return fmt.Errorf("mqtt: %w", err)
+			err := mq.AwaitConnection(ctx)
+			if err != nil {
+				return fmt.Errorf("mqtt connection error: %w", err)
+			}
+
+			mqc.SetMQ(mq)
 		}
-
-		err := mq.AwaitConnection(ctx)
-		if err != nil {
-			return fmt.Errorf("mqtt connection error: %w", err)
-		}
-
-		mqc.SetMQ(mq)
-
 	}
 
-	localOK := localok.NewLocalOK(cfg)
+	localOK := localok.NewLocalOK(conf)
 
 	if *sanityOnlyFlag {
 		ok := localOK.Check()
@@ -212,7 +251,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				return fmt.Errorf("local clock")
 			}
 
-			if ok, err := run(api, localOK); !ok || err != nil {
+			if ok, err := run(api, conf); !ok || err != nil {
 				if err != nil {
 					log.Error("batch processing", "err", err)
 					boff.MaxInterval = 10 * time.Minute
