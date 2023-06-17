@@ -40,6 +40,19 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 		slog.Error("Did not get valid local configuration IP", "configIP", configIP)
 	}
 
+	if ip.IsLoopback() {
+		return nil, nil, fmt.Errorf("loopback address")
+	}
+	if ip.IsPrivate() {
+		return nil, nil, fmt.Errorf("private address")
+	}
+	if ip.IsMulticast() {
+		return nil, nil, fmt.Errorf("multicast address")
+	}
+	if !ip.IsValid() {
+		return nil, nil, fmt.Errorf("invalid IP")
+	}
+
 	responses := []*response{}
 
 	for i := int32(0); i < cfg.Samples; i++ {
