@@ -41,6 +41,10 @@ var (
 
 const MaxInterval = time.Minute * 2
 
+type SetConfig interface {
+	SetConfig(cfg *pb.Config)
+}
+
 func (cli *CLI) monitorCmd() *cobra.Command {
 
 	monitorCmd := &cobra.Command{
@@ -208,7 +212,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				return fmt.Errorf("local clock")
 			}
 
-			if ok, err := run(api); !ok || err != nil {
+			if ok, err := run(api, localOK); !ok || err != nil {
 				if err != nil {
 					log.Error("batch processing", "err", err)
 					boff.MaxInterval = 10 * time.Minute
@@ -247,7 +251,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 }
 
-func run(api pb.Monitor) (bool, error) {
+func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
 
 	ctx := context.Background()
 
@@ -259,6 +263,10 @@ func run(api pb.Monitor) (bool, error) {
 			}
 		}
 		return false, fmt.Errorf("getting server list: %s", err)
+	}
+
+	if serverlist.Config != nil {
+		cfgStore.SetConfig(serverlist.Config)
 	}
 
 	if len(serverlist.Servers) == 0 {

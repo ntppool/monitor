@@ -52,6 +52,12 @@ func (l *LocalOK) NextCheckIn() time.Duration {
 	return wait
 }
 
+func (l *LocalOK) SetConfig(cfg *pb.Config) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cfg = cfg
+}
+
 func (l *LocalOK) Check() bool {
 	l.mu.RLock()
 	if time.Now().Before(l.lastCheck.Add(localCacheTTL)) {
@@ -71,11 +77,13 @@ func (l *LocalOK) Check() bool {
 
 func (l *LocalOK) update() bool {
 
-	// todo: get this from server config ...
+	// update() is wrapped in a lock
+	cfg := l.cfg
+
+	// overridden by server config
 	allHosts := []string{
-		// "time.apple.com",
+		"time.apple.com",
 		// "ntp1.net.berkeley.edu",
-		"jptyo5-ntp-003.aaplimg.com",
 		"uslax1-ntp-001.aaplimg.com",
 		"defra1-ntp-002.aaplimg.com",
 		"uklon5-ntp-001.aaplimg.com",
@@ -83,15 +91,16 @@ func (l *LocalOK) update() bool {
 		// "ntp.nict.jp",
 		// "ntp.ripe.net",
 		"time.fu-berlin.de",
+		"ntp.se",
 	}
 
-	if len(l.cfg.BaseChecks) > 0 {
+	if len(cfg.BaseChecks) > 0 {
 		allHosts = []string{}
-		for _, s := range l.cfg.BaseChecks {
+		for _, s := range cfg.BaseChecks {
 			allHosts = append(allHosts, string(s))
 		}
 	} else {
-		slog.Info("did not get BaseChecks from API, using built-in defaults")
+		slog.Info("did not get NTP BaseChecks from API, using built-in defaults")
 	}
 
 	type namedIP struct {
@@ -159,7 +168,7 @@ func (l *LocalOK) update() bool {
 		}
 
 		go func(h namedIP) {
-			ok, err := l.sanityCheckHost(h.Name, h.IP)
+			ok, err := l.sanityCheckHost(cfg, h.Name, h.IP)
 			if err != nil {
 				slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
 			}
@@ -178,8 +187,8 @@ func (l *LocalOK) update() bool {
 	return fails <= failureThreshold
 }
 
-func (l *LocalOK) sanityCheckHost(name string, ip *netip.Addr) (bool, error) {
-	status, _, err := monitor.CheckHost(ip, l.cfg)
+func (l *LocalOK) sanityCheckHost(cfg *pb.Config, name string, ip *netip.Addr) (bool, error) {
+	status, _, err := monitor.CheckHost(ip, cfg)
 	if err != nil {
 		return false, err
 	}

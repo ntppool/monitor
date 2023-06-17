@@ -49,6 +49,31 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Cont
 	return &monitor, ctx, nil
 }
 
+func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor) (*ntpdb.MonitorConfig, error) {
+	span := otrace.SpanFromContext(ctx)
+
+	// log := srv.log
+
+	var cfg *ntpdb.MonitorConfig
+
+	smon, err := srv.db.GetSystemMonitor(ctx, "settings", monitor.IpVersion)
+	if err == nil {
+		cfg, err = monitor.GetConfigWithDefaults([]byte(smon.Config))
+		if err != nil {
+			return nil, err
+		}
+		span.AddEvent("Merged Configs")
+	} else {
+		cfg, err = monitor.GetConfig()
+		if err != nil {
+			return nil, err
+		}
+		span.AddEvent("Single Config")
+	}
+
+	return cfg, nil
+}
+
 func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
 	span := otrace.SpanFromContext(ctx)
 
@@ -76,21 +101,10 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		log.Error("error updating user-agent", "err", err)
 	}
 
-	var cfg *ntpdb.MonitorConfig
-
-	smon, err := srv.db.GetSystemMonitor(ctx, "settings", monitor.IpVersion)
-	if err == nil {
-		cfg, err = monitor.GetConfigWithDefaults([]byte(smon.Config))
-		if err != nil {
-			return nil, err
-		}
-		span.AddEvent("Merged Configs")
-	} else {
-		cfg, err = monitor.GetConfig()
-		if err != nil {
-			return nil, err
-		}
-		span.AddEvent("Single Config")
+	cfg, err := srv.getMonitorConfig(ctx, monitor)
+	if err != nil {
+		log.Error("getMonitorConfig", "err", err)
+		return nil, twirp.InternalError("could not get config")
 	}
 
 	if key := srv.cfg.JWTKey; len(key) > 0 {
@@ -196,7 +210,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		"cn", monitor.TlsName.String,
 	)
 
-	mcfg, err := monitor.GetConfig()
+	mcfg, err := srv.getMonitorConfig(ctx, monitor)
 	if err != nil {
 		return nil, err
 	}
