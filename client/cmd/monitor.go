@@ -292,6 +292,8 @@ func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
 
 	wg := sync.WaitGroup{}
 
+	mu := sync.Mutex{}
+
 	for _, s := range serverlist.Servers {
 
 		wg.Add(1)
@@ -338,6 +340,9 @@ func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
 				}
 			}
 			status.TS = timestamppb.Now()
+
+			mu.Lock()
+			defer mu.Unlock()
 			statuses = append(statuses, status)
 			wg.Done()
 		}(s.IP(), s.Trace, s.Ticket)

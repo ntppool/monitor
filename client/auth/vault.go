@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -23,7 +24,7 @@ type Vault struct {
 	authPrefix string
 
 	client *vaultapi.Client
-	lock   sync.RWMutex
+	sync.RWMutex
 }
 
 func NewVault(key, secret, authPrefix string) (v *Vault, err error) {
@@ -117,8 +118,8 @@ func (v *Vault) Login(ctx context.Context) (*vaultapi.Secret, error) {
 func (v *Vault) setAuthSecret(secret *vaultapi.Secret) error {
 
 	err := func() error {
-		v.lock.Lock()
-		defer v.lock.Unlock()
+		v.Lock()
+		defer v.Unlock()
 
 		v.Token = secret.Auth.ClientToken
 		v.AuthSecret = secret
@@ -279,4 +280,17 @@ func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secre
 			time.Sleep(100 * time.Millisecond) // allow the watcher to mark itself done
 		}
 	}
+}
+
+// Type alias for the recursive call marshaling JSON with a lock
+type jVault Vault
+
+func (v *Vault) MarshalJSON() ([]byte, error) {
+	v.RLock()
+	defer v.RUnlock()
+
+	return json.Marshal(jVault{
+		Token:      v.Token,
+		AuthSecret: v.AuthSecret,
+	})
 }
