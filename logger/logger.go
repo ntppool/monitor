@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 
 	"golang.org/x/exp/slog"
@@ -18,8 +19,11 @@ func Setup() *slog.Logger {
 
 		var programLevel = new(slog.LevelVar) // Info by default
 
-		// temp -- should be an option, and maybe have a runtime signal to adjust?
-		// programLevel.Set(slog.LevelDebug)
+		if opt := os.Getenv("MONITOR_DEBUG"); len(opt) > 0 {
+			if debug, _ := strconv.ParseBool(opt); debug {
+				programLevel.Set(slog.LevelDebug)
+			}
+		}
 
 		logOptions := &slog.HandlerOptions{Level: programLevel}
 
