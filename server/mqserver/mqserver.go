@@ -28,6 +28,7 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/ulid"
+	"go.ntppool.org/monitor/version"
 )
 
 type server struct {
@@ -46,6 +47,7 @@ type server struct {
 type client struct {
 	Name     string
 	Online   bool
+	Version  version.Info
 	LastSeen time.Time
 	Data     *ntpdb.Monitor
 }
@@ -125,6 +127,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	if status.Online {
 		cs.Online = true
 		cs.LastSeen = time.Now()
+		cs.Version = status.Version
 
 		ctx := context.Background()
 
@@ -387,6 +390,7 @@ func (mqs *server) setupEcho() error {
 		type onlineJSON struct {
 			Name      string
 			IpVersion string
+			Version   version.Info `json:",omitempty"`
 			LastSeen  time.Time
 			Online    bool
 		}
@@ -397,6 +401,7 @@ func (mqs *server) setupEcho() error {
 				r = append(r, onlineJSON{
 					Name:      o.Data.TlsName.String,
 					IpVersion: o.Data.IpVersion.MonitorsIpVersion.String(),
+					Version:   o.Version,
 					Online:    o.Online,
 					LastSeen:  o.LastSeen,
 				})

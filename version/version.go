@@ -17,7 +17,19 @@ var buildTime string
 var gitVersion string
 var gitModified bool
 
+var info Info
+
+type Info struct {
+	Version   string `json:",omitempty"`
+	GitRev    string `json:",omitempty"`
+	BuildTime string `json:",omitempty"`
+}
+
 func init() {
+
+	info.BuildTime = buildTime
+	info.GitRev = gitVersion
+
 	if len(VERSION) == 0 {
 		VERSION = "dev-snapshot"
 	} else {
@@ -32,10 +44,12 @@ func init() {
 				switch h.Key {
 				case "vcs.time":
 					buildTime = h.Value
+					info.BuildTime = h.Value
 				case "vcs.revision":
 					// https://blog.carlmjohnson.net/post/2023/golang-git-hash-how-to/
 					// todo: use BuildInfo.Main.Version if revision is empty
 					gitVersion = h.Value
+					info.GitRev = h.Value
 				case "vcs.modified":
 					if h.Value == "true" {
 						gitModified = true
@@ -44,6 +58,8 @@ func init() {
 			}
 		}
 	}
+
+	info.Version = VERSION
 
 	Version()
 }
@@ -61,6 +77,10 @@ func VersionCmd() *cobra.Command {
 }
 
 var v string
+
+func VersionInfo() Info {
+	return info
+}
 
 func Version() string {
 	if len(v) > 0 {

@@ -15,6 +15,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/monitor/version"
 )
 
 func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, cfg *pb.MQTTConfig, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
@@ -122,11 +123,12 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 }
 
 type StatusMessage struct {
-	Online bool
+	Online  bool
+	Version version.Info
 }
 
 func StatusMessageJSON(online bool) ([]byte, error) {
-	sm := &StatusMessage{Online: online}
+	sm := &StatusMessage{Online: online, Version: version.VersionInfo()}
 	js, err := json.Marshal(sm)
 	if err != nil {
 		return nil, err
