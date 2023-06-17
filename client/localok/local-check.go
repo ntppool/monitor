@@ -1,6 +1,7 @@
 package localok
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -11,6 +12,7 @@ import (
 	"go.ntppool.org/monitor/logger"
 	"go4.org/netipx"
 	"golang.org/x/exp/slog"
+	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/monitor"
@@ -61,7 +63,7 @@ func (l *LocalOK) SetConfig(cfg *pb.Config) {
 	l.cfg = cfg
 }
 
-func (l *LocalOK) Check() bool {
+func (l *LocalOK) Check(ctx context.Context) bool {
 	l.mu.RLock()
 	if time.Now().Before(l.lastCheck.Add(localCacheTTL)) {
 		l.mu.RUnlock()
@@ -72,13 +74,13 @@ func (l *LocalOK) Check() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	ok := l.update()
+	ok := l.update(ctx)
 	l.lastCheck = time.Now()
 	l.lastStatus = ok
 	return ok
 }
 
-func (l *LocalOK) update() bool {
+func (l *LocalOK) update(ctx context.Context) bool {
 
 	// update() is wrapped in a lock
 	cfg := l.cfg
@@ -152,37 +154,45 @@ func (l *LocalOK) update() bool {
 		hosts = append(hosts, namedIP{Name: h, IP: ip})
 	}
 
-	wg := sync.WaitGroup{}
 	results := make(chan bool)
 
-	go func() {
+	g, _ := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
 		for ok := range results {
 			if !ok {
 				fails++
 			}
 		}
-	}()
+		return nil
+	})
 
-	for i, h := range hosts {
-		wg.Add(1)
+	g.Go(func() error {
+		wg := sync.WaitGroup{}
+		for i, h := range hosts {
+			wg.Add(1)
 
-		if i > 0 {
-			time.Sleep(10 * time.Millisecond)
+			if i > 0 {
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			go func(h namedIP) {
+				ok, err := l.sanityCheckHost(cfg, h.Name, h.IP)
+				if err != nil {
+					slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
+				}
+				results <- ok
+				wg.Done()
+			}(h)
 		}
 
-		go func(h namedIP) {
-			ok, err := l.sanityCheckHost(cfg, h.Name, h.IP)
-			if err != nil {
-				slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
-			}
-			results <- ok
-			wg.Done()
-		}(h)
-	}
+		wg.Wait()
+		close(results)
 
-	wg.Wait()
+		return nil
+	})
 
-	close(results)
+	g.Wait()
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
 	slog.Info("local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))

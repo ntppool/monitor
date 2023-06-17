@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -60,8 +62,8 @@ func (cli *CLI) monitorCmd() *cobra.Command {
 }
 
 func (cli *CLI) startMonitor(cmd *cobra.Command) error {
-	ctx, cancelMonitor := context.WithCancel(context.Background())
-	defer cancelMonitor()
+	ctx, stopMonitor := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopMonitor()
 
 	log := logger.Setup()
 	ctx = logger.NewContext(ctx, log)
@@ -202,7 +204,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	localOK := localok.NewLocalOK(conf)
 
 	if *sanityOnlyFlag {
-		ok := localOK.Check()
+		ok := localOK.Check(ctx)
 		if ok {
 			log.Info("Local clock ok")
 			return nil
@@ -235,6 +237,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	i := 0
 
+runLoop:
 	for {
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
@@ -244,14 +247,22 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 		err := backoff.Retry(func() error {
 
-			if !localOK.Check() {
-				wait := localOK.NextCheckIn()
-				log.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
-				time.Sleep(wait) // todo: ctx
-				return fmt.Errorf("local clock")
+			if checkDone(ctx) {
+				return nil
 			}
 
-			if ok, err := run(api, conf); !ok || err != nil {
+			if !localOK.Check(ctx) {
+				wait := localOK.NextCheckIn()
+				log.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(wait):
+					return fmt.Errorf("local clock")
+				}
+			}
+
+			if ok, err := run(ctx, api, conf); !ok || err != nil {
 				if err != nil {
 					log.Error("batch processing", "err", err)
 					boff.MaxInterval = 10 * time.Minute
@@ -272,11 +283,15 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			log.Info("Asked to only run once")
 			break
 		}
+
+		if checkDone(ctx) {
+			break runLoop
+		}
 	}
 
 	mq.Disconnect(ctx)
 
-	cancelMonitor()
+	stopMonitor()
 
 	if mq != nil {
 		// wait until the mqtt connection is done; or two seconds
@@ -290,9 +305,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 }
 
-func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
+func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) {
 
-	ctx := context.Background()
+	log := logger.FromContext(ctx)
 
 	serverlist, err := api.GetServers(ctx, &pb.GetServersParams{})
 	if err != nil {
@@ -316,7 +331,7 @@ func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
 	batchID := ulid.ULID{}
 	batchID.UnmarshalText(serverlist.BatchID)
 
-	log := slog.With("batchID", batchID.String())
+	log = log.With("batchID", batchID.String())
 
 	log.Debug("processing", "server_count", len(serverlist.Servers))
 
@@ -407,4 +422,13 @@ func run(api pb.Monitor, cfgStore SetConfig) (bool, error) {
 
 	return true, nil
 
+}
+
+func checkDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }

@@ -220,6 +220,9 @@ func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, upda
 		}
 
 		if err = ctx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
 			return err
 		}
 
