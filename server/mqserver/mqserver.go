@@ -231,7 +231,8 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 					continue
 				}
 
-				if cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4() {
+				if (cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4()) ||
+					(cl.Data.IpVersion.MonitorsIpVersion.String() == "v4" && ip.Is6()) {
 					continue
 				}
 
