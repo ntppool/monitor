@@ -198,7 +198,7 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 
 		log = log.With("check-ip", ip)
 
-		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*20)
+		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*8)
 		defer cancel()
 
 		// spanContext := otrace.SpanContextFromContext(ctx)
