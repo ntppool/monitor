@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
@@ -36,7 +38,6 @@ type server struct {
 	cm     *autopaho.ConnectionManager
 	db     *ntpdb.Queries
 	dbconn *sql.DB
-	ctx    context.Context
 	log    *slog.Logger
 
 	clients map[string]*client
@@ -64,15 +65,36 @@ func Setup(log *slog.Logger, dbconn *sql.DB) (*server, error) {
 	return mqs, nil
 }
 
-func (srv *server) SetConnectionManager(cm *autopaho.ConnectionManager) {
-	srv.cm = cm
+func (mqs *server) SetConnectionManager(cm *autopaho.ConnectionManager) {
+	mqs.cm = cm
 }
 
-func (srv *server) Run(ctx context.Context) error {
-	// todo: should this be set in Setup() instead so it doesn't need to be passed here
-	// and to MQTTRouter()?
-	srv.ctx = ctx
-	return srv.setupEcho()
+func (mqs *server) Run(ctx context.Context) error {
+
+	var r *echo.Echo
+	var err error
+	log := logger.FromContext(ctx)
+
+	go func() {
+		r, err = mqs.setupEcho(ctx)
+		if err != nil {
+			log.Error("echo error (fatal)", "err", err)
+			os.Exit(2)
+		}
+	}()
+
+	log.Info("echo server waiting for context to be done")
+
+	<-ctx.Done()
+
+	if r != nil {
+		log.Info("Shutting down API http server")
+		if err := r.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Router {
@@ -167,9 +189,9 @@ func (mqs *server) seenClients() []client {
 	return online
 }
 
-func (mqs *server) CheckNTP() func(echo.Context) error {
+func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 
-	depEnv := sctx.GetDeploymentEnvironment(mqs.ctx)
+	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 
 	return func(c echo.Context) error {
@@ -392,9 +414,10 @@ func (mqs *server) CheckNTP() func(echo.Context) error {
 	}
 }
 
-func (mqs *server) setupEcho() error {
+func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 
 	r := echo.New()
+
 	r.Use(otelecho.Middleware("mqserver"))
 
 	r.GET("/monitors/online", func(c echo.Context) error {
@@ -422,10 +445,14 @@ func (mqs *server) setupEcho() error {
 		return c.JSON(200, r)
 	})
 
-	r.POST("/check/ntp/:ip", mqs.CheckNTP())
+	r.POST("/check/ntp/:ip", mqs.CheckNTP(ctx))
 
 	err := r.Start(":8095")
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
 /*

@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	otelsdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -33,7 +33,7 @@ func (srv *Server) initTracer(depEnv string) error {
 	// exporter, err := srv.newStdoutExporter(os.Stdout)
 
 	var err error
-	var exporter sdktrace.SpanExporter
+	var exporter otelsdktrace.SpanExporter
 
 	if otlp := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(otlp) > 0 {
 		exporter, err = srv.newOLTPExporter()
@@ -46,11 +46,13 @@ func (srv *Server) initTracer(depEnv string) error {
 	}
 
 	if exporter != nil {
-		tp := sdktrace.NewTracerProvider(
-			sdktrace.WithSampler(sdktrace.AlwaysSample()),
-			sdktrace.WithBatcher(exporter),
-			sdktrace.WithResource(srv.newResource(depEnv)),
+		tp := otelsdktrace.NewTracerProvider(
+			otelsdktrace.WithSampler(otelsdktrace.AlwaysSample()),
+			otelsdktrace.WithBatcher(exporter),
+			otelsdktrace.WithResource(srv.newResource(depEnv)),
 		)
+
+		srv.traceProvider = tp
 
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
@@ -61,7 +63,7 @@ func (srv *Server) initTracer(depEnv string) error {
 	return nil
 }
 
-func (srv *Server) newJaegerExporter() (sdktrace.SpanExporter, error) {
+func (srv *Server) newJaegerExporter() (otelsdktrace.SpanExporter, error) {
 	exporter, err := jaeger.New(jaeger.WithAgentEndpoint())
 	if err != nil {
 		logger.Setup().Error("creating jaeger trace exporter", "err", err)
@@ -69,7 +71,7 @@ func (srv *Server) newJaegerExporter() (sdktrace.SpanExporter, error) {
 	return exporter, err
 }
 
-func (srv *Server) newOLTPExporter() (sdktrace.SpanExporter, error) {
+func (srv *Server) newOLTPExporter() (otelsdktrace.SpanExporter, error) {
 	ctx := context.TODO()
 	client := otlptracehttp.NewClient()
 	exporter, err := otlptrace.New(ctx, client)

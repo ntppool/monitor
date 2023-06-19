@@ -8,7 +8,8 @@ import (
 
 func (cli *CLI) RootCmd() *cobra.Command {
 
-	logger.Setup()
+	log := logger.Setup()
+	log.Info("monitor-api", "version", version.Version())
 
 	cmd := &cobra.Command{
 		Use:   "monitor-api",
@@ -19,7 +20,6 @@ func (cli *CLI) RootCmd() *cobra.Command {
 
 	cmd.AddCommand(cli.serverCmd())
 	cmd.AddCommand(version.VersionCmd())
-
 	cmd.AddCommand(cli.dbCmd())
 
 	return cmd

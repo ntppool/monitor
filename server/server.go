@@ -11,6 +11,7 @@ import (
 
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/twitchtv/twirp"
+	osdktrace "go.opentelemetry.io/otel/sdk/trace"
 	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -27,14 +28,15 @@ import (
 )
 
 type Server struct {
-	ctx    context.Context
-	cfg    *Config
-	tokens *vtm.TokenManager
-	m      *metrics.Metrics
-	tracer otrace.Tracer
-	db     *ntpdb.Queries
-	dbconn *sql.DB
-	log    *slog.Logger
+	ctx           context.Context
+	cfg           *Config
+	tokens        *vtm.TokenManager
+	m             *metrics.Metrics
+	tracer        otrace.Tracer
+	traceProvider *osdktrace.TracerProvider
+	db            *ntpdb.Queries
+	dbconn        *sql.DB
+	log           *slog.Logger
 }
 
 type Config struct {
@@ -85,11 +87,10 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 
 func (srv *Server) Run() error {
 
+	log := logger.FromContext(srv.ctx)
+
 	ctx, cancel := context.WithCancel(srv.ctx)
 	defer cancel()
-
-	// todo: make this function actually quit on shutdown...
-	// defer srv.tracer.Close() // flush buffered spans
 
 	capool, err := apitls.CAPool()
 	if err != nil {
@@ -186,6 +187,16 @@ func (srv *Server) Run() error {
 		if err != nil {
 			return fmt.Errorf("server listen: %w", err)
 		}
+		return nil
+	})
+
+	g.Go(func() error {
+		<-ctx.Done()
+		log.Info("shutting down twirp server")
+		server.Shutdown(ctx)
+		log.Info("shutting down metrics server")
+		metricsServer.Shutdown(ctx)
+		srv.traceProvider.Shutdown(ctx)
 		return nil
 	})
 

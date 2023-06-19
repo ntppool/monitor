@@ -3,9 +3,12 @@ package cmd
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"go.ntppool.org/monitor/api"
@@ -63,7 +66,9 @@ func (mqcfg *mqconfig) GetMQTTConfig() *pb.MQTTConfig {
 func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	cfg := cli.Config
-	ctx := context.Background()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	log := logger.Setup()
 
@@ -162,7 +167,6 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	mqs.SetConnectionManager(mq)
 
-	ctx, cancel := context.WithCancel(ctx)
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -189,15 +193,16 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	err = g.Wait()
 	if err != nil {
-		log.Error("server error", "err", err)
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server error", "err", err)
+		} else {
+			err = nil
+		}
 	}
 
 	mq.Disconnect(ctx)
 
-	cancel()
-
 	return err
-
 }
 
 func healthCheckListener(ctx context.Context, log *slog.Logger) {
