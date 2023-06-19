@@ -59,6 +59,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 				suback, err := cm.Subscribe(context.Background(), &paho.Subscribe{
 					Subscriptions: subscriptions})
+
 				if err != nil {
 					if suback == nil {
 						slog.Error("mqtt subscribe error", "err", err)
@@ -118,7 +119,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		return pc
 	})
 
-	mqttcfg.SetUsernamePassword(name, cfg.JWT)
+	mqttcfg.SetUsernamePassword(name, conf.GetMQTTConfig().JWT)
 
 	offlineMessage, err := StatusMessageJSON(false)
 	if err != nil {
