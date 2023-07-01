@@ -168,13 +168,19 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
-				log.Debug("run loop context done, returning")
+				initialConfig.Done()
 				return
 			}
 		}
 	}()
 
 	initialConfig.Wait()
+
+	if conf.GetConfig() == nil {
+		// we were aborted before getting this far
+		log.Warn("did not load remote configuration")
+		os.Exit(2)
+	}
 
 	var mq *autopaho.ConnectionManager
 	topics := mqttcm.NewTopics(deployEnv)
