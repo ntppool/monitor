@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 )
 
 type Metrics struct {

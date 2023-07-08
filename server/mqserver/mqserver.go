@@ -25,13 +25,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/ulid"
+	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
-	"go.ntppool.org/monitor/server/ulid"
-	"go.ntppool.org/monitor/version"
 )
 
 type server struct {

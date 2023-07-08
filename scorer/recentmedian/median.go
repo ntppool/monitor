@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 	"golang.org/x/exp/slices"

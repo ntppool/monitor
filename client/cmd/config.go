@@ -9,8 +9,9 @@ import (
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
-	"go.ntppool.org/monitor/version"
 	"golang.org/x/exp/slog"
+
+	"go.ntppool.org/common/version"
 )
 
 type CLI struct {

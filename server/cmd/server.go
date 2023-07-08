@@ -9,12 +9,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
+
+	"go.ntppool.org/common/health"
+	"go.ntppool.org/common/logger"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
@@ -180,7 +181,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	})
 
 	// todo: ctx + errgroup
-	go healthCheckListener(ctx, log)
+	go health.HealthCheckListener(ctx, 8080, log)
 
 	g.Go(func() error {
 		srv, err := server.NewServer(ctx, log, scfg, dbconn)
@@ -203,36 +204,4 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	mq.Disconnect(ctx)
 
 	return err
-}
-
-func healthCheckListener(ctx context.Context, log *slog.Logger) {
-	serveMux := http.NewServeMux()
-
-	serveMux.HandleFunc("/__health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		w.Write([]byte("ok"))
-	})
-
-	srv := &http.Server{
-		Addr:         ":8080",
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 20 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Handler:      serveMux,
-	}
-
-	go func() {
-
-		err := srv.ListenAndServe()
-		if err != http.ErrServerClosed {
-			log.Warn("health check server done listening: %s", err)
-		}
-	}()
-
-	<-ctx.Done()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("health check server shutdown Failed:%+v", err)
-	}
-
 }

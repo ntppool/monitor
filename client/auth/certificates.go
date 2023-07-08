@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/logger"
 
 	vaultapi "github.com/hashicorp/vault/api"
 )

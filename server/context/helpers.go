@@ -3,8 +3,8 @@ package sctx
 import (
 	"context"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/logger"
 )
 
 func GetDeploymentEnvironment(ctx context.Context) api.DeploymentEnvironment {

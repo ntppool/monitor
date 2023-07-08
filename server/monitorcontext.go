@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 	sctx "go.ntppool.org/monitor/server/context"
 )
 

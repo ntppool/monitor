@@ -11,11 +11,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/config"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 

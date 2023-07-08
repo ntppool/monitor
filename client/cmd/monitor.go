@@ -24,13 +24,13 @@ import (
 
 	"go.ntppool.org/pingtrace/traceroute"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 

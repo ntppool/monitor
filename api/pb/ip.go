@@ -3,7 +3,7 @@ package pb
 import (
 	"net/netip"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 )
 
 // func (cfg *Config) IP() *netip.Addr {

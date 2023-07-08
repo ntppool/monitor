@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"go.ntppool.org/monitor/logger"
-	"go.ntppool.org/monitor/server/ulid"
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/ulid"
 
 	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"

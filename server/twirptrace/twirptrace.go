@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

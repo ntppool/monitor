@@ -12,10 +12,10 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	"golang.org/x/exp/slog"
 
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/client/config"
-	"go.ntppool.org/monitor/logger"
-	"go.ntppool.org/monitor/version"
 )
 
 func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf config.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {

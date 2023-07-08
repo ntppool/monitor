@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/twitchtv/twirp"
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/logger"
-	"go.ntppool.org/monitor/version"
 )
 
 func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {

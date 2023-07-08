@@ -10,7 +10,8 @@ import (
 
 	vaultapi "github.com/hashicorp/vault/api"
 	approle "github.com/hashicorp/vault/api/auth/approle"
-	"go.ntppool.org/monitor/logger"
+
+	"go.ntppool.org/common/logger"
 )
 
 var vaultAddr = "https://vault.ntppool.org"

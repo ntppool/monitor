@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/abh/certman"
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 )
 
 //go:embed ca.pem

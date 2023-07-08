@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/logger"
 	"go4.org/netipx"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"

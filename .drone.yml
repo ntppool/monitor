@@ -200,6 +200,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: ece1ef8d8ceaeb345bc143c6b18e38f4412693553eb40e0e46b90f3507385705
+hmac: 97f43a88bf8254457aa3ba76975c615e116ebec86fc4553c98cb0d6ed2867e45
 
 ...

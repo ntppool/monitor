@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/logger"
 )
 
 const vaultAuthPrefix = "/monitors"

@@ -15,9 +15,7 @@ builds:
       - darwin
     ldflags:
       - -s -w
-      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
-      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
-      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+      - -X go.ntppool.org/common/version.VERSION={{.Version}}
 
   - main: ./server/cmd/monitor-api/
     id: monitor-api
@@ -30,9 +28,7 @@ builds:
       - darwin
     ldflags:
       - -s -w
-      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
-      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
-      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+      - -X go.ntppool.org/common/version.VERSION={{.Version}}
 
   - main: ./scorer/cmd/monitor-scorer/
     id: monitor-scorer
@@ -43,9 +39,7 @@ builds:
       - linux
     ldflags:
       - -s -w
-      - -X go.ntppool.org/monitor/version.VERSION={{.Version}}
-      - -X go.ntppool.org/monitor/version.gitVersion={{.ShortCommit}}
-      - -X go.ntppool.org/monitor/version.buildTime={{.Date}}
+      - -X go.ntppool.org/common/version.VERSION={{.Version}}
 
 archives:
   - id: a1

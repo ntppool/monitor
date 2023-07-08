@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"go.ntppool.org/monitor/logger"
-	"go.ntppool.org/monitor/version"
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"

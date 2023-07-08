@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 )
 
 func (ca *ClientAuth) GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error) {

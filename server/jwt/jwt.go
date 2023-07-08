@@ -6,8 +6,8 @@ import (
 
 	gjwt "github.com/golang-jwt/jwt/v4"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/mqttcm"
 )
 

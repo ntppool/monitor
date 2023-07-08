@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"go.ntppool.org/monitor/logger"
-	"go.ntppool.org/monitor/version"
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 )
+
+func init() {
+	logger.ConfigPrefix = "MONITOR"
+}
 
 func (cli *CLI) RootCmd() *cobra.Command {
 
@@ -19,7 +23,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	// cmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
 
 	cmd.AddCommand(cli.serverCmd())
-	cmd.AddCommand(version.VersionCmd())
+	cmd.AddCommand(version.VersionCmd("monitor-api"))
 	cmd.AddCommand(cli.dbCmd())
 
 	return cmd

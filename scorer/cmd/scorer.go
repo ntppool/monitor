@@ -8,7 +8,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 
-	"go.ntppool.org/monitor/logger"
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
 )

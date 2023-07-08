@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/statusscore"
 )
