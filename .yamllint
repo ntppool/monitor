@@ -1,0 +1,14 @@
+---
+extends: relaxed
+
+rules:
+  braces:
+    level: error
+  brackets:
+    level: error
+
+  truthy:
+    level: warning
+
+#ignore: |
+#  - ...
