@@ -10,4 +10,4 @@ if [ -z "$DRONE_TAG" ]; then
   is_snapshot="--snapshot"
 fi
 
-goreleaser release $is_snapshot -p 6
+goreleaser release $is_snapshot -p 6 --skip-publish

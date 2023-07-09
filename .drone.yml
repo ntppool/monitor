@@ -45,7 +45,7 @@ steps:
         cpu: 6000
         memory: 1024MiB
       limits:
-        cpu: 10000
+        cpu: 6000
         memory: 4096MiB
     volumes:
       - name: go
@@ -146,7 +146,7 @@ steps:
   - name: download
     image: fedora:38 # curl version 7.83 or later
     commands:
-      - ./scripts/download-release test/${DRONE_BUILD_PARENT} dist/
+      - ./scripts/download-release monitor test/${DRONE_BUILD_PARENT} dist/
     resources:
       requests:
         cpu: 250
@@ -200,6 +200,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 97f43a88bf8254457aa3ba76975c615e116ebec86fc4553c98cb0d6ed2867e45
+hmac: fbecbd0dcaa3a1258b60865fc714085d7796ce3eddfeab7204465d62026bfc89
 
 ...
