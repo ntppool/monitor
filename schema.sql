@@ -356,7 +356,7 @@ DROP TABLE IF EXISTS `scorer_status`;
 CREATE TABLE `scorer_status` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `scorer_id` int(10) unsigned NOT NULL,
-  `log_score_id` bigint(20) unsigned DEFAULT NULL,
+  `log_score_id` bigint(20) unsigned NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `scorer_log_score_id` (`log_score_id`),
@@ -628,6 +628,7 @@ CREATE TABLE `vendor_zones` (
   `client_type` enum('ntp','sntp','legacy') NOT NULL DEFAULT 'sntp',
   `contact_information` text,
   `request_information` text,
+  `device_information` text,
   `device_count` int(10) unsigned DEFAULT NULL,
   `opensource` tinyint(1) NOT NULL DEFAULT '0',
   `opensource_info` text,
@@ -665,6 +666,7 @@ CREATE TABLE `zone_server_counts` (
   `netspeed_active` int(10) unsigned NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `zone_date` (`zone_id`,`date`,`ip_version`),
+  KEY `date_idx` (`date`,`zone_id`),
   CONSTRAINT `zone_server_counts` FOREIGN KEY (`zone_id`) REFERENCES `zones` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -716,4 +718,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-05-03  5:59:38
+-- Dump completed on 2023-07-16

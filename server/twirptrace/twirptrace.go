@@ -150,6 +150,8 @@ func interfaceToAttribute(k string, value interface{}) attribute.KeyValue {
 		return attribute.Int(k, v)
 	case int32:
 		return attribute.Int(k, int(v))
+	case uint32:
+		return attribute.Int64(k, int64(v))
 	case int64:
 		return attribute.Int64(k, v)
 	case float64:

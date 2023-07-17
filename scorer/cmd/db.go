@@ -46,7 +46,7 @@ func (cli *CLI) dbScorerStatus(cmd *cobra.Command, args []string) error {
 
 	for _, s := range ss {
 		// todo: get scorer name, too
-		fmt.Printf("%-5d %-20s %-10d %s\n", s.ScorerID, s.Name, s.LogScoreID.Int64, s.ModifiedOn)
+		fmt.Printf("%-5d %-20s %-10d %s\n", s.ScorerID, s.Name, s.LogScoreID, s.ModifiedOn)
 	}
 
 	return nil

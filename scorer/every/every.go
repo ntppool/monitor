@@ -10,14 +10,14 @@ import (
 )
 
 type EveryScore struct {
-	scorerID int32
+	scorerID uint32
 }
 
 func New() *EveryScore {
 	return &EveryScore{}
 }
 
-func (s *EveryScore) Setup(id int32) {
+func (s *EveryScore) Setup(id uint32) {
 	s.scorerID = id
 }
 

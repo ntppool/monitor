@@ -68,11 +68,11 @@ func (r *runner) Run() (int, error) {
 	}
 
 	for _, sc := range scorers {
-		log.Debug("setting up scorer", "name", sc.Name, "last_id", sc.LogScoreID.Int64)
+		log.Debug("setting up scorer", "name", sc.Name, "last_id", sc.LogScoreID)
 		if s, ok := registry[sc.Name]; ok {
 			s.Scorer.Setup(sc.ID)
 			s.ScorerID = sc.ID
-			s.LastID = sc.LogScoreID.Int64
+			s.LastID = sc.LogScoreID
 		} else {
 			log.Warn("scorer not implemented", "name", sc.Name)
 		}
@@ -144,7 +144,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 			// changed (or we haven't for 10 minutes)
 
 			p := ntpdb.InsertLogScoreParams{
-				ServerID:   ns.ServerID,
+				ServerID:   int32(ns.ServerID), // todo: sqlc types
 				MonitorID:  ns.MonitorID,
 				Ts:         ns.Ts,
 				Step:       ns.Step,
@@ -190,7 +190,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	latestID := logscores[len(logscores)-1].ID
 	// log.Printf("updating scorer status %d, new latest id: %d", sm.ScorerID, latestID)
 	err = db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
-		LogScoreID: sql.NullInt64{Int64: latestID, Valid: true},
+		LogScoreID: int64(latestID),
 		ScorerID:   sm.ScorerID,
 	})
 	if err != nil {
@@ -205,7 +205,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	return count, nil
 }
 
-func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int32) (ntpdb.ServerScore, error) {
+func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
 
 	ctx := r.ctx
 
@@ -228,8 +228,8 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int32) (n
 
 	// ErrNoRows
 	err = db.InsertServerScore(ctx, ntpdb.InsertServerScoreParams{
-		ServerID:  p.ServerID,
-		MonitorID: p.MonitorID,
+		ServerID:  int32(p.ServerID), // todo: sqlc types
+		MonitorID: int32(p.MonitorID),
 		ScoreRaw:  -5,
 		CreatedOn: time.Now(),
 	})

@@ -10,8 +10,8 @@ import (
 
 type ScorerMap struct {
 	Scorer    types.Scorer
-	ScorerID  int32
-	LastID    int64
+	ScorerID  uint32
+	LastID    uint64
 	lastScore map[int]*lastUpdate
 }
 

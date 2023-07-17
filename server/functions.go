@@ -130,7 +130,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 	return cfg.PbConfig()
 }
 
-func (srv *Server) signatureIPData(monitorID int32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
+func (srv *Server) signatureIPData(monitorID uint32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
 
 	monIDb := strconv.AppendInt([]byte{}, int64(monitorID), 10)
 
@@ -144,7 +144,7 @@ func (srv *Server) signatureIPData(monitorID int32, batchID []byte, ip *netip.Ad
 	return data, nil
 }
 
-func (srv *Server) SignIPs(monitorID int32, batchID []byte, ip *netip.Addr) ([]byte, error) {
+func (srv *Server) SignIPs(monitorID uint32, batchID []byte, ip *netip.Addr) ([]byte, error) {
 	data, err := srv.signatureIPData(monitorID, batchID, ip)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (srv *Server) SignIPs(monitorID int32, batchID []byte, ip *netip.Addr) ([]b
 	return srv.tokens.SignBytes(data...)
 }
 
-func (srv *Server) ValidateIPs(signature []byte, monitorID int32, batchID []byte, ip *netip.Addr) (bool, error) {
+func (srv *Server) ValidateIPs(signature []byte, monitorID uint32, batchID []byte, ip *netip.Addr) (bool, error) {
 	data, err := srv.signatureIPData(monitorID, batchID, ip)
 	if err != nil {
 		return false, err

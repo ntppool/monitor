@@ -13,13 +13,13 @@ import (
 )
 
 type RecentMedian struct {
-	scorerID int32
+	scorerID uint32
 }
 
 func New() *RecentMedian {
 	return &RecentMedian{}
 }
-func (s *RecentMedian) Setup(id int32) {
+func (s *RecentMedian) Setup(id uint32) {
 	s.scorerID = id
 }
 

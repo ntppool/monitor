@@ -112,7 +112,7 @@ const (
 )
 
 type newStatus struct {
-	MonitorID     int32
+	MonitorID     uint32
 	MonitorStatus ntpdb.MonitorsStatus
 	CurrentStatus ntpdb.ServerScoresStatus
 	NewState      candidateState
@@ -172,7 +172,7 @@ func (sl *selector) Run() (int, error) {
 	return count, nil
 }
 
-func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, error) {
+func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
 
 	targetNumber := 5
 
@@ -205,8 +205,8 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 		if currentStatus == ntpdb.ServerScoresStatusNew {
 			// insert if it's not there already, don't check errors
 			db.InsertServerScore(sl.ctx, ntpdb.InsertServerScoreParams{
-				MonitorID: candidate.ID,
-				ServerID:  serverID,
+				MonitorID: int32(candidate.ID), // todo: sqlc should have made this a uint32
+				ServerID:  int32(serverID),
 				ScoreRaw:  0,
 				CreatedOn: time.Now(),
 			})
@@ -429,10 +429,10 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID int32) (bool, erro
 // The second return parameter is the ID of the better monitor candidate,
 // the first return parameter the ID to be replaced. The last parameter
 // is false if no relevant replacement was found.
-func (nsl newStatusList) IsOutOfOrder() (int32, int32, bool) {
+func (nsl newStatusList) IsOutOfOrder() (uint32, uint32, bool) {
 
-	best := int32(-1)
-	replace := int32(-1)
+	best := uint32(0)
+	replace := uint32(0)
 
 	for _, ns := range nsl {
 		if ns.NewState != candidateIn {
@@ -441,12 +441,12 @@ func (nsl newStatusList) IsOutOfOrder() (int32, int32, bool) {
 		switch ns.CurrentStatus {
 		case ntpdb.ServerScoresStatusActive:
 			// only replace if we found a replacement
-			if best != -1 {
+			if best != 0 {
 				replace = ns.MonitorID
 			}
 
 		case ntpdb.ServerScoresStatusTesting:
-			if best == -1 {
+			if best == 0 {
 				best = ns.MonitorID
 			}
 

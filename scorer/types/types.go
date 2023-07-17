@@ -9,6 +9,6 @@ import (
 
 type Scorer interface {
 	// Lookback(LookbackOptions)
-	Setup(id int32)
+	Setup(id uint32)
 	Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, ls ntpdb.LogScore) (score.Score, error)
 }
