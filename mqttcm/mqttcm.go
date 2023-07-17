@@ -1,5 +1,7 @@
 package mqttcm
 
+// "mqtt connection manager"
+
 import (
 	"context"
 	"crypto/tls"

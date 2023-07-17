@@ -4,3 +4,5 @@ state/
 devel
 *.dev.json
 *.ntppool.dev/
+run*
+build*
