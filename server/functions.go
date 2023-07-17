@@ -181,7 +181,7 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	interval := 9 * time.Minute
 	intervalTesting := 45 * time.Minute
-	intervalAll := 75 * time.Second
+	intervalAll := 60 * time.Second
 
 	if monitor.Status != ntpdb.MonitorsStatusActive {
 		interval = intervalTesting
