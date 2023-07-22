@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strconv"
@@ -13,12 +14,19 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
 )
+
+type IntervalSettings struct {
+	IntervalActive  timeutil.Duration `json:"interval_active"`
+	IntervalTesting timeutil.Duration `json:"interval_testing"`
+	IntervalAll     timeutil.Duration `json:"interval_all"`
+}
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
 
@@ -179,20 +187,41 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	interval := 9 * time.Minute
-	intervalTesting := 45 * time.Minute
-	intervalAll := 60 * time.Second
+	intervalSettingStr, err := srv.db.GetSystemSetting(ctx, "monitors")
+	if err != nil {
+		log.Warn("could not fetch monitor settings", "err", err)
+	}
+	var intervals IntervalSettings
+	if len(intervalSettingStr) > 0 {
+		err := json.Unmarshal([]byte(intervalSettingStr), &intervals)
+		if err != nil {
+			log.Warn("could not unmarshal monitor settings", "err", err)
+		}
+	}
 
+	if intervals.IntervalActive.Seconds() < 20 {
+		intervals.IntervalActive = timeutil.Duration{9 * time.Minute}
+	}
+	if intervals.IntervalTesting.Seconds() < 60 {
+		intervals.IntervalTesting = timeutil.Duration{45 * time.Minute}
+	}
+	if intervals.IntervalAll.Seconds() < 10 {
+		intervals.IntervalAll = timeutil.Duration{60 * time.Second}
+	}
+
+	log.Debug("interval settings", "intervals", intervals)
+
+	interval := intervals.IntervalActive
 	if monitor.Status != ntpdb.MonitorsStatusActive {
-		interval = intervalTesting
+		interval = intervals.IntervalTesting
 	}
 
 	p := ntpdb.GetServersParams{
 		MonitorID:              monitor.ID,
 		IpVersion:              ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
 		IntervalSeconds:        interval.Seconds(),
-		IntervalSecondsTesting: intervalTesting.Seconds(),
-		IntervalSecondsAll:     intervalAll.Seconds(),
+		IntervalSecondsTesting: intervals.IntervalTesting.Seconds(),
+		IntervalSecondsAll:     intervals.IntervalAll.Seconds(),
 		Limit:                  10,
 		Offset:                 0,
 	}

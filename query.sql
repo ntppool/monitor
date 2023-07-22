@@ -191,3 +191,6 @@ update servers_monitor_review
 update servers_monitor_review
   set last_review=NOW(), last_change=NOW(), next_review=?
   where server_id=?;
+
+-- name: GetSystemSetting :one
+select value from system_settings where `key` = ?

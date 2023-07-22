@@ -514,6 +514,17 @@ func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]uint32, error)
 	return items, nil
 }
 
+const getSystemSetting = `-- name: GetSystemSetting :one
+select value from system_settings where ` + "`" + `key` + "`" + ` = ?
+`
+
+func (q *Queries) GetSystemSetting(ctx context.Context, key string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getSystemSetting, key)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const insertLogScore = `-- name: InsertLogScore :execresult
 INSERT INTO log_scores
   (server_id, monitor_id, ts, score, step, offset, rtt, attributes)

@@ -526,8 +526,8 @@ DROP TABLE IF EXISTS `system_settings`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `system_settings` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `key` varchar(255) DEFAULT NULL,
-  `value` text,
+  `key` varchar(255) NOT NULL,
+  `value` text NOT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
