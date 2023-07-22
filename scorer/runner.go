@@ -12,7 +12,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const batchSize = 2000
+const batchSize = 500
 const mainScorer = "recentmedian"
 
 type runner struct {
