@@ -454,7 +454,7 @@ func (nsl newStatusList) IsOutOfOrder() (uint32, uint32, bool) {
 
 	}
 
-	if best < 0 || replace < 0 {
+	if best == 0 || replace == 0 {
 		return 0, 0, false
 	}
 

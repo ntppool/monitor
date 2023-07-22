@@ -57,6 +57,7 @@ func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
 func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
 
 	log := logger.Setup()
+	log.Info("starting scorer", "continuous", continuous)
 
 	ctx := context.Background()
 

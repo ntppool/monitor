@@ -3,6 +3,7 @@ sql:
   - schema: "schema.sql"
     queries: "query.sql"
     engine: "mysql"
+    strict_order_by: false
     gen:
       go:
         package: "ntpdb"

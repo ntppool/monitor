@@ -174,7 +174,7 @@ select m.id, m.tls_name,
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
   group by m.id, m.tls_name, m.status, ss.status
-  order by coalesce(healthy) desc, coalesce(monitor_priority), coalesce(avg_step) desc, coalesce(avg_rtt);
+  order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
 
 -- name: GetServersMonitorReview :many
 select server_id from servers_monitor_review
