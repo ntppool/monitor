@@ -174,7 +174,11 @@ func (sl *selector) Run() (int, error) {
 
 func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
 
+	// target this many active servers
 	targetNumber := 5
+
+	// if there are this or less active servers, add new ones faster
+	bootStrapModeLimit := (targetNumber / 2) + 1
 
 	log := slog.Default().With("serverID", serverID)
 
@@ -191,6 +195,17 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 
 	currentActiveMonitors := 0
 	currentTestingMonitors := 0
+
+	// first count how many active servers are there now
+	// as it changes the criteria for in/out
+	for _, candidate := range prilist {
+		switch candidate.Status.ServerScoresStatus {
+		case ntpdb.ServerScoresStatusActive:
+			currentActiveMonitors++
+		case ntpdb.ServerScoresStatusTesting:
+			currentTestingMonitors++
+		}
+	}
 
 	for _, candidate := range prilist {
 
@@ -252,13 +267,14 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 			case healthy == 0:
 				s = candidateOut
 
-			// case rtt < 0.01:
-			//  rtt is low when there were no successful probes,
-			//  but this should also result in healthy == 0 because
-			//  the average step value is low.
-			// 	s = candidateOut
+			case currentActiveMonitors >= targetNumber && candidate.Count <= 6:
+				// we have enough monitors, so only consider monitors with more history
+				s = candidateOut
 
-			case candidate.Count < 5:
+			case currentActiveMonitors > bootStrapModeLimit && candidate.Count <= 3:
+				// if we have a minimal amount of monitors, only choose servers
+				// with a few checks. If we have bootStrapLimit or less monitors
+				// then 1-3 checks is enough
 				s = candidateOut
 
 			default: // must be healthy == 1
@@ -267,13 +283,6 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 
 			newStatus.NewState = s
 			nsl = append(nsl, newStatus)
-
-			switch candidate.Status.ServerScoresStatus {
-			case ntpdb.ServerScoresStatusActive:
-				currentActiveMonitors++
-			case ntpdb.ServerScoresStatusTesting:
-				currentTestingMonitors++
-			}
 
 			continue
 
@@ -314,7 +323,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	}
 
 	if currentActiveMonitors == 0 {
-		allowedChanges = (targetNumber / 2) + 1
+		allowedChanges = bootStrapModeLimit
 	}
 
 	if targetNumber > okMonitors && okMonitors < currentActiveMonitors {
@@ -366,12 +375,13 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 
 	// replace removed monitors
 	for _, ns := range nsl {
+		if ns.NewState != candidateIn || ns.CurrentStatus == ntpdb.ServerScoresStatusActive {
+			// not a candidate or already active
+			continue
+		}
 		log.Info("add loop", "toAdd", toAdd, "allowedChanges", allowedChanges)
 		if allowedChanges <= 0 || toAdd <= 0 {
 			break
-		}
-		if ns.NewState != candidateIn || ns.CurrentStatus == ntpdb.ServerScoresStatusActive {
-			continue
 		}
 		log.Info("adding", "monitorID", ns.MonitorID)
 		db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
