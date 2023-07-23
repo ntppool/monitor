@@ -22,10 +22,11 @@ import (
 	"go.ntppool.org/monitor/server/jwt"
 )
 
-type IntervalSettings struct {
+type MonitorSettings struct {
 	IntervalActive  timeutil.Duration `json:"interval_active"`
 	IntervalTesting timeutil.Duration `json:"interval_testing"`
 	IntervalAll     timeutil.Duration `json:"interval_all"`
+	BatchSize       int32             `json:"batch_size"`
 }
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
@@ -187,42 +188,45 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	intervalSettingStr, err := srv.db.GetSystemSetting(ctx, "monitors")
+	monitorSettingsStr, err := srv.db.GetSystemSetting(ctx, "monitors")
 	if err != nil {
 		log.Warn("could not fetch monitor settings", "err", err)
 	}
-	var intervals IntervalSettings
-	if len(intervalSettingStr) > 0 {
-		err := json.Unmarshal([]byte(intervalSettingStr), &intervals)
+	var settings MonitorSettings
+	if len(monitorSettingsStr) > 0 {
+		err := json.Unmarshal([]byte(monitorSettingsStr), &settings)
 		if err != nil {
 			log.Warn("could not unmarshal monitor settings", "err", err)
 		}
 	}
 
-	if intervals.IntervalActive.Seconds() < 20 {
-		intervals.IntervalActive = timeutil.Duration{9 * time.Minute}
+	if settings.IntervalActive.Seconds() < 20 {
+		settings.IntervalActive = timeutil.Duration{9 * time.Minute}
 	}
-	if intervals.IntervalTesting.Seconds() < 60 {
-		intervals.IntervalTesting = timeutil.Duration{45 * time.Minute}
+	if settings.IntervalTesting.Seconds() < 60 {
+		settings.IntervalTesting = timeutil.Duration{45 * time.Minute}
 	}
-	if intervals.IntervalAll.Seconds() < 10 {
-		intervals.IntervalAll = timeutil.Duration{60 * time.Second}
+	if settings.IntervalAll.Seconds() < 10 {
+		settings.IntervalAll = timeutil.Duration{60 * time.Second}
+	}
+	if settings.BatchSize <= 0 {
+		settings.BatchSize = 10
 	}
 
-	log.Debug("interval settings", "intervals", intervals)
+	log.Debug("interval settings", "intervals", settings)
 
-	interval := intervals.IntervalActive
+	interval := settings.IntervalActive
 	if monitor.Status != ntpdb.MonitorsStatusActive {
-		interval = intervals.IntervalTesting
+		interval = settings.IntervalTesting
 	}
 
 	p := ntpdb.GetServersParams{
 		MonitorID:              monitor.ID,
 		IpVersion:              ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
 		IntervalSeconds:        interval.Seconds(),
-		IntervalSecondsTesting: intervals.IntervalTesting.Seconds(),
-		IntervalSecondsAll:     intervals.IntervalAll.Seconds(),
-		Limit:                  10,
+		IntervalSecondsTesting: settings.IntervalTesting.Seconds(),
+		IntervalSecondsAll:     settings.IntervalAll.Seconds(),
+		Limit:                  (settings.BatchSize),
 		Offset:                 0,
 	}
 
