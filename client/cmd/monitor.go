@@ -159,6 +159,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 					wait = errorFetchInterval
 				}
 			} else {
+				log.Debug("client config", "cfg", cfg)
 				conf.SetConfig(cfg)
 				if firstRun {
 					initialConfig.Done()

@@ -8,8 +8,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/beevik/ntp"
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api/pb"
-	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -22,6 +22,9 @@ type response struct {
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
 func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response, error) {
+
+	log := logger.Setup()
+
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
 	}
@@ -37,7 +40,7 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			opts.LocalAddress = natIP.String()
 		}
 	} else {
-		slog.Error("Did not get valid local configuration IP", "configIP", configIP)
+		log.Error("Did not get valid local configuration IP", "configIP", configIP)
 	}
 
 	if ip.IsLoopback() {
@@ -75,14 +78,14 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			r.Error = err
 			responses = append(responses, r)
 
-			slog.Debug("ntp query error", "host", ip.String(), "iteration", i, "error", err)
+			log.Debug("ntp query error", "host", ip.String(), "iteration", i, "error", err)
 
 			continue
 		}
 
 		status := ntpResponseToStatus(ip, resp)
 
-		slog.Debug("ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
+		log.Debug("ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
 
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {
