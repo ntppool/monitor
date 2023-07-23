@@ -65,7 +65,12 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			time.Sleep(2 * time.Second)
 		}
 
-		resp, err := ntp.QueryWithOptions(ip.String(), opts)
+		ipStr := ip.String()
+		if ip.Is6() {
+			ipStr = "[" + ipStr + "]:123"
+		}
+
+		resp, err := ntp.QueryWithOptions(ipStr, opts)
 		if err != nil {
 			r := &response{
 				Status: &pb.ServerStatus{},
