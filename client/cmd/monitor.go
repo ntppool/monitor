@@ -222,10 +222,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		if ok {
 			log.Info("Local clock ok")
 			return nil
-		} else {
-			log.Info("Local clock not ok")
-			return fmt.Errorf("health check failed")
 		}
+		log.Info("Local clock not ok")
+		return fmt.Errorf("health check failed")
 	}
 
 	if mq != nil {

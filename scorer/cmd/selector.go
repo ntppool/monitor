@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slog"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -53,12 +54,16 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 
 	ctx := context.Background()
 
+	log := logger.Setup()
+
+	log.Info("selector starting")
+
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
 		return err
 	}
 
-	sl, err := newSelector(ctx, dbconn)
+	sl, err := newSelector(ctx, dbconn, log)
 	if err != nil {
 		return nil
 	}
@@ -96,10 +101,11 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 type selector struct {
 	ctx    context.Context
 	dbconn *sql.DB
+	log    *slog.Logger
 }
 
-func newSelector(ctx context.Context, dbconn *sql.DB) (*selector, error) {
-	return &selector{ctx: ctx, dbconn: dbconn}, nil
+func newSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger) (*selector, error) {
+	return &selector{ctx: ctx, dbconn: dbconn, log: log}, nil
 }
 
 type candidateState uint8

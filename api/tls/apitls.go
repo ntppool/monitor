@@ -3,7 +3,7 @@ package apitls
 import (
 	"crypto/tls"
 	"crypto/x509"
-	_ "embed"
+	_ "embed" // embed CA from file
 	"errors"
 
 	"github.com/abh/certman"

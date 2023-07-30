@@ -136,10 +136,10 @@ func (v *Vault) setAuthSecret(secret *vaultapi.Secret) error {
 	return nil
 }
 
-func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
+func (v *Vault) vaultClient() (*vaultapi.Client, error) {
 
-	if cr.client != nil {
-		return cr.client, nil
+	if v.client != nil {
+		return v.client, nil
 	}
 
 	vaultConfig := &vaultapi.Config{
@@ -151,7 +151,7 @@ func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
 		return nil, err
 	}
 
-	cr.client = client
+	v.client = client
 
 	return client, nil
 }
@@ -172,19 +172,19 @@ func (cr *Vault) vaultClient() (*vaultapi.Client, error) {
 // 	return true, rv, nil
 // }
 
-func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interface{}, error) {
-	client, err := cr.vaultClient()
+func (v *Vault) SecretInfo(ctx context.Context, name string) (map[string]interface{}, error) {
+	client, err := v.vaultClient()
 	if err != nil {
 		return nil, err
 	}
 
 	rv, err := client.Logical().WriteWithContext(ctx,
 		fmt.Sprintf("auth/%s/role/%s/secret-id/lookup",
-			cr.authPrefix,
+			v.authPrefix,
 			name,
 		),
 		map[string]interface{}{
-			"secret_id": cr.secret,
+			"secret_id": v.secret,
 		},
 	)
 
@@ -199,7 +199,7 @@ func (cr *Vault) SecretInfo(ctx context.Context, name string) (map[string]interf
 	return rv.Data, nil
 }
 
-func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, updateChannel chan<- bool) error {
+func (v *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, updateChannel chan<- bool) error {
 
 	log := logger.FromContext(ctx)
 	// log.Printf("starting RenewToken, with authInfo: %+v", authInfo)
@@ -207,13 +207,13 @@ func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, upda
 	for {
 		var err error
 		if authInfo == nil {
-			authInfo, err = cr.Login(ctx)
+			authInfo, err = v.Login(ctx)
 			if err != nil {
 				log.Error("unable to authenticate to Vault", "err", err)
 				return err
 			}
 		}
-		tokenErr := cr.manageTokenLifecycle(ctx, authInfo, updateChannel)
+		tokenErr := v.manageTokenLifecycle(ctx, authInfo, updateChannel)
 		if tokenErr != nil {
 			log.Error("unable to start managing token lifecycle", "err", tokenErr)
 			return err
@@ -233,7 +233,7 @@ func (cr *Vault) RenewToken(ctx context.Context, authInfo *vaultapi.Secret, upda
 
 // Starts token lifecycle management. Returns only fatal errors as errors,
 // otherwise returns nil so we can attempt login again.
-func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secret, updateChannel chan<- bool) error {
+func (v *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secret, updateChannel chan<- bool) error {
 
 	log := logger.FromContext(ctx)
 
@@ -243,7 +243,7 @@ func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secre
 		return nil
 	}
 
-	watcher, err := cr.client.NewLifetimeWatcher(&vaultapi.LifetimeWatcherInput{
+	watcher, err := v.client.NewLifetimeWatcher(&vaultapi.LifetimeWatcherInput{
 		Secret: token,
 		// Increment: 3600, // Learn more about this optional value in https://www.vaultproject.io/docs/concepts/lease#lease-durations-and-renewal
 	})
@@ -277,7 +277,7 @@ func (cr *Vault) manageTokenLifecycle(ctx context.Context, token *vaultapi.Secre
 			updateChannel <- true
 			log.Info("successfully renewed token")
 			// js, err := json.MarshalIndent(renewal, "", "  ")
-			cr.setAuthSecret(renewal.Secret)
+			v.setAuthSecret(renewal.Secret)
 
 		case <-ctx.Done():
 			watcher.Stop()

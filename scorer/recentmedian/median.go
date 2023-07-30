@@ -66,11 +66,22 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 		ls = recent[0]
 	} else {
 
-		slices.SortStableFunc(recent, func(a, b ntpdb.LogScore) bool {
+		slices.SortStableFunc(recent, func(a, b ntpdb.LogScore) int {
 			if a.Score != b.Score {
-				return a.Score > b.Score
+				if a.Score > b.Score {
+					return 1
+				}
+				if a.Score < b.Score {
+					return -1
+				}
 			}
-			return a.Rtt.Int32 < b.Rtt.Int32
+			if a.Rtt.Int32 > b.Rtt.Int32 {
+				return 1
+			}
+			if a.Rtt.Int32 < b.Rtt.Int32 {
+				return -1
+			}
+			return 0
 		})
 
 		i := len(recent) / 2
