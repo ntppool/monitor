@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api/pb"
 	"go4.org/netipx"
@@ -18,8 +19,15 @@ import (
 	"go.ntppool.org/monitor/client/monitor"
 )
 
+type metrics struct {
+	hosts     map[string]bool
+	Ok        *prometheus.GaugeVec
+	LastCheck *prometheus.GaugeVec
+}
+
 type LocalOK struct {
 	cfg        *pb.Config
+	metrics    metrics
 	isv4       bool
 	lastCheck  time.Time
 	lastStatus bool
@@ -29,7 +37,7 @@ type LocalOK struct {
 const localCacheTTL = 180 * time.Second
 const maxOffset = 10 * time.Millisecond
 
-func NewLocalOK(conf config.ConfigUpdater) *LocalOK {
+func NewLocalOK(conf config.ConfigUpdater, promreg prometheus.Registerer) *LocalOK {
 	var isv4 bool
 
 	cfg := conf.GetConfig()
@@ -40,7 +48,21 @@ func NewLocalOK(conf config.ConfigUpdater) *LocalOK {
 		isv4 = false
 	}
 
-	return &LocalOK{cfg: cfg, isv4: isv4}
+	m := metrics{}
+
+	m.Ok = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "local_check_up",
+	}, []string{"host", "ip_version"})
+	promreg.MustRegister(m.Ok)
+
+	m.LastCheck = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "local_check_time",
+	}, []string{"host", "ip_version"})
+	promreg.MustRegister(m.LastCheck)
+
+	m.hosts = make(map[string]bool)
+
+	return &LocalOK{cfg: cfg, isv4: isv4, metrics: m}
 }
 
 func (l *LocalOK) NextCheckIn() time.Duration {
@@ -85,6 +107,11 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	// update() is wrapped in a lock
 	cfg := l.cfg
 
+	ipVersion := "v6"
+	if l.isv4 {
+		ipVersion = "v4"
+	}
+
 	// overridden by server config
 	allHosts := []string{
 		"time.apple.com",
@@ -118,6 +145,11 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	fails := 0
 
 	// log.Printf("Looking for ipv4: %t", l.isv4)
+
+	for h := range l.metrics.hosts {
+		// mark not seen
+		l.metrics.hosts[h] = false
+	}
 
 	for _, h := range allHosts {
 
@@ -169,8 +201,12 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 	g.Go(func() error {
 		wg := sync.WaitGroup{}
+
 		for i, h := range hosts {
 			wg.Add(1)
+
+			// seen
+			l.metrics.hosts[h.Name] = true
 
 			if i > 0 {
 				time.Sleep(10 * time.Millisecond)
@@ -181,6 +217,15 @@ func (l *LocalOK) update(ctx context.Context) bool {
 				if err != nil {
 					slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
 				}
+
+				l.metrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
+				m := l.metrics.Ok.WithLabelValues(h.Name, ipVersion)
+				if ok {
+					m.Set(1)
+				} else {
+					m.Set(0)
+				}
+
 				results <- ok
 				wg.Done()
 			}(h)
@@ -188,6 +233,13 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 		wg.Wait()
 		close(results)
+
+		for h, seen := range l.metrics.hosts {
+			if !seen {
+				l.metrics.Ok.DeleteLabelValues(h, ipVersion)
+				l.metrics.LastCheck.DeleteLabelValues(h, ipVersion)
+			}
+		}
 
 		return nil
 	})

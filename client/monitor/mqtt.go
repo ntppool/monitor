@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/netip"
@@ -9,10 +10,14 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"
+	"golang.org/x/exp/slog"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/expfmt"
+
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/mqttcm"
-	"golang.org/x/exp/slog"
 )
 
 type mqclient struct {
@@ -20,10 +25,11 @@ type mqclient struct {
 	topics *mqttcm.MQTTTopics
 	conf   config.ConfigUpdater
 	log    *slog.Logger
+	prom   prometheus.Gatherer
 }
 
-func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf config.ConfigUpdater) *mqclient {
-	return &mqclient{topics: topics, conf: conf, log: log}
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf config.ConfigUpdater, promreg prometheus.Gatherer) *mqclient {
+	return &mqclient{topics: topics, conf: conf, log: log, prom: promreg}
 }
 
 func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
@@ -45,15 +51,35 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		return
 	}
 
-	msg := struct{ IP string }{}
+	switch requestType {
 
-	err = json.Unmarshal(m.Payload, &msg)
-	if err != nil {
-		log.Error("mqtt request error", "err", err)
-		return
-	}
+	case "metrics":
 
-	if requestType == "ntp" {
+		gathering, err := mqc.prom.Gather()
+		if err != nil {
+			log.Error("could not fetch metrics", "err", err)
+		}
+
+		out := &bytes.Buffer{}
+		for _, mf := range gathering {
+			if _, err := expfmt.MetricFamilyToText(out, mf); err != nil {
+				log.Error("metrics format", "err", err)
+			}
+		}
+
+		err = mqc.sendResponse(ctx, log, out.Bytes(), m)
+		if err != nil {
+			log.Error("mqtt response", "err", err)
+		}
+
+	case "ntp":
+		msg := struct{ IP string }{}
+
+		err = json.Unmarshal(m.Payload, &msg)
+		if err != nil {
+			log.Error("mqtt request error", "err", err)
+			return
+		}
 		log.Info("mqtt check ntp", "ip", msg.IP)
 
 		ip, err := netip.ParseAddr(msg.IP)
@@ -90,27 +116,36 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 		log.Debug("response", "payload", responseData)
 
-		rmsg := &paho.Publish{
-			Topic:   m.Properties.ResponseTopic,
-			Payload: responseData,
-			Retain:  false,
-			QoS:     0,
+		err = mqc.sendResponse(ctx, log, responseData, m)
+		if err != nil {
+			log.Error("mqtt response", "err", err)
 		}
-		rmsg.InitProperties(&packets.Properties{})
-
-		for _, t := range []string{"TraceID", "SpanID"} {
-			rmsg.Properties.User.Add(t, m.Properties.User.Get(t))
-		}
-
-		if mqc.mq == nil {
-			log.Error("mq==nil")
-		}
-
-		mqc.mq.AwaitConnection(ctx)
-		log.Debug("connection for response established")
-
-		mqc.mq.Publish(ctx, rmsg)
 
 	}
 
+}
+
+func (mqc *mqclient) sendResponse(ctx context.Context, log *slog.Logger, data []byte, m *paho.Publish) error {
+
+	rmsg := &paho.Publish{
+		Topic:   m.Properties.ResponseTopic,
+		Payload: data,
+		Retain:  false,
+		QoS:     0,
+	}
+	rmsg.InitProperties(&packets.Properties{})
+
+	for _, t := range []string{"TraceID", "SpanID"} {
+		rmsg.Properties.User.Add(t, m.Properties.User.Get(t))
+	}
+
+	if mqc.mq == nil {
+		log.Error("mq==nil")
+	}
+
+	mqc.mq.AwaitConnection(ctx)
+	log.Debug("connection for response established")
+
+	_, err := mqc.mq.Publish(ctx, rmsg)
+	return err
 }

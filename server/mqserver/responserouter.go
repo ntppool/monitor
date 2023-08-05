@@ -63,7 +63,7 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			log.Info("context has deadline", "deadline", deadline)
 		}
 
-		log.Info("handling message", "payload", p)
+		log.Debug("handling message", "payload", p)
 		span.AddEvent(fmt.Sprintf("handling message: %+v", p))
 
 		topic := p.Topic
@@ -96,14 +96,14 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 }
 
 func (rr *mqttResponseRouter) AddResponseID(id string, rc chan<- *paho.Publish) {
-	rr.log.Info("adding channel", "id", id)
+	rr.log.Debug("adding channel", "id", id)
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 	rr.rm[id] = rc
 }
 
 func (rr *mqttResponseRouter) CloseResponseID(id string) {
-	rr.log.Info("closing channel", "id", id)
+	rr.log.Debug("closing channel", "id", id)
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 	close(rr.rm[id])

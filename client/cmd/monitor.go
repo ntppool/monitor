@@ -25,6 +25,7 @@ import (
 	"go.ntppool.org/pingtrace/traceroute"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
@@ -169,7 +170,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
-				initialConfig.Done()
+				if firstRun {
+					initialConfig.Done()
+				}
 				return
 			}
 		}
@@ -183,6 +186,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
+	metricssrv := metricsserver.New()
+	promreg := metricssrv.Registry()
+	go metricssrv.ListenAndServe(ctx, 9999)
+
 	var mq *autopaho.ConnectionManager
 	topics := mqttcm.NewTopics(deployEnv)
 	statusChannel := topics.Status(cauth.Name)
@@ -193,7 +200,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
 			log := log.WithGroup("mqtt")
 
-			mqc := monitor.NewMQClient(log, topics, conf)
+			mqc := monitor.NewMQClient(log, topics, conf, promreg)
 			router := paho.NewSingleHandlerRouter(mqc.Handler)
 
 			mq, err = mqttcm.Setup(
@@ -215,7 +222,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		}
 	}
 
-	localOK := localok.NewLocalOK(conf)
+	localOK := localok.NewLocalOK(conf, promreg)
 
 	if *sanityOnlyFlag {
 		ok := localOK.Check(ctx)
