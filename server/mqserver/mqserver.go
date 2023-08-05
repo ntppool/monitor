@@ -69,7 +69,7 @@ func Setup(log *slog.Logger, dbconn *sql.DB, promRegistry prometheus.Registerer)
 	monitorsConnected := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "monitors_connected",
 		Help: "monitors connected via mqtt",
-	}, []string{"version"})
+	}, []string{"client", "version", "ip_version"})
 	err := promRegistry.Register(monitorsConnected)
 	if err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 		ctx := context.Background()
 
-		if mqs.db != nil {
+		if mqs.db != nil { // for running tests without the DB
 			mon, err := mqs.db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
 			if err != nil {
 				mqs.log.Error("fetching monitor details", "err", err)
@@ -189,7 +189,17 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	mqs.promGauge.Reset()
 	for _, c := range mqs.clients {
 		if c.Online {
-			mqs.promGauge.WithLabelValues(c.Version.Version).Add(1.0)
+
+			var ipVersion string
+			if c.Data != nil {
+				ipVersion = c.Data.IpVersion.MonitorsIpVersion.String()
+			}
+
+			mqs.promGauge.WithLabelValues(
+				c.Name,
+				c.Version.Version,
+				ipVersion,
+			).Add(1.0)
 		}
 	}
 }
