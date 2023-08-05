@@ -12,13 +12,14 @@ import (
 
 	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestResponseHandler(t *testing.T) {
 
 	ctx := context.Background()
 
-	mqs, err := Setup(logger.Setup(), nil)
+	mqs, err := Setup(logger.Setup(), nil, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}

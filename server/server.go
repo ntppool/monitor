@@ -10,6 +10,7 @@ import (
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
 	osdktrace "go.opentelemetry.io/otel/sdk/trace"
 	otrace "go.opentelemetry.io/otel/trace"
@@ -46,7 +47,7 @@ type Config struct {
 	CertProvider  apitls.CertificateProvider
 }
 
-func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB) (*Server, error) {
+func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {
 	db := ntpdb.New(dbconn)
 
 	vaultClient, err := vaultClient()
@@ -63,7 +64,7 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 		return nil, err
 	}
 
-	metrics := metrics.New()
+	metrics := metrics.New(promRegistry)
 
 	srv := &Server{
 		ctx:    ctx,
@@ -153,23 +154,12 @@ func (srv *Server) Run() error {
 
 	srv.log.Info("starting server")
 
-	metricsServer := &http.Server{
-		Addr:    ":9000",
-		Handler: srv.m.Handler(),
-	}
-
 	g, _ := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		err := metricsServer.ListenAndServe()
-		if err != nil {
-			return fmt.Errorf("metrics server: %w", err)
-		}
-		return nil
-	})
+	listen := ":8000"
 
 	server := &http.Server{
-		Addr: ":8000",
+		Addr: listen,
 
 		TLSConfig: tlsConfig,
 		Handler:   mux,
@@ -180,7 +170,7 @@ func (srv *Server) Run() error {
 		IdleTimeout:       240 * time.Second,
 	}
 
-	srv.log.Info("Starting gRPC server")
+	srv.log.Info("Starting gRPC server", "port", listen)
 
 	g.Go(func() error {
 		err := server.ListenAndServeTLS("", "")
@@ -194,8 +184,6 @@ func (srv *Server) Run() error {
 		<-ctx.Done()
 		log.Info("shutting down twirp server")
 		server.Shutdown(ctx)
-		log.Info("shutting down metrics server")
-		metricsServer.Shutdown(ctx)
 		srv.traceProvider.Shutdown(ctx)
 		return nil
 	})

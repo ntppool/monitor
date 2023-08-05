@@ -12,6 +12,7 @@ import (
 
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/metricsserver"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
@@ -136,6 +137,9 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
+	metricssrv := metricsserver.New()
+	go metricssrv.ListenAndServe(ctx, 9000)
+
 	mqcfg := mqconfig{
 		tlsName: tlsName,
 		host:    "mqtt.ntppool.net",
@@ -143,7 +147,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		jwtKey:  cfg.JWTKey,
 	}
 
-	mqs, err := mqserver.Setup(log, dbconn)
+	mqs, err := mqserver.Setup(log, dbconn, metricssrv.Registry())
 	if err != nil {
 		return err
 	}
@@ -184,7 +188,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 	go health.HealthCheckListener(ctx, 8080, log)
 
 	g.Go(func() error {
-		srv, err := server.NewServer(ctx, log, scfg, dbconn)
+		srv, err := server.NewServer(ctx, log, scfg, dbconn, metricssrv.Registry())
 		if err != nil {
 			log.Error("NewServer() error", "err", err)
 			return fmt.Errorf("srv setup: %s", err)

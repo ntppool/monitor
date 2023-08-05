@@ -1,21 +1,16 @@
 package metrics
 
 import (
-	"net/http"
-
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.ntppool.org/common/logger"
 )
 
 type Metrics struct {
-	r              *prometheus.Registry
+	r              prometheus.Registerer
 	TestsRequested *prometheus.CounterVec
 	TestsCompleted *prometheus.CounterVec
 }
 
-func New() *Metrics {
-	r := prometheus.NewRegistry()
+func New(r prometheus.Registerer) *Metrics {
 
 	m := &Metrics{
 		r: r,
@@ -52,15 +47,4 @@ func New() *Metrics {
 
 func (m *Metrics) Registry() prometheus.Registerer {
 	return m.r
-}
-
-func (m *Metrics) Handler() http.Handler {
-
-	log := logger.NewStdLog("prom http", false, nil)
-
-	return promhttp.HandlerFor(m.r, promhttp.HandlerOpts{
-		ErrorLog:          log,
-		Registry:          m.r,
-		EnableOpenMetrics: true,
-	})
 }

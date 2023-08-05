@@ -20,6 +20,7 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -44,6 +45,8 @@ type server struct {
 	clients map[string]*client
 	cmux    sync.RWMutex
 
+	promGauge *prometheus.GaugeVec
+
 	rr *mqttResponseRouter
 }
 
@@ -55,13 +58,23 @@ type client struct {
 	Data     *ntpdb.Monitor
 }
 
-func Setup(log *slog.Logger, dbconn *sql.DB) (*server, error) {
+func Setup(log *slog.Logger, dbconn *sql.DB, promRegistry prometheus.Registerer) (*server, error) {
 	clients := map[string]*client{}
 	mqs := &server{clients: clients, dbconn: dbconn, log: log.WithGroup("mqtt")}
 	if dbconn != nil {
 		// tests run without the db
 		mqs.db = ntpdb.New(dbconn)
 	}
+
+	monitorsConnected := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "monitors_connected",
+		Help: "monitors connected via mqtt",
+	}, []string{"version"})
+	err := promRegistry.Register(monitorsConnected)
+	if err != nil {
+		return nil, err
+	}
+	mqs.promGauge = monitorsConnected
 
 	return mqs, nil
 }
@@ -171,8 +184,14 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	}
 
 	mqs.log.Debug("new status", "status", cs)
-	// log.Printf("new map: %+v", mqs.clients)
+	// mqs.log.Info("new map", "clients", mqs.clients)
 
+	mqs.promGauge.Reset()
+	for _, c := range mqs.clients {
+		if c.Online {
+			mqs.promGauge.WithLabelValues(c.Version.Version).Add(1.0)
+		}
+	}
 }
 
 func (mqs *server) seenClients() []client {

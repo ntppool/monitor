@@ -228,13 +228,20 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	}
 
 	if mq != nil {
-		msg, _ := mqttcm.StatusMessageJSON(true)
-		mq.Publish(ctx, &paho.Publish{
+		msg, err := mqttcm.StatusMessageJSON(true)
+		if err != nil {
+			log.Warn("mqtt status error", "err", err)
+		}
+		log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
+		_, err = mq.Publish(ctx, &paho.Publish{
 			Topic:   statusChannel,
 			Payload: msg,
 			QoS:     1,
 			Retain:  true,
 		})
+		if err != nil {
+			log.Warn("mqtt status publish error", "err", err)
+		}
 
 		// old, clear retained message
 		// oldChannel := fmt.Sprintf("%s/status/%s/online", cfg.MQTTConfig.Prefix, cauth.Name)
@@ -246,6 +253,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		// 		Retain:  true,
 		// 	})
 		// }
+	} else {
+		log.Info("no mqtt connection")
 	}
 
 	i := 0

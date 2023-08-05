@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slog"
 )
 
 func TestClientState(t *testing.T) {
 
-	mqs, err := Setup(slog.Default(), nil)
+	mqs, err := Setup(slog.Default(), nil, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
 	}

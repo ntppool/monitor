@@ -50,8 +50,10 @@ func GetToken(key, subject string, admin bool) (string, error) {
 
 	if admin {
 		expireAt = time.Now().Add(5 * time.Minute) // server code generates a new one as needed
-		subscribe = append(subscribe, "#", "/#", "devel/#")
-		publish = append(publish, "#", "/#")
+		// subscribe = append(subscribe, "#", "/#", "devel/#")
+		// publish = append(publish, "#", "/#")
+		subscribe = append(subscribe, "/"+depEnv.String()+"/#")
+		publish = append(publish, "/"+depEnv.String()+"/#")
 	} else {
 		subscribe = append(subscribe,
 			// "#", "/#",
