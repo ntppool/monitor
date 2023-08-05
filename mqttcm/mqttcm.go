@@ -50,7 +50,9 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		BrokerUrls: []*url.URL{broker},
 		TlsCfg:     tlsConfig,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-			slog.Info("mqtt connection up")
+
+			log := logger.Setup()
+			log.Info("mqtt connection up")
 
 			if len(subscribe) > 0 {
 
@@ -76,6 +78,33 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				}
 				slog.Debug("mqtt subscription setup")
 			}
+
+			msg, err := StatusMessageJSON(true)
+			if err != nil {
+				log.Warn("mqtt status error", "err", err)
+			}
+			log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
+			_, err = cm.Publish(ctx, &paho.Publish{
+				Topic:   statusChannel,
+				Payload: msg,
+				QoS:     1,
+				Retain:  true,
+			})
+			if err != nil {
+				log.Warn("mqtt status publish error", "err", err)
+			}
+
+			// old, clear retained message
+			// oldChannel := fmt.Sprintf("%s/status/%s/online", cfg.MQTTConfig.Prefix, cauth.Name)
+			// for _, qos := range []byte{0, 1, 2} {
+			// 	mq.Publish(ctx, &paho.Publish{
+			// 		Topic:   oldChannel,
+			// 		Payload: []byte{},
+			// 		QoS:     qos,
+			// 		Retain:  true,
+			// 	})
+			// }
+
 		},
 		OnConnectError: func(err error) {
 			slog.Error("mqtt connect", "err", err)

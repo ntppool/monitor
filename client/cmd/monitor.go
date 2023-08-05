@@ -227,35 +227,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("health check failed")
 	}
 
-	if mq != nil {
-		msg, err := mqttcm.StatusMessageJSON(true)
-		if err != nil {
-			log.Warn("mqtt status error", "err", err)
-		}
-		log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
-		_, err = mq.Publish(ctx, &paho.Publish{
-			Topic:   statusChannel,
-			Payload: msg,
-			QoS:     1,
-			Retain:  true,
-		})
-		if err != nil {
-			log.Warn("mqtt status publish error", "err", err)
-		}
-
-		// old, clear retained message
-		// oldChannel := fmt.Sprintf("%s/status/%s/online", cfg.MQTTConfig.Prefix, cauth.Name)
-		// for _, qos := range []byte{0, 1, 2} {
-		// 	mq.Publish(ctx, &paho.Publish{
-		// 		Topic:   oldChannel,
-		// 		Payload: []byte{},
-		// 		QoS:     qos,
-		// 		Retain:  true,
-		// 	})
-		// }
-	} else {
-		log.Info("no mqtt connection")
-	}
+	// todo: update mqtt status with current health
 
 	i := 0
 
