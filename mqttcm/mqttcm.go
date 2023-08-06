@@ -79,19 +79,21 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				slog.Debug("mqtt subscription setup")
 			}
 
-			msg, err := StatusMessageJSON(true)
-			if err != nil {
-				log.Warn("mqtt status error", "err", err)
-			}
-			log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
-			_, err = cm.Publish(ctx, &paho.Publish{
-				Topic:   statusChannel,
-				Payload: msg,
-				QoS:     1,
-				Retain:  true,
-			})
-			if err != nil {
-				log.Warn("mqtt status publish error", "err", err)
+			if len(statusChannel) > 0 {
+				msg, err := StatusMessageJSON(true)
+				if err != nil {
+					log.Warn("mqtt status error", "err", err)
+				}
+				log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
+				_, err = cm.Publish(ctx, &paho.Publish{
+					Topic:   statusChannel,
+					Payload: msg,
+					QoS:     1,
+					Retain:  true,
+				})
+				if err != nil {
+					log.Warn("mqtt status publish error", "err", err)
+				}
 			}
 
 			// old, clear retained message
