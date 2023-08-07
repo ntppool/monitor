@@ -31,9 +31,11 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 
 	// tlsConfig.BuildNameToCertificate()
 	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
-		MaxIdleConns:    10,
-		IdleConnTimeout: 90 * time.Second,
+		TLSClientConfig:       tlsConfig,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 40 * time.Second,
 	}
 	client := &http.Client{
 		Transport: transport,
