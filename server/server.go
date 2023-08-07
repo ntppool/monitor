@@ -152,11 +152,11 @@ func (srv *Server) Run() error {
 		),
 	)
 
-	srv.log.Info("starting server")
+	listen := srv.cfg.Listen
+
+	srv.log.Info("starting server", "port", listen)
 
 	g, _ := errgroup.WithContext(ctx)
-
-	listen := ":8000"
 
 	server := &http.Server{
 		Addr: listen,
