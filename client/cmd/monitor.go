@@ -19,7 +19,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.ntppool.org/pingtrace/traceroute"
@@ -149,16 +148,24 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		for {
 			wait := fetchInterval
 
-			cfg, err := api.GetConfig(ctx, &pb.GetConfigParams{})
+			if firstRun {
+				log.Info("getting client configuration", "errors", errors)
+			}
+
+			cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
+
+			cfg, err := api.GetConfig(cfgctx, &pb.GetConfigParams{})
 			if err != nil {
 				errors++
 				if twerr, ok := err.(twirp.Error); ok {
-					if twerr.Code() == twirp.PermissionDenied {
-						slog.Error("could not get config: %w", twerr)
-					}
+					// if twerr.Code() == twirp.PermissionDenied {}
+					log.Error("could not get config, api error: %w", "err", twerr)
+
+				} else {
+					log.Error("could not get config, http error: %w", "err", err)
 				}
 				if firstRun {
-					wait = time.Minute * time.Duration(errors)
+					wait = time.Second * 10 * time.Duration(errors)
 					if wait > errorFetchInterval {
 						wait = errorFetchInterval
 					}
@@ -166,13 +173,14 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 					wait = errorFetchInterval
 				}
 			} else {
-				log.Debug("client config", "cfg", cfg)
+				log.Info("client config", "cfg", cfg)
 				conf.SetConfig(cfg)
 				if firstRun {
 					initialConfig.Done()
 					firstRun = false
 				}
 			}
+			cfgcancel()
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
