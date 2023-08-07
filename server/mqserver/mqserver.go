@@ -286,7 +286,7 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 		}
 		log := mqs.log.With("requestID", id)
 
-		clientName := c.Param("client")
+		clientName := c.QueryParam("client")
 		// return c.String(400, clientName)
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*4)
@@ -600,7 +600,7 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 	r.Use(otelecho.Middleware("mqserver"))
 
 	r.GET("/monitors/metrics/discovery", mqs.MetricsDiscovery(ctx))
-	r.GET("/monitors/metrics/:client", mqs.Metrics(ctx))
+	r.GET("/monitors/metrics", mqs.Metrics(ctx))
 	r.GET("/monitors/online", func(c echo.Context) error {
 		type onlineJSON struct {
 			Name      string
