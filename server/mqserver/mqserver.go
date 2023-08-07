@@ -140,7 +140,7 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 }
 
 func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
-	mqs.log.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
+	// mqs.log.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
 
 	path := strings.Split(p.Topic, "/")
 
@@ -225,6 +225,17 @@ func (mqs *server) seenClients() []client {
 	return online
 }
 
+func checkVersion(version, minimumVersion string) bool {
+	if version == "dev-snapshot" {
+		return true
+	}
+	if semver.Compare(version, minimumVersion) < 0 {
+		// log.Debug("version too old", "v", cl.Version.Version)
+		return false
+	}
+	return true
+}
+
 func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) error {
 
 	minimumVersion := "v3.6.0-rc3"
@@ -237,8 +248,7 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 			if !cl.Online || cl.Data == nil {
 				continue
 			}
-			if semver.Compare(cl.Version.Version, minimumVersion) < 0 {
-				// log.Debug("version too old", "v", cl.Version.Version)
+			if !checkVersion(cl.Version.Version, minimumVersion) {
 				continue
 			}
 
@@ -257,10 +267,6 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 					"ip_version": cl.Data.IpVersion.MonitorsIpVersion.String(),
 				},
 			})
-
-			// u.Path = fmt.Sprintf("/monitors/metrics/%s", cl.Name)
-			// resp.WriteString(u.String())
-			// resp.WriteString("\n")
 		}
 
 		return c.JSON(200, sd)
@@ -432,9 +438,8 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				// minimum version
 				minimumVersion := "v3.5.0-rc0"
-				if semver.Compare(cl.Version.Version, minimumVersion) < 0 {
+				if !checkVersion(cl.Version.Version, minimumVersion) {
 					// log.Debug("version too old", "v", cl.Version.Version)
 					continue
 				}
