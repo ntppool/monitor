@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api"
 )
@@ -95,8 +96,21 @@ func New(ctx context.Context, dir, name, key, secret string) (*ClientAuth, error
 
 }
 
-func (ca *ClientAuth) Manager() error {
+func (ca *ClientAuth) Manager(promreg prometheus.Registerer) error {
 	log := logger.FromContext(ca.ctx)
+
+	promGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "ssl_earliest_cert_expiry",
+		Help: "TLS expiration time",
+	}, func() float64 {
+		notAfter, _, _, err := ca.CertificateDates()
+		if err != nil {
+			log.Error("could not get certificate notAfter date", "err", err)
+			return 0
+		}
+		return float64(notAfter.Unix())
+	})
+	promreg.MustRegister(promGauge)
 
 	go func() {
 		err := ca.RenewCertificates()

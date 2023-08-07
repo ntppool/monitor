@@ -69,6 +69,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	log := logger.Setup()
 	ctx = logger.NewContext(ctx, log)
 
+	metricssrv := metricsserver.New()
+	promreg := metricssrv.Registry()
+
+	// todo: option to enable local metrics?
+	// go metricssrv.ListenAndServe(ctx, 9999)
+
 	cauth, err := cli.ClientAuth(ctx)
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
@@ -108,7 +114,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("LoadOrIssueCertificates: %w", err)
 	}
 
-	go cauth.Manager()
+	go cauth.Manager(promreg)
 
 	// block until we have a valid certificate
 	err = cauth.WaitUntilReady()
@@ -185,10 +191,6 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Warn("did not load remote configuration")
 		os.Exit(2)
 	}
-
-	metricssrv := metricsserver.New()
-	promreg := metricssrv.Registry()
-	go metricssrv.ListenAndServe(ctx, 9999)
 
 	var mq *autopaho.ConnectionManager
 	topics := mqttcm.NewTopics(deployEnv)
