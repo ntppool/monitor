@@ -235,7 +235,7 @@ func NewLoggingServerHooks() *twirp.ServerHooks {
 			duration := time.Since(requestStart)
 
 			log := logger.FromContext(ctx)
-			log.Info("completed", "duration", duration)
+			log.Debug("completed", "duration", duration)
 		},
 	}
 }
