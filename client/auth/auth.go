@@ -103,7 +103,7 @@ func (ca *ClientAuth) Manager(promreg prometheus.Registerer) error {
 		Name: "ssl_earliest_cert_expiry",
 		Help: "TLS expiration time",
 	}, func() float64 {
-		notAfter, _, _, err := ca.CertificateDates()
+		_, notAfter, _, err := ca.CertificateDates()
 		if err != nil {
 			log.Error("could not get certificate notAfter date", "err", err)
 			return 0
