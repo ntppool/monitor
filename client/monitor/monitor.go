@@ -95,6 +95,9 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {
 			if len(resp.KissCode) > 0 {
+				if resp.KissCode == "RATE" {
+					status.Offset = nil
+				}
 				return status, resp, fmt.Errorf("%s", resp.KissCode)
 			}
 
