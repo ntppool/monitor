@@ -163,8 +163,8 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		db.InsertScorerStatus(ctx, ntpdb.InsertScorerStatusParams{
-			ScorerID:   int32(scorerID),
-			LogScoreID: int64(minLogScoreID), // todo: sqlc uint64
+			ScorerID:   uint32(scorerID),
+			LogScoreID: minLogScoreID,
 		})
 
 	}

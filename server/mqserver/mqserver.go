@@ -373,6 +373,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
+	minimumVersion := "v3.5.0-rc0"
 
 	return func(c echo.Context) error {
 
@@ -438,7 +439,6 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				minimumVersion := "v3.5.0-rc0"
 				if !checkVersion(cl.Version.Version, minimumVersion) {
 					// log.Debug("version too old", "v", cl.Version.Version)
 					continue

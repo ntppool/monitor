@@ -226,8 +226,8 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		if currentStatus == ntpdb.ServerScoresStatusNew {
 			// insert if it's not there already, don't check errors
 			db.InsertServerScore(sl.ctx, ntpdb.InsertServerScoreParams{
-				MonitorID: int32(candidate.ID), // todo: sqlc should have made this a uint32
-				ServerID:  int32(serverID),
+				MonitorID: candidate.ID,
+				ServerID:  serverID,
 				ScoreRaw:  0,
 				CreatedOn: time.Now(),
 			})

@@ -186,7 +186,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 	})
 
 	ls := ntpdb.InsertLogScoreParams{
-		ServerID:   int32(server.ID),                                     // todo: sqlc type
+		ServerID:   server.ID,
 		MonitorID:  sql.NullInt32{Int32: int32(monitor.ID), Valid: true}, // todo: sqlc type
 		Ts:         score.Ts,
 		Step:       score.Step,

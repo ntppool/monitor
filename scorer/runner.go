@@ -144,7 +144,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 			// changed (or we haven't for 10 minutes)
 
 			p := ntpdb.InsertLogScoreParams{
-				ServerID:   int32(ns.ServerID), // todo: sqlc types
+				ServerID:   ns.ServerID,
 				MonitorID:  ns.MonitorID,
 				Ts:         ns.Ts,
 				Step:       ns.Step,
@@ -190,7 +190,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	latestID := logscores[len(logscores)-1].ID
 	// log.Printf("updating scorer status %d, new latest id: %d", sm.ScorerID, latestID)
 	err = db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
-		LogScoreID: int64(latestID),
+		LogScoreID: latestID,
 		ScorerID:   sm.ScorerID,
 	})
 	if err != nil {
@@ -228,8 +228,8 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (
 
 	// ErrNoRows
 	err = db.InsertServerScore(ctx, ntpdb.InsertServerScoreParams{
-		ServerID:  int32(p.ServerID), // todo: sqlc types
-		MonitorID: int32(p.MonitorID),
+		ServerID:  p.ServerID,
+		MonitorID: p.MonitorID,
 		ScoreRaw:  -5,
 		CreatedOn: time.Now(),
 	})
