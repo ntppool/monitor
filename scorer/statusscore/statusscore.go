@@ -52,8 +52,16 @@ func (s *StatusScorer) calc(server *ntpdb.Server, status *pb.ServerStatus) (*sco
 
 	step := 0.0
 
-	if status.Stratum == 0 || status.NoResponse {
+	if status.NoResponse {
 		step = -5
+	} else if status.Stratum == 0 && status.Error == "RATE" {
+		step = -3.5
+	} else if status.Stratum == 0 && (status.Error == "RSTR" || status.Error == "DENY") {
+		step = -10
+		sc.HasMaxScore = true
+		sc.MaxScore = -50
+	} else if len(status.Error) > 0 {
+		step = -4 // what errors would this be that have a response but aren't RATE?
 	} else {
 		offsetAbs := status.AbsoluteOffset()
 		if *offsetAbs > 3*time.Second || status.Stratum >= 8 {
