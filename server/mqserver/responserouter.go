@@ -37,6 +37,8 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 
 	return func(p *paho.Publish) {
 
+		log := log
+
 		ctx := context.Background()
 
 		var traceID otrace.TraceID
@@ -80,7 +82,7 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			return
 		}
 
-		log.Info("topic path", "path", topicPath)
+		log.Debug("topic path", "path", topicPath)
 
 		rr.mu.RLock()
 		defer rr.mu.RUnlock()
