@@ -50,6 +50,8 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB) (*runner, error)
 	}, nil
 }
 
+// Scorers returns a map of name and a ScorerMap for each
+// active scorer
 func (r *runner) Scorers() map[string]*ScorerMap {
 	return r.registry
 }
@@ -134,6 +136,14 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		if ss.Status != "active" {
+			// if we are calculating a score, it's active ...
+			db.UpdateServerScoreStatus(r.ctx, ntpdb.UpdateServerScoreStatusParams{
+				ServerID:  ls.ServerID,
+				MonitorID: sm.ScorerID,
+				Status:    "active",
+			})
+		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
 			return 0, fmt.Errorf("scorer %q: %s", name, err)
@@ -205,6 +215,8 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	return count, nil
 }
 
+// getServerScore returns the current server score for the serverID and monitorID.
+// If none currently exists, a new score with default values is inserted and returned.
 func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
 
 	ctx := r.ctx
