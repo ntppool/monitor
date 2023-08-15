@@ -283,7 +283,10 @@ const getScorers = `-- name: GetScorers :many
 SELECT m.id as ID, s.id as status_id,
   m.status, s.log_score_id, m.name
 FROM monitors m, scorer_status s
-WHERE m.type = 'score' and (m.id=s.scorer_id)
+WHERE
+  m.type = 'score'
+  and m.status = 'active'
+  and (m.id=s.scorer_id)
 `
 
 type GetScorersRow struct {
