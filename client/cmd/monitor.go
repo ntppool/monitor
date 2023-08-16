@@ -402,6 +402,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 						idx = idx + 2
 					}
 					status.Error = status.Error[idx:]
+					status.NoResponse = true
 				}
 			}
 			status.TS = timestamppb.Now()
