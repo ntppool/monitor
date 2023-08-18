@@ -304,12 +304,17 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		}
 	}
 
+	healthyMonitors := 0
 	okMonitors := 0
 	blockedMonitors := 0
 	for _, ns := range nsl {
 		switch ns.NewState {
-		// "out" counts for "is an option to keep, blocked is not
-		case candidateIn, candidateOut:
+		case candidateIn:
+			healthyMonitors++
+			okMonitors++
+
+		case candidateOut:
+			// "out" counts for "is an option to keep", blocked is not
 			okMonitors++
 
 		case candidateBlock:
@@ -318,8 +323,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 
 	}
 
-	log.Info("monitor counts", "input", len(prilist), "new", len(nsl))
-	log.Info("monitor status", "ok", okMonitors, "active", currentActiveMonitors, "blocked", blockedMonitors)
+	log.Info("monitor status", "ok", okMonitors, "healthy", healthyMonitors, "active", currentActiveMonitors, "blocked", blockedMonitors)
 
 	allowedChanges := 1
 	toAdd := targetNumber - currentActiveMonitors
@@ -332,7 +336,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		allowedChanges = bootStrapModeLimit
 	}
 
-	if targetNumber > okMonitors && okMonitors < currentActiveMonitors {
+	if targetNumber > okMonitors && healthyMonitors < currentActiveMonitors {
 		return false, fmt.Errorf("not enough healthy and active monitors")
 	}
 
@@ -347,6 +351,13 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	}
 
 	maxRemovals := allowedChanges
+
+	// don't remove monitors if we are at or below the target number
+	// and there aren't enough healthy monitors.
+	// (this should be caught by the "enough healthy monitors" check above, too)
+	if currentActiveMonitors <= targetNumber && healthyMonitors < targetNumber {
+		maxRemovals = 0
+	}
 
 	log.Info("changes allowed", "toAdd", toAdd, "maxRemovals", maxRemovals)
 
