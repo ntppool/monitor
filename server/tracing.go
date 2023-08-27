@@ -8,13 +8,12 @@ import (
 	"go.ntppool.org/common/version"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	otelsdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -37,8 +36,6 @@ func (srv *Server) initTracer(depEnv string) error {
 
 	if otlp := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(otlp) > 0 {
 		exporter, err = srv.newOLTPExporter()
-	} else if jaegerHost := os.Getenv("OTEL_EXPORTER_JAEGER_ENDPOINT"); len(jaegerHost) > 0 {
-		exporter, err = srv.newJaegerExporter()
 	}
 
 	if err != nil {
@@ -61,14 +58,6 @@ func (srv *Server) initTracer(depEnv string) error {
 	}
 
 	return nil
-}
-
-func (srv *Server) newJaegerExporter() (otelsdktrace.SpanExporter, error) {
-	exporter, err := jaeger.New(jaeger.WithAgentEndpoint())
-	if err != nil {
-		logger.Setup().Error("creating jaeger trace exporter", "err", err)
-	}
-	return exporter, err
 }
 
 func (srv *Server) newOLTPExporter() (otelsdktrace.SpanExporter, error) {
