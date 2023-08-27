@@ -90,9 +90,12 @@ insert into monitors
 select id from log_scores order by id limit 1;
 
 -- name: GetScorerLogScores :many
-select ls.* from log_scores ls, monitors m
+select ls.* from
+  log_scores ls use index (primary),
+  monitors m
 WHERE
   ls.id > sqlc.arg('log_score_id') AND
+  ls.id < sqlc.arg('log_score_id')+100000 AND
   m.type = 'monitor' AND
   monitor_id = m.id
 ORDER by ls.id

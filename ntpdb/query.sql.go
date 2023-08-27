@@ -118,9 +118,12 @@ func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString)
 }
 
 const getScorerLogScores = `-- name: GetScorerLogScores :many
-select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes from log_scores ls, monitors m
+select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes from
+  log_scores ls use index (primary),
+  monitors m
 WHERE
   ls.id > ? AND
+  ls.id < ?+100000 AND
   m.type = 'monitor' AND
   monitor_id = m.id
 ORDER by ls.id
@@ -133,7 +136,7 @@ type GetScorerLogScoresParams struct {
 }
 
 func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScoresParams) ([]LogScore, error) {
-	rows, err := q.db.QueryContext(ctx, getScorerLogScores, arg.LogScoreID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, getScorerLogScores, arg.LogScoreID, arg.LogScoreID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
