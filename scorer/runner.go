@@ -3,6 +3,7 @@ package scorer
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,8 +14,12 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const batchSize = 500
+const defaultBatchSize = 500
 const mainScorer = "recentmedian"
+
+type ScorerSettings struct {
+	BatchSize int32 `json:"batch_size"`
+}
 
 type metrics struct {
 	processed *prometheus.CounterVec
@@ -84,15 +89,37 @@ func (r *runner) Scorers() map[string]*ScorerMap {
 	return r.registry
 }
 
+func (r *runner) Settings(db *ntpdb.Queries) ScorerSettings {
+
+	settingsStr, err := db.GetSystemSetting(r.ctx, "scorer")
+	if err != nil {
+		r.log.Warn("could not fetch scorer settings", "err", err)
+	}
+	var settings ScorerSettings
+	if len(settingsStr) > 0 {
+		err := json.Unmarshal([]byte(settingsStr), &settings)
+		if err != nil {
+			r.log.Warn("could not unmarshal scorer settings", "err", err)
+		}
+	}
+
+	if settings.BatchSize == 0 {
+		settings.BatchSize = defaultBatchSize
+	}
+
+	return settings
+}
+
 func (r *runner) Run() (int, error) {
 
 	r.m.runs.Add(1)
-
 	log := r.log
 
-	registry := r.Scorers()
-
 	db := ntpdb.New(r.dbconn)
+
+	settings := r.Settings(db)
+
+	registry := r.Scorers()
 
 	scorers, err := db.GetScorers(r.ctx)
 	if err != nil {
@@ -122,7 +149,7 @@ func (r *runner) Run() (int, error) {
 			continue
 		}
 		log.Debug("processing", "from_id", sm.LastID)
-		scount, err := r.process(name, sm)
+		scount, err := r.process(name, sm, settings.BatchSize)
 		r.m.processed.WithLabelValues(name).Add(float64(scount))
 		count += scount
 		if err != nil {
@@ -135,7 +162,7 @@ func (r *runner) Run() (int, error) {
 	return count, nil
 }
 
-func (r *runner) process(name string, sm *ScorerMap) (int, error) {
+func (r *runner) process(name string, sm *ScorerMap, batchSize int32) (int, error) {
 
 	log := r.log.With("name", name)
 
