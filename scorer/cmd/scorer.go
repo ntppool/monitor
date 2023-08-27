@@ -59,7 +59,7 @@ func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
 func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
 
 	log := logger.Setup()
-	log.Info("starting scorer", "contin	uous", continuous)
+	log.Info("starting", "continuous", continuous)
 
 	ctx := context.Background()
 
@@ -87,7 +87,6 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 	expback.MaxElapsedTime = 0
 
 	for {
-
 		count, err := sc.Run()
 		if err != nil {
 			log.Error("run error", "err", err, "count", count)

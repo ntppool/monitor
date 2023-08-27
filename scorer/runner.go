@@ -88,6 +88,9 @@ func (r *runner) Run() (int, error) {
 		r.m.errcount.Add(1)
 		return 0, err
 	}
+	if len(scorers) == 0 {
+		return 0, fmt.Errorf("no scorers configured")
+	}
 
 	for _, sc := range scorers {
 		log.Debug("setting up scorer", "name", sc.Name, "last_id", sc.LogScoreID)
@@ -137,6 +140,7 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 
 	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
 
+	t1 := time.Now()
 	logscores, err := db.GetScorerLogScores(r.ctx,
 		ntpdb.GetScorerLogScoresParams{
 			LogScoreID: sm.LastID,
@@ -145,7 +149,13 @@ func (r *runner) process(name string, sm *ScorerMap) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	log.Debug("got scores", "count", len(logscores))
+
+	logfn := log.Debug
+	dur := time.Since(t1)
+	if dur > 5*time.Second {
+		logfn = log.Warn
+	}
+	logfn("got scores", "count", len(logscores), "time", dur)
 
 	count = len(logscores)
 
