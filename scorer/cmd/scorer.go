@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
 )
@@ -57,16 +59,24 @@ func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
 func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
 
 	log := logger.Setup()
-	log.Info("starting scorer", "continuous", continuous)
+	log.Info("starting scorer", "contin	uous", continuous)
 
 	ctx := context.Background()
+
+	metricssrv := metricsserver.New()
+	go func() {
+		err := metricssrv.ListenAndServe(ctx, 9000)
+		if err != nil {
+			log.Error("metricssrv", "err", err)
+		}
+	}()
 
 	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
 	if err != nil {
 		return err
 	}
 
-	sc, err := scorer.New(ctx, log, dbconn)
+	sc, err := scorer.New(ctx, log, dbconn, metricssrv.Registry())
 	if err != nil {
 		return nil
 	}
@@ -80,6 +90,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 
 		count, err := sc.Run()
 		if err != nil {
+			log.Error("run error", "err", err, "count", count)
 			return err
 		}
 		if count > 0 || !continuous {
@@ -120,7 +131,7 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 
 	db := ntpdb.New(dbconn).WithTx(tx)
 
-	scr, err := scorer.New(ctx, log, dbconn)
+	scr, err := scorer.New(ctx, log, dbconn, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
@@ -15,11 +16,17 @@ import (
 const batchSize = 500
 const mainScorer = "recentmedian"
 
+type metrics struct {
+	count    *prometheus.CounterVec
+	errcount prometheus.Counter
+}
+
 type runner struct {
 	ctx      context.Context
 	dbconn   *sql.DB
 	log      *slog.Logger
 	registry map[string]*ScorerMap
+	m        *metrics
 }
 
 type lastUpdate struct {
@@ -27,26 +34,38 @@ type lastUpdate struct {
 	score float64
 }
 
-func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB) (*runner, error) {
+func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner, error) {
 
-	m := map[string]*ScorerMap{
+	reg := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
 	}
 
-	for _, sm := range m {
+	for _, sm := range reg {
 		sm.lastScore = map[int]*lastUpdate{}
 	}
 
-	if _, ok := m[mainScorer]; !ok {
+	if _, ok := reg[mainScorer]; !ok {
 		log.Warn("invalid main scorer", "name", mainScorer)
+	}
+
+	met := &metrics{
+		count: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "scorer_processed_count",
+			Help: "log_scores processed",
+		}, []string{"scorer"}),
+		errcount: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "scorer_errors",
+			Help: "scorer errors",
+		}),
 	}
 
 	return &runner{
 		ctx:      ctx,
 		dbconn:   dbconn,
-		registry: m,
+		registry: reg,
 		log:      log,
+		m:        met,
 	}, nil
 }
 
@@ -66,6 +85,7 @@ func (r *runner) Run() (int, error) {
 
 	scorers, err := db.GetScorers(r.ctx)
 	if err != nil {
+		r.m.errcount.Add(1)
 		return 0, err
 	}
 
@@ -89,9 +109,11 @@ func (r *runner) Run() (int, error) {
 		}
 		log.Debug("processing", "from_id", sm.LastID)
 		scount, err := r.process(name, sm)
+		r.m.count.WithLabelValues(name).Add(float64(scount))
 		count += scount
 		if err != nil {
 			log.Error("process error", "err", err)
+			r.m.errcount.Add(1)
 			return count, err
 		}
 	}
