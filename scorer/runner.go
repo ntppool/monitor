@@ -17,8 +17,9 @@ const batchSize = 500
 const mainScorer = "recentmedian"
 
 type metrics struct {
-	count    *prometheus.CounterVec
-	errcount prometheus.Counter
+	processed *prometheus.CounterVec
+	errcount  prometheus.Counter
+	runs      prometheus.Counter
 }
 
 type runner struct {
@@ -50,7 +51,7 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 	}
 
 	met := &metrics{
-		count: prometheus.NewCounterVec(prometheus.CounterOpts{
+		processed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "scorer_processed_count",
 			Help: "log_scores processed",
 		}, []string{"scorer"}),
@@ -58,7 +59,15 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 			Name: "scorer_errors",
 			Help: "scorer errors",
 		}),
+		runs: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "scorer_runs",
+			Help: "scorer batches executed",
+		}),
 	}
+
+	prom.MustRegister(met.processed)
+	prom.MustRegister(met.errcount)
+	prom.MustRegister(met.runs)
 
 	return &runner{
 		ctx:      ctx,
@@ -76,6 +85,8 @@ func (r *runner) Scorers() map[string]*ScorerMap {
 }
 
 func (r *runner) Run() (int, error) {
+
+	r.m.runs.Add(1)
 
 	log := r.log
 
@@ -112,7 +123,7 @@ func (r *runner) Run() (int, error) {
 		}
 		log.Debug("processing", "from_id", sm.LastID)
 		scount, err := r.process(name, sm)
-		r.m.count.WithLabelValues(name).Add(float64(scount))
+		r.m.processed.WithLabelValues(name).Add(float64(scount))
 		count += scount
 		if err != nil {
 			log.Error("process error", "err", err)
