@@ -147,7 +147,7 @@ func (sl *selector) Run() (int, error) {
 		changed, err := sl.processServer(db, serverID)
 		if err != nil {
 			// todo: rollback transaction here? Save that we did a review anyway?
-			slog.Info("could not process selection of monitors", "serverID", serverID, "err", err)
+			sl.log.Warn("could not process selection of monitors", "serverID", serverID, "err", err)
 		}
 		count++
 
@@ -186,9 +186,9 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	// if there are this or less active servers, add new ones faster
 	bootStrapModeLimit := (targetNumber / 2) + 1
 
-	log := slog.Default().With("serverID", serverID)
+	log := sl.log.With("serverID", serverID)
 
-	log.Info("processServer")
+	log.Debug("processServer")
 
 	// the list comes sorted
 	prilist, err := db.GetMonitorPriority(sl.ctx, serverID)
@@ -341,7 +341,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	}
 
 	for _, ns := range nsl {
-		log.Info("nsl",
+		log.Debug("nsl",
 			"monitorID", ns.MonitorID,
 			"monitorStatus", ns.MonitorStatus,
 			"currentStatus", ns.CurrentStatus,
@@ -359,7 +359,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		maxRemovals = 0
 	}
 
-	log.Info("changes allowed", "toAdd", toAdd, "maxRemovals", maxRemovals)
+	log.Debug("changes allowed", "toAdd", toAdd, "maxRemovals", maxRemovals)
 
 	changed := false
 
@@ -388,7 +388,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		}
 	}
 
-	log.Info("work after removals", "toAdd", toAdd)
+	log.Debug("work after removals", "toAdd", toAdd)
 
 	// replace removed monitors
 	for _, ns := range nsl {
@@ -396,7 +396,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 			// not a candidate or already active
 			continue
 		}
-		log.Info("add loop", "toAdd", toAdd, "allowedChanges", allowedChanges)
+		log.Debug("add loop", "toAdd", toAdd, "allowedChanges", allowedChanges)
 		if allowedChanges <= 0 || toAdd <= 0 {
 			break
 		}
