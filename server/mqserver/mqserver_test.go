@@ -1,12 +1,12 @@
 package mqserver
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/exp/slog"
 )
 
 func TestClientState(t *testing.T) {

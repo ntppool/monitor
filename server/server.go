@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/twitchtv/twirp"
 	osdktrace "go.opentelemetry.io/otel/sdk/trace"
 	otrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/common/logger"

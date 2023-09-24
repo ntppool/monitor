@@ -12,7 +12,6 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/api/pb"
 	"go4.org/netipx"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/monitor/client/config"
@@ -106,6 +105,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 	// update() is wrapped in a lock
 	cfg := l.cfg
+	log := logger.Setup()
 
 	ipVersion := "v6"
 	if l.isv4 {
@@ -132,7 +132,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			allHosts = append(allHosts, string(s))
 		}
 	} else {
-		slog.Info("did not get NTP BaseChecks from API, using built-in defaults")
+		log.Info("did not get NTP BaseChecks from API, using built-in defaults")
 	}
 
 	type namedIP struct {
@@ -215,7 +215,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			go func(h namedIP) {
 				ok, err := l.sanityCheckHost(cfg, h.Name, h.IP)
 				if err != nil {
-					slog.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
+					log.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
 				}
 
 				l.metrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
@@ -247,7 +247,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	g.Wait()
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
-	slog.Info("local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
+	log.Info("local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
 
 	return fails <= failureThreshold
 }

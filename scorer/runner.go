@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
-	"golang.org/x/exp/slog"
 )
 
 const defaultBatchSize = 500

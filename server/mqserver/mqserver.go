@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/exp/slog"
 	"golang.org/x/mod/semver"
 	"golang.org/x/sync/errgroup"
 

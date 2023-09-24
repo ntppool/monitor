@@ -12,7 +12,6 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"golang.org/x/exp/slog"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
@@ -46,12 +45,13 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		clientID = clientID[:idx]
 	}
 
+	log := logger.Setup()
+
 	mqttcfg := autopaho.ClientConfig{
 		BrokerUrls: []*url.URL{broker},
 		TlsCfg:     tlsConfig,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
 
-			log := logger.Setup()
 			log.Info("mqtt connection up")
 
 			if len(subscribe) > 0 {
@@ -66,17 +66,17 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 				if err != nil {
 					if suback == nil {
-						slog.Error("mqtt subscribe error", "err", err)
+						log.Error("mqtt subscribe error", "err", err)
 					} else {
 						if suback.Properties != nil {
-							slog.Error("mqtt subscribe error", "err", err, "reason", suback.Properties.ReasonString)
+							log.Error("mqtt subscribe error", "err", err, "reason", suback.Properties.ReasonString)
 						} else {
-							slog.Error("mqtt subscribe error", "err", err, "reasons", suback.Reasons)
+							log.Error("mqtt subscribe error", "err", err, "reasons", suback.Reasons)
 						}
 					}
 					return
 				}
-				slog.Debug("mqtt subscription setup")
+				log.Debug("mqtt subscription setup")
 			}
 
 			if len(statusChannel) > 0 {
@@ -109,18 +109,18 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 		},
 		OnConnectError: func(err error) {
-			slog.Error("mqtt connect", "err", err)
+			log.Error("mqtt connect", "err", err)
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: clientID,
 			OnClientError: func(err error) {
-				slog.Error("mqtt server requested disconnect (client error)", "err", err)
+				log.Error("mqtt server requested disconnect (client error)", "err", err)
 			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
-					slog.Error("mqtt server requested disconnect", "reason", d.Properties.ReasonString)
+					log.Error("mqtt server requested disconnect", "reason", d.Properties.ReasonString)
 				} else {
-					slog.Error("mqtt server requested disconnect", "reasonCode", d.ReasonCode)
+					log.Error("mqtt server requested disconnect", "reasonCode", d.ReasonCode)
 				}
 			},
 		},
@@ -130,7 +130,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		mqttcfg.Router = router
 	} else {
 		mqttcfg.Router = paho.NewSingleHandlerRouter(func(m *paho.Publish) {
-			slog.Info("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
+			log.Info("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
 			// h.handle(m)
 		})
 	}
@@ -146,7 +146,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	mqttcfg.SetConnectPacketConfigurator(func(pc *paho.Connect) *paho.Connect {
 		cfg := conf.GetMQTTConfig()
 		if cfg != nil {
-			slog.Debug("Using JWT to authenticate", "jwt", cfg.JWT)
+			log.Debug("Using JWT to authenticate", "jwt", cfg.JWT)
 			pc.Password = cfg.JWT
 		}
 		return pc

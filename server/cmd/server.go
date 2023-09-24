@@ -23,7 +23,6 @@ import (
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
 	"go.ntppool.org/monitor/server/mqserver"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/spf13/cobra"
@@ -54,7 +53,7 @@ type mqconfig struct {
 func (mqcfg *mqconfig) GetMQTTConfig() *pb.MQTTConfig {
 	jwttoken, err := jwt.GetToken(mqcfg.jwtKey, mqcfg.tlsName, true)
 	if err != nil {
-		slog.Error("jwt token", "err", err)
+		logger.Setup().Error("jwt token", "err", err)
 		os.Exit(2)
 	}
 

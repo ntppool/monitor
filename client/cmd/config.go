@@ -9,8 +9,8 @@ import (
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
-	"golang.org/x/exp/slog"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 )
 
@@ -103,7 +103,7 @@ func (cfg *APIConfig) setLoader(args []string) {
 func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 
-		slog.Info("ntppool-monitor", "version", version.Version())
+		logger.Setup().Info("ntppool-monitor", "version", version.Version())
 
 		err := cli.Config.Load(args)
 		if err != nil {

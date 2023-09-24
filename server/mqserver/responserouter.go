@@ -3,13 +3,13 @@ package mqserver
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
 	"github.com/eclipse/paho.golang/paho"
 	"go.opentelemetry.io/otel"
 	otrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 type mqttResponseRouter struct {

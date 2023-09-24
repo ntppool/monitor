@@ -6,11 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
-	"golang.org/x/exp/slog"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
@@ -80,7 +80,7 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) 
 			return err
 		}
 		if count > 0 || !continuous {
-			slog.Info("processed servers", "count", count)
+			log.Info("processed servers", "count", count)
 		}
 		if !continuous {
 			break

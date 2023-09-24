@@ -3,13 +3,12 @@ package cmd
 import (
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/cristalhq/aconfig"
 	"github.com/cristalhq/aconfig/aconfigdotenv"
 	"github.com/cristalhq/aconfig/aconfigyaml"
 	"github.com/spf13/cobra"
-	"golang.org/x/exp/slog"
+	"go.ntppool.org/common/logger"
 )
 
 type CLI struct {
@@ -82,21 +81,13 @@ func (cfg *APIConfig) setLoader(args []string) {
 
 func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+		log := logger.Setup()
+
 		err := cli.Config.Load(args)
 		if err != nil {
-			fmt.Printf("Could not load config: %s", err)
+			log.Error("Could not load config", "err", err)
 			return err
 		}
-
-		var programLevel = new(slog.LevelVar) // Info by default
-
-		// temp -- should be an option, and maybe have a runtime signal to adjust?
-		// programLevel.Set(slog.LevelDebug)
-
-		logOptions := &slog.HandlerOptions{Level: programLevel}
-
-		logHandler := slog.NewTextHandler(os.Stdout, logOptions)
-		slog.SetDefault(slog.New(logHandler))
 
 		err = fn(cmd, args)
 		if err != nil {
