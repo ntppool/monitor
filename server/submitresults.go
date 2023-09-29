@@ -177,6 +177,10 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 			ID:      serverScore.ID,
 			Stratum: nullStratum,
 		})
+		db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
+			ID:      server.ID,
+			Stratum: nullStratum,
+		})
 	}
 
 	db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{

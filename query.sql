@@ -49,8 +49,10 @@ UPDATE servers
 
 -- name: UpdateServerStratum :exec
 UPDATE servers
-  SET stratum = ?
-  WHERE id = ?;
+  SET stratum = sqlc.arg('stratum')
+  WHERE
+    id = sqlc.arg('id')
+    and stratum != sqlc.arg('stratum');
 
 -- name: GetScorers :many
 SELECT m.id as ID, s.id as status_id,

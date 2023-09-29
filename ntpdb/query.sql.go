@@ -809,7 +809,9 @@ func (q *Queries) UpdateServerScoreStratum(ctx context.Context, arg UpdateServer
 const updateServerStratum = `-- name: UpdateServerStratum :exec
 UPDATE servers
   SET stratum = ?
-  WHERE id = ?
+  WHERE
+    id = ?
+    and stratum != ?
 `
 
 type UpdateServerStratumParams struct {
@@ -818,7 +820,7 @@ type UpdateServerStratumParams struct {
 }
 
 func (q *Queries) UpdateServerStratum(ctx context.Context, arg UpdateServerStratumParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerStratum, arg.Stratum, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateServerStratum, arg.Stratum, arg.ID, arg.Stratum)
 	return err
 }
 
