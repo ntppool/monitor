@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
@@ -76,12 +77,16 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 		m:      metrics,
 	}
 
-	err = srv.initTracer(cfg.DeploymentEnv)
+	err = tracing.InitTracer(ctx,
+		&tracing.TracerConfig{
+			ServiceName: "monitor-api",
+			Environment: cfg.DeploymentEnv,
+		})
 	if err != nil {
 		return nil, err
 	}
 
-	srv.tracer = srv.NewTracer()
+	srv.tracer = tracing.Tracer()
 
 	return srv, nil
 }

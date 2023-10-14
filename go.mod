@@ -22,7 +22,7 @@ require (
 	github.com/prometheus/common v0.44.0
 	github.com/spf13/cobra v1.7.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.2.1
+	go.ntppool.org/common v0.2.3
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.45.0
@@ -87,8 +87,8 @@ require (
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20231009173412-8bfb1ae86b6c // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231009173412-8bfb1ae86b6c // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231012201019-e917dd12ba7a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231012201019-e917dd12ba7a // indirect
 	google.golang.org/grpc v1.58.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
