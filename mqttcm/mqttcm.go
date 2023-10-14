@@ -56,9 +56,12 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 			if len(subscribe) > 0 {
 
-				subscriptions := map[string]paho.SubscribeOptions{}
+				subscriptions := []paho.SubscribeOptions{}
 				for _, s := range subscribe {
-					subscriptions[s] = paho.SubscribeOptions{QoS: 1}
+					subscriptions = append(subscriptions, paho.SubscribeOptions{
+						Topic: s,
+						QoS:   1,
+					})
 				}
 
 				suback, err := cm.Subscribe(context.Background(), &paho.Subscribe{
