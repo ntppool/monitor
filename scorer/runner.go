@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -110,7 +111,7 @@ func (r *runner) Settings(db *ntpdb.Queries) ScorerSettings {
 	return settings
 }
 
-func (r *runner) Run() (int, error) {
+func (r *runner) Run(ctx context.Context) (int, error) {
 
 	r.m.runs.Add(1)
 	log := r.log
@@ -149,7 +150,7 @@ func (r *runner) Run() (int, error) {
 			continue
 		}
 		log.Debug("processing", "from_id", sm.LastID)
-		scount, err := r.process(name, sm, settings.BatchSize)
+		scount, err := r.process(ctx, name, sm, settings.BatchSize)
 		r.m.processed.WithLabelValues(name).Add(float64(scount))
 		count += scount
 		if err != nil {
@@ -162,7 +163,45 @@ func (r *runner) Run() (int, error) {
 	return count, nil
 }
 
-func (r *runner) process(name string, sm *ScorerMap, batchSize int32) (int, error) {
+func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.Logger, lastID uint64, batchSize int32, retry bool) ([]ntpdb.LogScore, error) {
+	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
+
+	t1 := time.Now()
+	logscores, err := db.GetScorerLogScores(r.ctx,
+		ntpdb.GetScorerLogScoresParams{
+			LogScoreID: lastID,
+			Limit:      batchSize,
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	logfn := log.Debug
+	dur := time.Since(t1)
+	if dur > 5*time.Second {
+		logfn = log.Warn
+	}
+
+	logfn("got scores", "count", len(logscores), "time", dur)
+
+	if len(logscores) == 0 && !retry {
+		logfn("checking for minimum id")
+		minID, err := db.GetScorerNextLogScoreID(ctx, lastID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				// we're at the end of the queue
+				return []ntpdb.LogScore{}, nil
+			}
+			return nil, err
+		}
+		return r.getLogScores(ctx, db, log, minID, batchSize, true)
+	}
+
+	return logscores, nil
+
+}
+
+func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchSize int32) (int, error) {
 
 	log := r.log.With("name", name)
 
@@ -176,24 +215,10 @@ func (r *runner) process(name string, sm *ScorerMap, batchSize int32) (int, erro
 
 	db := ntpdb.New(r.dbconn).WithTx(tx)
 
-	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
-
-	t1 := time.Now()
-	logscores, err := db.GetScorerLogScores(r.ctx,
-		ntpdb.GetScorerLogScoresParams{
-			LogScoreID: sm.LastID,
-			Limit:      batchSize,
-		})
+	logscores, err := r.getLogScores(ctx, db, log, sm.LastID, batchSize, false)
 	if err != nil {
 		return 0, err
 	}
-
-	logfn := log.Debug
-	dur := time.Since(t1)
-	if dur > 5*time.Second {
-		logfn = log.Warn
-	}
-	logfn("got scores", "count", len(logscores), "time", dur)
 
 	count = len(logscores)
 

@@ -96,12 +96,28 @@ select ls.* from
   log_scores ls use index (primary),
   monitors m
 WHERE
-  ls.id > sqlc.arg('log_score_id') AND
-  ls.id < sqlc.arg('log_score_id')+100000 AND
+  ls.id >  sqlc.arg('log_score_id') AND
+  ls.id < (sqlc.arg('log_score_id')+10000) AND
   m.type = 'monitor' AND
   monitor_id = m.id
 ORDER by ls.id
 LIMIT ?;
+
+-- name: GetScorerNextLogScoreID :one
+--   this is very slow when there's a backlog, so
+--   only run it when there are no results to make
+--   sure we don't get stuck behind a bunch of scoring
+--   ids.
+--   https://github.com/kyleconroy/sqlc/issues/1965
+select ls.id from
+  log_scores ls use index (primary),
+  monitors m
+WHERE
+  ls.id > sqlc.arg('log_score_id') AND
+  m.type = 'monitor' AND
+  monitor_id = m.id
+ORDER by id
+limit 1;
 
 -- name: GetScorerRecentScores :many
  select ls.*

@@ -87,7 +87,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 	expback.MaxElapsedTime = 0
 
 	for {
-		count, err := sc.Run()
+		count, err := sc.Run(ctx)
 		if err != nil {
 			log.Error("run error", "err", err, "count", count)
 			return err
@@ -159,7 +159,7 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 			log.Info("scorer already configured", "name", name)
 			continue
 		}
-		log.Info("setting up scorer", "name", name)
+		log.Info("setting up scorer, scorerSetup", "name", name)
 
 		insert, err := db.InsertScorer(ctx, ntpdb.InsertScorerParams{
 			Name:    name,
