@@ -71,6 +71,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.Error("getting certificates failed", "err", err)
 	}
 
+	tracingShutdown, err := InitTracing(cli.Config.Name, cauth)
+	if err != nil {
+		log.Error("tracing error", "err", err)
+	}
+	defer tracingShutdown()
+
 	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name)
 	if err != nil {
 		log.Error("Could not get metadata for API secret", "err", err)

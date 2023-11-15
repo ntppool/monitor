@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
 	"go4.org/netipx"
 	"golang.org/x/sync/errgroup"
@@ -103,6 +104,9 @@ func (l *LocalOK) Check(ctx context.Context) bool {
 
 func (l *LocalOK) update(ctx context.Context) bool {
 
+	ctx, span := tracing.Start(ctx, "localcheck-update")
+	defer span.End()
+
 	// update() is wrapped in a lock
 	cfg := l.cfg
 	log := logger.Setup()
@@ -132,7 +136,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			allHosts = append(allHosts, string(s))
 		}
 	} else {
-		log.Info("did not get NTP BaseChecks from API, using built-in defaults")
+		log.InfoContext(ctx, "did not get NTP BaseChecks from API, using built-in defaults")
 	}
 
 	type namedIP struct {
@@ -155,7 +159,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 		ips, err := net.LookupIP(h)
 		if err != nil {
-			logger.Setup().Warn("dns lookup failed", "host", h, "err", err)
+			log.WarnContext(ctx, "dns lookup failed", "host", h, "err", err)
 			continue
 		}
 		var ip *netip.Addr
@@ -213,9 +217,9 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			}
 
 			go func(h namedIP) {
-				ok, err := l.sanityCheckHost(cfg, h.Name, h.IP)
+				ok, err := l.sanityCheckHost(ctx, cfg, h.Name, h.IP)
 				if err != nil {
-					log.Warn("local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
+					log.WarnContext(ctx, "local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
 				}
 
 				l.metrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
@@ -247,13 +251,13 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	g.Wait()
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
-	log.Info("local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
+	log.InfoContext(ctx, "local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
 
 	return fails <= failureThreshold
 }
 
-func (l *LocalOK) sanityCheckHost(cfg *pb.Config, name string, ip *netip.Addr) (bool, error) {
-	status, _, err := monitor.CheckHost(ip, cfg)
+func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *pb.Config, name string, ip *netip.Addr) (bool, error) {
+	status, _, err := monitor.CheckHost(ctx, ip, cfg)
 	if err != nil {
 		return false, err
 	}

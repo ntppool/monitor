@@ -93,6 +93,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 			return err
 		}
 		if count > 0 || !continuous {
+			// todo: add prom metric counter
 			log.Debug("Processed log scores", "count", count)
 		}
 

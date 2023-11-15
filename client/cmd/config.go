@@ -110,11 +110,13 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []st
 			fmt.Printf("Could not load config: %s", err)
 			return err
 		}
+
 		err = fn(cmd)
 		if err != nil {
 			fmt.Printf("error: %s", err)
 			return err
 		}
+
 		return nil
 	}
 }

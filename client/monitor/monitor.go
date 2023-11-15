@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net/netip"
@@ -9,7 +10,10 @@ import (
 
 	"github.com/beevik/ntp"
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -21,9 +25,12 @@ type response struct {
 }
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response, error) {
+func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response, error) {
 
 	log := logger.Setup()
+
+	ctx, span := tracing.Start(ctx, "CheckHost", trace.WithAttributes(attribute.String("ip", ip.String())))
+	defer span.End()
 
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
@@ -83,14 +90,14 @@ func CheckHost(ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response,
 			r.Error = err
 			responses = append(responses, r)
 
-			log.Debug("ntp query error", "host", ip.String(), "iteration", i, "error", err)
+			log.DebugContext(ctx, "ntp query error", "host", ip.String(), "iteration", i, "error", err)
 
 			continue
 		}
 
 		status := ntpResponseToStatus(ip, resp)
 
-		log.Debug("ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
+		log.DebugContext(ctx, "ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
 
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {

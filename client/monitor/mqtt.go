@@ -97,7 +97,7 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		}
 		cfg.Samples = 1
 
-		_, resp, err := CheckHost(&ip, cfg)
+		_, resp, err := CheckHost(ctx, &ip, cfg)
 		r := &api.NTPResponse{
 			NTP: resp,
 		}

@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	oteltwirp "github.com/chengjiagan/twirp-opentelemetry"
 	"github.com/twitchtv/twirp"
+
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/api/pb"
@@ -100,7 +102,7 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 
 	client := pb.NewMonitorProtobufClient(
 		serverName,
-		httpClient,
+		oteltwirp.NewTraceHTTPClient(httpClient),
 		twirp.WithClientPathPrefix("/api/v1"),
 	)
 

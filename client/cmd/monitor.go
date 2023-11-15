@@ -19,12 +19,14 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
 	"github.com/twitchtv/twirp"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.ntppool.org/pingtrace/traceroute"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
@@ -79,7 +81,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		return fmt.Errorf("auth: %w", err)
 	}
 
-	deployEnv, err := api.GetDeploymentEnvironmentFromName(cauth.Name)
+	deployEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
 	if err != nil {
 		return err
 	}
@@ -121,6 +123,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 		log.Error("failed waiting for authentication to be ready", "err", err)
 		os.Exit(2)
 	}
+
+	tracingShutdown, err := InitTracing(cli.Config.Name, cauth)
+	if err != nil {
+		log.Error("tracing error", "err", err)
+	}
+	defer tracingShutdown()
 
 	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
@@ -267,6 +275,7 @@ runLoop:
 				log.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
 				select {
 				case <-ctx.Done():
+					log.Info("localOK context done")
 					return nil
 				case <-time.After(wait):
 					return fmt.Errorf("local clock")
@@ -282,6 +291,7 @@ runLoop:
 				return fmt.Errorf("no work")
 			}
 			boff.Reset()
+			log.InfoContext(ctx, "run returned")
 			return nil
 		}, boff)
 
@@ -320,6 +330,11 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 
 	log := logger.FromContext(ctx)
 
+	ctx, span := tracing.Start(ctx, "monitor-run")
+	defer span.End()
+
+	log.InfoContext(ctx, "monitor-run execution")
+
 	serverlist, err := api.GetServers(ctx, &pb.GetServersParams{})
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
@@ -343,6 +358,8 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 	batchID.UnmarshalText(serverlist.BatchID)
 
 	log = log.With("batchID", batchID.String())
+
+	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
 	log.Debug("processing", "server_count", len(serverlist.Servers))
 
@@ -384,7 +401,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 				return
 			}
 
-			status, _, err := monitor.CheckHost(s, serverlist.Config)
+			status, _, err := monitor.CheckHost(ctx, s, serverlist.Config)
 			if status == nil {
 				status = &pb.ServerStatus{
 					NoResponse: true,

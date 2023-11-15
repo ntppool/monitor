@@ -13,6 +13,7 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/statusscore"
@@ -137,7 +138,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 }
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus, counters *SubmitCounters) error {
-	ctx, span := srv.tracer.Start(ctx, "processStatus")
+	ctx, span := tracing.Start(ctx, "processStatus")
 	defer span.End()
 
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
