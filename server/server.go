@@ -4,16 +4,18 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	oteltwirp "github.com/chengjiagan/twirp-opentelemetry"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
-	osdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel"
 	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -30,15 +32,14 @@ import (
 )
 
 type Server struct {
-	ctx           context.Context
-	cfg           *Config
-	tokens        *vtm.TokenManager
-	m             *metrics.Metrics
-	tracer        otrace.Tracer
-	traceProvider *osdktrace.TracerProvider
-	db            *ntpdb.Queries
-	dbconn        *sql.DB
-	log           *slog.Logger
+	ctx         context.Context
+	cfg         *Config
+	tokens      *vtm.TokenManager
+	m           *metrics.Metrics
+	db          *ntpdb.Queries
+	dbconn      *sql.DB
+	log         *slog.Logger
+	shutdownFns []func(ctx context.Context) error
 }
 
 type Config struct {
@@ -77,16 +78,29 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 		m:      metrics,
 	}
 
-	err = tracing.InitTracer(ctx,
+	// capool, err := apitls.CAPool()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
 			ServiceName: "monitor-api",
 			Environment: cfg.DeploymentEnv,
-		})
+			// RootCAs:     capool,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	srv.tracer = tracing.Tracer()
+	go func() {
+		ctx, span := tracing.Start(context.Background(), "api-startup")
+		defer span.End()
+		log.InfoContext(ctx, "API startup tracing", "trace", span.SpanContext().TraceID())
+	}()
+
+	srv.shutdownFns = append(srv.shutdownFns, tpShutdownFn)
 
 	return srv, nil
 }
@@ -111,9 +125,11 @@ func (srv *Server) Run() error {
 		VerifyPeerCertificate: srv.verifyClient,
 	}
 
+	tracer := otel.Tracer("monitor-api/twirp")
+
 	hooks := twirp.ChainHooks(
 		twirptrace.NewOpenTracingHooks(
-			srv.tracer,
+			tracer,
 			twirptrace.WithTags(twirptrace.TraceTag{Key: "ottwirp", Value: true}),
 			twirptrace.IncludeClientErrors(true),
 			twirptrace.WithContextTags(func(ctx context.Context) (context.Context, []twirptrace.TraceTag) {
@@ -137,6 +153,9 @@ func (srv *Server) Run() error {
 				}
 			}),
 		),
+		oteltwirp.NewOpenTelemetryHooks(
+			oteltwirp.IncludeClientErrors(true),
+		),
 		NewLoggingServerHooks(),
 		twirpmetrics.NewServerHooks(srv.m.Registry()),
 	)
@@ -151,7 +170,11 @@ func (srv *Server) Run() error {
 		srv.certificateMiddleware(
 			WithUserAgent(
 				twirptrace.WithTraceContext(
-					twirpHandler, srv.tracer,
+					oteltwirp.WithTraceContext(
+						twirpHandler,
+						oteltwirp.IncludeClientErrors(true),
+					),
+					tracer,
 				),
 			),
 		),
@@ -189,7 +212,16 @@ func (srv *Server) Run() error {
 		<-ctx.Done()
 		log.Info("shutting down twirp server")
 		server.Shutdown(ctx)
-		srv.traceProvider.Shutdown(ctx)
+		errs := []error{}
+		for _, fn := range srv.shutdownFns {
+			err := fn(ctx)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if len(errs) > 0 {
+			return errors.Join(errs...)
+		}
 		return nil
 	})
 
