@@ -113,37 +113,39 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 
 	var mq *autopaho.ConnectionManager
 
-	if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
-		mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, conf, cauth)
-		if err != nil {
-			log.Error("mqtt", "err", err)
-			os.Exit(2)
+	if cfg := conf.GetConfig(); cfg != nil {
+		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
+			mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, conf, cauth)
+			if err != nil {
+				log.Error("mqtt", "err", err)
+				os.Exit(2)
+			}
+			err := mq.AwaitConnection(ctx)
+			if err != nil {
+				log.Error("mqtt connection error", "err", err)
+				os.Exit(2)
+			}
+			msg := []byte(fmt.Sprintf(
+				"API test - %s", time.Now(),
+			))
+
+			topics := mqttcm.NewTopics(depEnv)
+
+			_, err = mq.Publish(ctx, &paho.Publish{
+				QoS:     1,
+				Topic:   topics.StatusAPITest(cauth.Name),
+				Payload: msg,
+				Retain:  false,
+			})
+			if err != nil {
+				log.Error("mqtt publish error", "err", err)
+			}
+
+			// log.Printf("sending offline message")
+			// token = mq.Publish(statusChannel+"/bye", 1, true, "offline")
+			// log.Printf("offline message queued")
+
 		}
-		err := mq.AwaitConnection(ctx)
-		if err != nil {
-			log.Error("mqtt connection error", "err", err)
-			os.Exit(2)
-		}
-		msg := []byte(fmt.Sprintf(
-			"API test - %s", time.Now(),
-		))
-
-		topics := mqttcm.NewTopics(depEnv)
-
-		_, err = mq.Publish(ctx, &paho.Publish{
-			QoS:     1,
-			Topic:   topics.StatusAPITest(cauth.Name),
-			Payload: msg,
-			Retain:  false,
-		})
-		if err != nil {
-			log.Error("mqtt publish error", "err", err)
-		}
-
-		// log.Printf("sending offline message")
-		// token = mq.Publish(statusChannel+"/bye", 1, true, "offline")
-		// log.Printf("offline message queued")
-
 	}
 
 	if mq != nil {
