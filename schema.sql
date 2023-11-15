@@ -100,6 +100,7 @@ CREATE TABLE `accounts` (
   `organization_url` varchar(150) DEFAULT NULL,
   `public_profile` tinyint(1) NOT NULL DEFAULT '0',
   `url_slug` varchar(150) DEFAULT NULL,
+  `flags` varchar(4096) NOT NULL DEFAULT '{}',
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `stripe_customer_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -306,6 +307,7 @@ CREATE TABLE `monitors` (
   UNIQUE KEY `monitors_tls_name` (`tls_name`),
   KEY `monitors_user_id` (`user_id`),
   KEY `monitors_account_fk` (`account_id`),
+  KEY `type_status` (`type`,`status`),
   CONSTRAINT `monitors_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
   CONSTRAINT `monitors_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -448,6 +450,53 @@ CREATE TABLE `server_urls` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `server_verification_history`
+--
+
+DROP TABLE IF EXISTS `server_verification_history`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_verification_history` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `server_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned DEFAULT NULL,
+  `user_ip` varchar(45) NOT NULL DEFAULT '',
+  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
+  `verified_on` datetime DEFAULT NULL,
+  `created_on` datetime NOT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `server_verifications_ibfk_2` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `server_verifications`
+--
+
+DROP TABLE IF EXISTS `server_verifications`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_verifications` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `server_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned DEFAULT NULL,
+  `user_ip` varchar(45) NOT NULL DEFAULT '',
+  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
+  `verified_on` datetime DEFAULT NULL,
+  `token` varchar(36) DEFAULT NULL,
+  `created_on` datetime NOT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `server` (`server_id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `server_verifications_ibfk_2` (`user_id`),
+  CONSTRAINT `server_verifications_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `server_verifications_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `server_zones`
 --
 
@@ -481,12 +530,14 @@ CREATE TABLE `servers` (
   `stratum` tinyint(3) unsigned DEFAULT NULL,
   `in_pool` tinyint(3) unsigned NOT NULL DEFAULT '0',
   `in_server_list` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `netspeed` mediumint(8) unsigned NOT NULL DEFAULT '1000',
+  `netspeed` mediumint(8) unsigned NOT NULL DEFAULT '10000',
+  `netspeed_target` mediumint(8) unsigned NOT NULL DEFAULT '10000',
   `created_on` datetime NOT NULL,
   `updated_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `score_ts` datetime DEFAULT NULL,
   `score_raw` double NOT NULL DEFAULT '0',
   `deletion_on` date DEFAULT NULL,
+  `flags` varchar(4096) NOT NULL DEFAULT '{}',
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip` (`ip`),
   KEY `admin` (`user_id`),
@@ -703,7 +754,7 @@ CREATE TABLE `zones` (
 /*!50001 SET character_set_results     = utf8mb4 */;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`askntp`@`10.%` SQL SECURITY DEFINER */
+/*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
 /*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`name`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -718,4 +769,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-07-16
+-- Dump completed on 2023-11-13  4:19:54

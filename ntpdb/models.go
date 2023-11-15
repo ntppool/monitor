@@ -257,21 +257,23 @@ type Monitor struct {
 }
 
 type Server struct {
-	ID           uint32           `json:"id"`
-	Ip           string           `json:"ip"`
-	IpVersion    ServersIpVersion `json:"ip_version"`
-	UserID       uint32           `json:"user_id"`
-	AccountID    sql.NullInt32    `json:"account_id"`
-	Hostname     sql.NullString   `json:"hostname"`
-	Stratum      sql.NullInt32    `json:"stratum"`
-	InPool       uint32           `json:"in_pool"`
-	InServerList uint32           `json:"in_server_list"`
-	Netspeed     uint32           `json:"netspeed"`
-	CreatedOn    time.Time        `json:"created_on"`
-	UpdatedOn    time.Time        `json:"updated_on"`
-	ScoreTs      sql.NullTime     `json:"score_ts"`
-	ScoreRaw     float64          `json:"score_raw"`
-	DeletionOn   sql.NullTime     `json:"deletion_on"`
+	ID             uint32           `json:"id"`
+	Ip             string           `json:"ip"`
+	IpVersion      ServersIpVersion `json:"ip_version"`
+	UserID         uint32           `json:"user_id"`
+	AccountID      sql.NullInt32    `json:"account_id"`
+	Hostname       sql.NullString   `json:"hostname"`
+	Stratum        sql.NullInt32    `json:"stratum"`
+	InPool         uint32           `json:"in_pool"`
+	InServerList   uint32           `json:"in_server_list"`
+	Netspeed       uint32           `json:"netspeed"`
+	NetspeedTarget uint32           `json:"netspeed_target"`
+	CreatedOn      time.Time        `json:"created_on"`
+	UpdatedOn      time.Time        `json:"updated_on"`
+	ScoreTs        sql.NullTime     `json:"score_ts"`
+	ScoreRaw       float64          `json:"score_raw"`
+	DeletionOn     sql.NullTime     `json:"deletion_on"`
+	Flags          string           `json:"flags"`
 }
 
 type ServerScore struct {

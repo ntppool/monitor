@@ -354,7 +354,7 @@ func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
 }
 
 const getServer = `-- name: GetServer :one
-SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, created_on, updated_on, score_ts, score_raw, deletion_on FROM servers WHERE id=?
+SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE id=?
 `
 
 func (q *Queries) GetServer(ctx context.Context, id uint32) (Server, error) {
@@ -371,17 +371,19 @@ func (q *Queries) GetServer(ctx context.Context, id uint32) (Server, error) {
 		&i.InPool,
 		&i.InServerList,
 		&i.Netspeed,
+		&i.NetspeedTarget,
 		&i.CreatedOn,
 		&i.UpdatedOn,
 		&i.ScoreTs,
 		&i.ScoreRaw,
 		&i.DeletionOn,
+		&i.Flags,
 	)
 	return i, err
 }
 
 const getServerIP = `-- name: GetServerIP :one
-SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, created_on, updated_on, score_ts, score_raw, deletion_on FROM servers WHERE ip=?
+SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE ip=?
 `
 
 func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
@@ -398,11 +400,13 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 		&i.InPool,
 		&i.InServerList,
 		&i.Netspeed,
+		&i.NetspeedTarget,
 		&i.CreatedOn,
 		&i.UpdatedOn,
 		&i.ScoreTs,
 		&i.ScoreRaw,
 		&i.DeletionOn,
+		&i.Flags,
 	)
 	return i, err
 }
@@ -437,7 +441,7 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 }
 
 const getServers = `-- name: GetServers :many
-SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on
+SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.netspeed_target, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on, s.flags
     FROM servers s
     LEFT JOIN server_scores ss
         ON (s.id=ss.server_id)
@@ -495,11 +499,13 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 			&i.InPool,
 			&i.InServerList,
 			&i.Netspeed,
+			&i.NetspeedTarget,
 			&i.CreatedOn,
 			&i.UpdatedOn,
 			&i.ScoreTs,
 			&i.ScoreRaw,
 			&i.DeletionOn,
+			&i.Flags,
 		); err != nil {
 			return nil, err
 		}
