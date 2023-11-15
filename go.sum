@@ -153,6 +153,8 @@ github.com/prometheus/common v0.45.0 h1:2BGz0eBc2hdMDLnO/8n0jeB3oPrt2D08CekT0lne
 github.com/prometheus/common v0.45.0/go.mod h1:YJmSTw9BoKxJplESWWxlbyttQR4uaEcGyv9MZjVOJsY=
 github.com/prometheus/procfs v0.12.0 h1:jluTpSng7V9hY0O2R9DzzJHYb2xULk9VTR1V1R/k6Bo=
 github.com/prometheus/procfs v0.12.0/go.mod h1:pcuDEFsWDnvcgNzo4EEweacyhjeA9Zk3cnaOZAZEfOo=
+github.com/remychantenay/slog-otel v1.2.1 h1:CTsgUd2h3zWDf8/KQSCme+VMw7bdf/BycyGT0rjonSg=
+github.com/remychantenay/slog-otel v1.2.1/go.mod h1:YV+vYh8c5i5U2U/QeBxRYelOLdYJ+AYBHy5IIC/XSeo=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rogpeppe/go-internal v1.11.0 h1:cWPaGQEPrBb5/AsnsZesgZZ9yb1OQ+GOISoDNXVBh4M=
 github.com/rogpeppe/go-internal v1.11.0/go.mod h1:ddIwULY96R17DhadqLgMfk9H9tvdUzkipdSkR5nkCZA=
@@ -185,6 +187,8 @@ github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9dec
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 go.ntppool.org/common v0.2.3 h1:uwASMzbYkAlRt8g6Ml+ha2GIk2bYhdGqG9YuKB+Ec8o=
 go.ntppool.org/common v0.2.3/go.mod h1:aF2ku4VreI4JeKJZBo+QAmq7HXixbxU6xUD2S/wweZs=
+go.ntppool.org/common v0.2.5-0.20231112235121-2bff6d8ef307 h1:bJPpvb3aP3sIdO/ptxH9Jqhksk0+c5qQBSa/xHLhscc=
+go.ntppool.org/common v0.2.5-0.20231112235121-2bff6d8ef307/go.mod h1:kYshXIaeI13tj6CSW56KHkcwp0lJbM8bFCe3tm3BZEQ=
 go.ntppool.org/pingtrace v0.0.4 h1:SqylIe1LrpWn0ugBMQfDbBUUQ+fApRnUKwBWLmtud0c=
 go.ntppool.org/pingtrace v0.0.4/go.mod h1:QylPGn2cg7VqKummEA0uEGKz8u/oGV0ecnT+r8aaWv4=
 go.ntppool.org/vault-token-manager v0.0.1 h1:5FTE1sM7H/0LOSgTGe5aBkGOFGCWrfQPTsZS14nD3jU=

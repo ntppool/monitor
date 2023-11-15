@@ -279,7 +279,6 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 	topics := mqttcm.NewTopics(depEnv)
 
 	return func(c echo.Context) error {
-
 		id, err := ulid.MakeULID(time.Now())
 		if err != nil {
 			return err
@@ -287,18 +286,16 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 		log := mqs.log.With("requestID", id)
 
 		clientName := c.QueryParam("client")
-		// return c.String(400, clientName)
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*4)
 		defer cancel()
-
-		// spanContext := otrace.SpanContextFromContext(ctx)
 
 		span := otrace.SpanFromContext(ctx)
 
 		rc := make(chan *paho.Publish)
 
-		span.SetAttributes(attribute.String("Request ID", id.String()))
+		span.SetAttributes(attribute.String("Request-ID", id.String()))
+		span.SetAttributes(attribute.String("client_name", clientName))
 		mqs.rr.AddResponseID(id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
@@ -356,10 +353,13 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 					return c.String(http.StatusBadGateway, "unexpected response")
 				}
 
+				span.AddEvent("received response", otrace.WithAttributes(attribute.String("host", host)))
+
 				return c.String(http.StatusOK, string(p.Payload))
 
 			case <-ctx.Done():
 				log.Debug("request cancelled")
+				span.AddEvent("context done", otrace.WithAttributes(attribute.String("err", ctx.Err().Error())))
 				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 					return c.String(http.StatusBadGateway, "timeout")
 				}
@@ -403,8 +403,6 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*8)
 		defer cancel()
-
-		// spanContext := otrace.SpanContextFromContext(ctx)
 
 		span := otrace.SpanFromContext(ctx)
 
