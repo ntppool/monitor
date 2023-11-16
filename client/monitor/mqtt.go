@@ -11,10 +11,13 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/expfmt"
 
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/mqttcm"
@@ -45,16 +48,28 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 
 	log.Debug("mqtt client message", "topic", m.Topic, "payload", m.Payload, "properties", m.Properties)
 
+	tracePropagator := otel.GetTextMapPropagator()
+
+	traceCarrier := propagation.MapCarrier{}
+	for _, f := range tracePropagator.Fields() {
+		traceCarrier[f] = m.Properties.User.Get(f)
+	}
+
+	ctx = tracePropagator.Extract(ctx, traceCarrier)
+	ctx, span := tracing.Start(ctx, "mqtt")
+	defer span.End()
+
 	requestType, _, err := mqc.topics.ParseRequestTopic(m.Topic)
 	if err != nil {
 		log.Error("mqtt request error", "err", err)
 		return
 	}
 
+	span.SetName("mqtt-" + requestType)
+
 	switch requestType {
 
 	case "metrics":
-
 		gathering, err := mqc.prom.Gather()
 		if err != nil {
 			log.Error("could not fetch metrics", "err", err)

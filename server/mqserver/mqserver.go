@@ -22,10 +22,14 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/prometheus/client_golang/prometheus"
+	slogecho "github.com/samber/slog-echo"
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/common/logger"
@@ -281,6 +285,8 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 
+	tracePropagator := otel.GetTextMapPropagator()
+
 	return func(c echo.Context) error {
 		id, err := ulid.MakeULID(time.Now())
 		if err != nil {
@@ -324,8 +330,14 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 		}
 
 		publishPacket.Properties.User.Add("ID", id.String())
+
+		traceCarrier := propagation.MapCarrier{}
+		tracePropagator.Inject(ctx, traceCarrier)
+
+		for _, f := range tracePropagator.Fields() {
+			publishPacket.Properties.User.Add(f, traceCarrier.Get(f))
+		}
 		publishPacket.Properties.User.Add("TraceID", span.SpanContext().TraceID().String())
-		publishPacket.Properties.User.Add("SpanID", span.SpanContext().SpanID().String())
 
 		// log.Printf("cm: %+v", mqs.cm)
 
@@ -595,10 +607,35 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 }
 
 func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
-
+	log := logger.Setup()
 	r := echo.New()
 
+	trustOptions := []echo.TrustOption{
+		echo.TrustLoopback(true),
+		echo.TrustLinkLocal(false),
+		echo.TrustPrivateNet(true),
+	}
+	r.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
+
 	r.Use(otelecho.Middleware("mqserver"))
+	r.Use(slogecho.NewWithConfig(log,
+		slogecho.Config{
+			WithTraceID: true,
+			// WithSpanID:  true,
+			// WithRequestHeader: true,
+		},
+	))
+	r.Use(
+		func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				request := c.Request()
+				span := trace.SpanFromContext(request.Context())
+				span.SetAttributes(attribute.String("http.real_ip", c.RealIP()))
+				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
+				return next(c)
+			}
+		},
+	)
 
 	r.GET("/monitors/metrics/discovery", mqs.MetricsDiscovery(ctx))
 	r.GET("/monitors/metrics", mqs.Metrics(ctx))
