@@ -52,11 +52,12 @@ type server struct {
 }
 
 type client struct {
-	Name     string
-	Online   bool
-	Version  version.Info
-	LastSeen time.Time
-	Data     *ntpdb.Monitor
+	Name      string
+	Online    bool
+	Version   version.Info
+	UpdatedMQ time.Time
+	LastSeen  time.Time
+	Data      *ntpdb.Monitor
 }
 
 type promTargetGroup struct {
@@ -155,6 +156,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		mqs.log.Error("could not unmarshal status message", "err", err)
 		return
 	}
+	// mqs.log.Info("status message unmarshal", "msg", p.Payload, "decoded", status, "updated_time", status.Updated)
 
 	name := path[len(path)-2]
 
@@ -171,6 +173,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		cs.Online = true
 		cs.LastSeen = time.Now()
 		cs.Version = status.Version
+		cs.UpdatedMQ = status.UpdatedMQ
 
 		ctx := context.Background()
 
@@ -189,7 +192,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		cs.Online = false
 	}
 
-	mqs.log.Debug("new status", "status", cs)
+	// mqs.log.Debug("new status", "cs", cs, "status", status)
 	// mqs.log.Info("new map", "clients", mqs.clients)
 
 	mqs.promGauge.Reset()
@@ -604,6 +607,7 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 			Name      string
 			IpVersion string
 			Version   version.Info `json:",omitempty"`
+			UpdatedMQ time.Time    `json:",omitempty"`
 			LastSeen  time.Time
 			Online    bool
 		}
@@ -617,6 +621,7 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 					Version:   o.Version,
 					Online:    o.Online,
 					LastSeen:  o.LastSeen,
+					UpdatedMQ: o.UpdatedMQ,
 				})
 			}
 		}

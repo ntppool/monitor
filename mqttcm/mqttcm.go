@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
@@ -47,6 +48,27 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 	log := logger.Setup()
 
+	publishOnlineMessage := func(cm *autopaho.ConnectionManager) {
+		msg, err := StatusMessageJSON(true)
+		if err != nil {
+			log.Warn("mqtt status error", "err", err)
+		}
+		log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
+		expireSeconds := uint32(86400)
+		_, err = cm.Publish(ctx, &paho.Publish{
+			Topic:   statusChannel,
+			Payload: msg,
+			QoS:     1,
+			Retain:  true,
+			Properties: &paho.PublishProperties{
+				MessageExpiry: &expireSeconds,
+			},
+		})
+		if err != nil {
+			log.Warn("mqtt status publish error", "err", err)
+		}
+	}
+
 	mqttcfg := autopaho.ClientConfig{
 		BrokerUrls: []*url.URL{broker},
 		TlsCfg:     tlsConfig,
@@ -83,20 +105,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 			}
 
 			if len(statusChannel) > 0 {
-				msg, err := StatusMessageJSON(true)
-				if err != nil {
-					log.Warn("mqtt status error", "err", err)
-				}
-				log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
-				_, err = cm.Publish(ctx, &paho.Publish{
-					Topic:   statusChannel,
-					Payload: msg,
-					QoS:     1,
-					Retain:  true,
-				})
-				if err != nil {
-					log.Warn("mqtt status publish error", "err", err)
-				}
+				publishOnlineMessage(cm)
 			}
 
 			// old, clear retained message
@@ -167,16 +176,33 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	// log.Printf("mqtt credentials: %q", string(cfg.JWT))
 
 	cm, err := autopaho.NewConnection(ctx, mqttcfg)
+
+	go func() {
+		for {
+			select {
+			case <-time.After(1 * time.Hour):
+				publishOnlineMessage(cm)
+			case <-cm.Done():
+				return
+			}
+		}
+	}()
+
 	return cm, err
 }
 
 type StatusMessage struct {
-	Online  bool
-	Version version.Info
+	Online    bool
+	Version   version.Info
+	UpdatedMQ time.Time
 }
 
 func StatusMessageJSON(online bool) ([]byte, error) {
-	sm := &StatusMessage{Online: online, Version: version.VersionInfo()}
+	sm := &StatusMessage{
+		Online:    online,
+		Version:   version.VersionInfo(),
+		UpdatedMQ: time.Now().Truncate(time.Second),
+	}
 	js, err := json.Marshal(sm)
 	if err != nil {
 		return nil, err

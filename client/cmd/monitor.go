@@ -291,7 +291,6 @@ runLoop:
 				return fmt.Errorf("no work")
 			}
 			boff.Reset()
-			log.InfoContext(ctx, "run returned")
 			return nil
 		}, boff)
 
@@ -311,7 +310,6 @@ runLoop:
 	}
 
 	mq.Disconnect(ctx)
-
 	stopMonitor()
 
 	if mq != nil {
