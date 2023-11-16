@@ -175,12 +175,17 @@ func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []b
 		return nil, nil, err
 	}
 
+	issuingCA, err := getVaultDataString(rv, "issuing_ca")
+	if err != nil {
+		return nil, nil, err
+	}
+
 	privateKey, err := getVaultDataString(rv, "private_key")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return []byte(cert), []byte(privateKey), nil
+	return []byte(cert + "\n" + issuingCA), []byte(privateKey), nil
 
 }
 
