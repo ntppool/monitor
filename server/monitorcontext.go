@@ -6,6 +6,8 @@ import (
 
 	"go.ntppool.org/common/logger"
 	sctx "go.ntppool.org/monitor/server/context"
+	"go.opentelemetry.io/otel/attribute"
+	otrace "go.opentelemetry.io/otel/trace"
 )
 
 func getCertificateName(ctx context.Context) string {
@@ -23,6 +25,9 @@ func WithUserAgent(base http.Handler) http.Handler {
 		ua := r.Header.Get("User-Agent")
 		ctx = context.WithValue(ctx, sctx.ClientVersionKey, ua)
 		r = r.WithContext(ctx)
+
+		span := otrace.SpanFromContext(ctx)
+		span.SetAttributes(attribute.String("User-Agent", ua))
 
 		base.ServeHTTP(w, r)
 	})

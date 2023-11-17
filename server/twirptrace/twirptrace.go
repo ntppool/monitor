@@ -1,4 +1,4 @@
-package ottwirp
+package twirptrace
 
 import (
 	"context"
@@ -16,8 +16,11 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
+type oteltwirpKey string
+
 const (
 	RequestReceivedEvent = "request.received"
+	ctxRemoteAddr        = "RemoteAddr"
 )
 
 type TraceServerHooks struct {
@@ -99,30 +102,42 @@ func (t *TraceServerHooks) TwirpHooks() *twirp.ServerHooks {
 	return hooks
 }
 
+func setTwirpInfo(ctx context.Context, span otrace.Span) {
+	span.SetAttributes(attribute.String("component", "twirp"))
+
+	var packageName, serviceName, methodName string
+	var ok bool
+
+	packageName, ok = twirp.PackageName(ctx)
+	if ok {
+		span.SetAttributes(attribute.String("package", packageName))
+	}
+
+	if serviceName, ok = twirp.ServiceName(ctx); ok {
+		span.SetAttributes(attribute.String("service", serviceName))
+	} else {
+		if len(packageName) > 0 {
+			span.SetAttributes(attribute.String("service", packageName))
+		}
+	}
+
+	if methodName, ok = twirp.MethodName(ctx); ok {
+		span.SetAttributes(attribute.String("method", methodName))
+	}
+
+	span.SetName(fmt.Sprintf("%s.%s/%s", packageName, serviceName, methodName))
+}
+
 func (t *TraceServerHooks) startTraceSpan(ctx context.Context) (context.Context, error) {
 
 	opts := []otrace.SpanStartOption{
 		otrace.WithSpanKind(otrace.SpanKindServer),
-		otrace.WithNewRoot(),
 	}
 
 	ctx, span := t.Tracer.Start(ctx, RequestReceivedEvent, opts...)
 
 	if span != nil {
-		span.SetAttributes(attribute.String("component", "twirp"))
-
-		packageName, ok := twirp.PackageName(ctx)
-		if ok {
-			span.SetAttributes(attribute.String("package", packageName))
-		}
-
-		if serviceName, ok := twirp.ServiceName(ctx); ok {
-			span.SetAttributes(attribute.String("serviceName", serviceName))
-		} else {
-			if len(packageName) > 0 {
-				span.SetAttributes(attribute.String("serviceName", packageName))
-			}
-		}
+		setTwirpInfo(ctx, span)
 
 		if len(t.opts.tags) != 0 {
 			for _, tag := range t.opts.tags {
@@ -174,6 +189,9 @@ func (t *TraceServerHooks) handleRequestRouted(ctx context.Context) (context.Con
 		if method, ok := twirp.MethodName(ctx); ok {
 			span.SetName(method)
 		}
+
+		remoteAddr := ctx.Value(ctxRemoteAddr).(string)
+		span.SetAttributes(attribute.String("client_ip", remoteAddr))
 	}
 
 	return ctx, nil
@@ -201,6 +219,7 @@ func (t *TraceServerHooks) handleError(ctx context.Context, err twirp.Error) con
 		if t.opts.includeClientErrors || statusCode >= 500 {
 			span.SetAttributes(attribute.Bool("error", true))
 			span.AddEvent("error-message", otrace.WithAttributes(attribute.String("message", err.Msg())))
+			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Msg())
 		}
 	}
@@ -213,18 +232,10 @@ func (t *TraceServerHooks) handleError(ctx context.Context, err twirp.Error) con
 func WithTraceContext(base http.Handler, tracer otrace.Tracer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-
 		p := otel.GetTextMapPropagator()
-
 		ctx = p.Extract(ctx, propagation.HeaderCarrier(r.Header))
-		// ctx = context.WithValue(ctx, tracingInfoKey{}, carrier)
+		ctx = context.WithValue(ctx, ctxRemoteAddr, r.RemoteAddr)
 		r = r.WithContext(ctx)
-
 		base.ServeHTTP(w, r)
 	})
 }
-
-// func extractSpanCtx(ctx context.Context, tracer otrace.Tracer) (ot.SpanContext, error) {
-// 	carrier := ctx.Value(tracingInfoKey{})
-// 	return tracer.Extract(ot.HTTPHeaders, carrier)
-// }

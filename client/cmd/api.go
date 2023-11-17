@@ -12,6 +12,7 @@ import (
 	"github.com/twitchtv/twirp"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
@@ -77,41 +78,44 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 	}
 	defer tracingShutdown()
 
+	ctx, span := tracing.Start(ctx, "api-test")
+	defer span.End()
+
 	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name)
 	if err != nil {
-		log.Error("Could not get metadata for API secret", "err", err)
+		log.ErrorContext(ctx, "Could not get metadata for API secret", "err", err)
 	}
 
-	log.Info("API key information", "expiration", secretInfo["expiration_time"], "created", secretInfo["creation_time"], "remaining_uses", secretInfo["secret_id_num_uses"])
+	log.InfoContext(ctx, "API key information", "expiration", secretInfo["expiration_time"], "created", secretInfo["creation_time"], "remaining_uses", secretInfo["secret_id_num_uses"])
 
 	ctx, apiC, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {
-		log.Error("could not setup API client", "err", err)
+		log.ErrorContext(ctx, "could not setup API client", "err", err)
 	}
 
 	cfg, err := apiC.GetConfig(ctx, &pb.GetConfigParams{})
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
-				log.Error("permission error getting config", "err", twerr.Msg())
+				log.ErrorContext(ctx, "permission error getting config", "err", twerr.Msg())
 			}
 		}
-		log.Error("could not get config", "err", err)
+		log.ErrorContext(ctx, "could not get config", "err", err)
 	}
 
 	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
 	if err != nil {
-		log.Error("could not get deployment environment", "err", err)
+		log.ErrorContext(ctx, "could not get deployment environment", "err", err)
 		os.Exit(2)
 	}
 
 	if cfg == nil {
-		log.Warn("didn't get configuration from the API")
+		log.WarnContext(ctx, "didn't get configuration from the API")
 	} else {
 		if cfg.Samples > 0 {
-			log.Info("got valid config; API access validated")
+			log.InfoContext(ctx, "got valid config; API access validated")
 		} else {
-			log.Info("configuration didn't have samples configured")
+			log.InfoContext(ctx, "configuration didn't have samples configured")
 		}
 	}
 
@@ -168,7 +172,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		}
 	}
 
-	log.Info("api test done")
+	log.InfoContext(ctx, "api test done")
 
 	return nil
 }

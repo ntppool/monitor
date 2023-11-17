@@ -2,7 +2,6 @@ package mqserver
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -65,8 +64,7 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			log.Info("context has deadline", "deadline", deadline)
 		}
 
-		log.Debug("handling message", "payload", p)
-		span.AddEvent(fmt.Sprintf("handling message: %+v", p))
+		log.DebugContext(ctx, "handling message", "payload", p)
 
 		topic := p.Topic
 

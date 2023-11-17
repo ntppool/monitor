@@ -7,7 +7,6 @@ require (
 	github.com/beevik/ntp v1.3.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.2.1
-	github.com/chengjiagan/twirp-opentelemetry v0.0.1
 	github.com/cristalhq/aconfig v0.18.5
 	github.com/cristalhq/aconfig/aconfigdotenv v0.17.1
 	github.com/cristalhq/aconfig/aconfigyaml v0.17.1

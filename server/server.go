@@ -11,11 +11,9 @@ import (
 	"os"
 	"time"
 
-	oteltwirp "github.com/chengjiagan/twirp-opentelemetry"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
-	"go.opentelemetry.io/otel"
 	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -125,7 +123,7 @@ func (srv *Server) Run() error {
 		VerifyPeerCertificate: srv.verifyClient,
 	}
 
-	tracer := otel.Tracer("monitor-api/twirp")
+	tracer := tracing.Tracer()
 
 	hooks := twirp.ChainHooks(
 		twirptrace.NewOpenTracingHooks(
@@ -153,9 +151,6 @@ func (srv *Server) Run() error {
 				}
 			}),
 		),
-		oteltwirp.NewOpenTelemetryHooks(
-			oteltwirp.IncludeClientErrors(true),
-		),
 		NewLoggingServerHooks(),
 		twirpmetrics.NewServerHooks(srv.m.Registry()),
 	)
@@ -167,16 +162,13 @@ func (srv *Server) Run() error {
 
 	mux := http.NewServeMux()
 	mux.Handle(twirpHandler.PathPrefix(),
-		srv.certificateMiddleware(
-			WithUserAgent(
-				twirptrace.WithTraceContext(
-					oteltwirp.WithTraceContext(
-						twirpHandler,
-						oteltwirp.IncludeClientErrors(true),
-					),
-					tracer,
+		twirptrace.WithTraceContext(
+			srv.certificateMiddleware(
+				WithUserAgent(
+					twirpHandler,
 				),
 			),
+			tracer,
 		),
 	)
 
