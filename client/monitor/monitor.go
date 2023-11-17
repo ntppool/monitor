@@ -25,16 +25,23 @@ type response struct {
 }
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config) (*pb.ServerStatus, *ntp.Response, error) {
+func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttributes ...attribute.KeyValue) (*pb.ServerStatus, *ntp.Response, error) {
 
 	log := logger.Setup()
 
-	ctx, span := tracing.Start(ctx, "CheckHost", trace.WithAttributes(attribute.String("ip", ip.String())))
+	traceAttributes = append(traceAttributes, attribute.String("ip", ip.String()))
+
+	ctx, span := tracing.Start(ctx,
+		"CheckHost",
+		trace.WithAttributes(traceAttributes...),
+	)
 	defer span.End()
 
 	if cfg.Samples == 0 {
 		cfg.Samples = 3
 	}
+
+	span.SetAttributes(attribute.Int("samples", int(cfg.Samples)))
 
 	opts := ntp.QueryOptions{
 		Timeout: 3 * time.Second,
@@ -50,17 +57,22 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config) (*pb.ServerS
 		log.Error("Did not get valid local configuration IP", "configIP", configIP)
 	}
 
+	var err error
 	if ip.IsLoopback() {
-		return nil, nil, fmt.Errorf("loopback address")
+		err = fmt.Errorf("loopback address")
 	}
 	if ip.IsPrivate() {
-		return nil, nil, fmt.Errorf("private address")
+		err = fmt.Errorf("private address")
 	}
 	if ip.IsMulticast() {
-		return nil, nil, fmt.Errorf("multicast address")
+		err = fmt.Errorf("multicast address")
 	}
 	if !ip.IsValid() {
-		return nil, nil, fmt.Errorf("invalid IP")
+		err = fmt.Errorf("invalid IP")
+	}
+	if err != nil {
+		span.RecordError(err)
+		return nil, nil, err
 	}
 
 	responses := []*response{}
@@ -90,6 +102,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config) (*pb.ServerS
 			r.Error = err
 			responses = append(responses, r)
 
+			span.RecordError(err)
 			log.DebugContext(ctx, "ntp query error", "host", ip.String(), "iteration", i, "error", err)
 
 			continue

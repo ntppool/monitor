@@ -12,6 +12,9 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go4.org/netipx"
 	"golang.org/x/sync/errgroup"
 
@@ -104,7 +107,10 @@ func (l *LocalOK) Check(ctx context.Context) bool {
 
 func (l *LocalOK) update(ctx context.Context) bool {
 
-	ctx, span := tracing.Start(ctx, "localcheck-update")
+	ctx, span := tracing.Start(ctx,
+		"localcheck-update",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
 	defer span.End()
 
 	// update() is wrapped in a lock
@@ -213,13 +219,14 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			l.metrics.hosts[h.Name] = true
 
 			if i > 0 {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 			}
 
 			go func(h namedIP) {
 				ok, err := l.sanityCheckHost(ctx, cfg, h.Name, h.IP)
 				if err != nil {
 					log.WarnContext(ctx, "local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
+					span.RecordError(err)
 				}
 
 				l.metrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
@@ -253,11 +260,23 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
 	log.InfoContext(ctx, "local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))
 
-	return fails <= failureThreshold
+	ok := fails <= failureThreshold
+
+	if !ok {
+		span.RecordError(fmt.Errorf("too many failures"),
+			trace.WithAttributes(
+				attribute.Int("failures", fails),
+				attribute.Int("failure_threshold", failureThreshold),
+			),
+		)
+		span.SetStatus(codes.Error, "too many failures")
+	}
+
+	return ok
 }
 
 func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *pb.Config, name string, ip *netip.Addr) (bool, error) {
-	status, _, err := monitor.CheckHost(ctx, ip, cfg)
+	status, _, err := monitor.CheckHost(ctx, ip, cfg, attribute.String("name", name))
 	if err != nil {
 		return false, err
 	}
