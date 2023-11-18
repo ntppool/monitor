@@ -296,7 +296,7 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 
 		clientName := c.QueryParam("client")
 
-		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*4)
+		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*8)
 		defer cancel()
 
 		span := otrace.SpanFromContext(ctx)
