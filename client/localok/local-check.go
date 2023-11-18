@@ -225,7 +225,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			go func(h namedIP) {
 				ok, err := l.sanityCheckHost(ctx, cfg, h.Name, h.IP)
 				if err != nil {
-					log.WarnContext(ctx, "local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err)
+					log.WarnContext(ctx, "local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err.Error())
 					span.RecordError(err)
 				}
 
