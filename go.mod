@@ -3,6 +3,7 @@ module go.ntppool.org/monitor
 go 1.21.3
 
 require (
+	connectrpc.com/connect v1.13.0
 	github.com/abh/certman v0.4.0
 	github.com/beevik/ntp v1.3.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
@@ -33,7 +34,7 @@ require (
 	golang.org/x/exp v0.0.0-20231214170342-aacd6d4b4611
 	golang.org/x/mod v0.14.0
 	golang.org/x/sync v0.5.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1
 	inet.af/netaddr v0.0.0-20230525184311-b8eac61e914a
 )
 
@@ -41,6 +42,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/fatih/color v1.15.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.1 // indirect
 	github.com/go-logr/logr v1.3.0 // indirect

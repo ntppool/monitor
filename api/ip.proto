@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package ntppool.protobuf;
+package api;
 
 option go_package = "go.ntppool.org/monitor/api/pb/types/ippb";
 

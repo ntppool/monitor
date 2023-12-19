@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+// import "ip.proto";
+
+service MonitorService {
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse) {}
+
+  // GetServers fetches list of NTP servers to check
+  rpc GetServers(GetServersRequest) returns (GetServersResponse) {}
+
+  // SubmitResults returns the specified list ServerStatus to the monitoring server
+  rpc SubmitResults(SubmitResultsRequest) returns (SubmitResultsResponse) {}
+
+
+}
+
+message GetConfigRequest {}
+message GetServersRequest {}
+
+// GetConfigResponse is the server set configuration for the monitoring agent
+message GetConfigResponse {
+  int32  samples = 1;
+  bytes  ip_bytes = 2;
+  bytes  ip_nat_bytes = 3;
+  repeated bytes base_checks = 4;
+  MQTTConfig mqtt_config = 5;
+}
+
+message MQTTConfig {
+  bytes host   = 1;
+  int32 port   = 2;
+  bytes jwt    = 3;
+  bytes prefix = 4; // base prefix for topic ("/devel/monitors/" for example)
+}
+
+message Server {
+  bytes  ip_bytes = 1;
+  bytes  ticket = 2;
+  bool   trace = 3;
+}
+
+message GetServersResponse {
+  GetConfigResponse config  = 1;
+  repeated Server servers = 2;
+  bytes batch_id = 3;  // todo future api: move this first
+}
+
+message SubmitResultsRequest {
+  int32 bersion = 1;
+  repeated ServerStatus list = 2;
+  bytes batch_id = 3;
+}
+
+message SubmitResultsResponse {
+  bool ok = 1;
+}
+
+message ServerStatus {
+  bytes  ticket = 1;
+  bytes  ip_bytes = 2;
+  google.protobuf.Timestamp  ts = 3;
+  google.protobuf.Duration   offset = 4;
+  google.protobuf.Duration   rtt = 5;
+  int32  stratum = 6;
+  sint32 leap = 7;
+  string error = 8;
+  bool   no_response = 9;
+  repeated bytes responses = 10;
+  sint32 selected_response = 11;
+}

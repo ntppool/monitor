@@ -4,8 +4,8 @@ option go_package = "./pb";
 
 package api;
 
-import "timestamp.proto";
-import "duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 // import "ip.proto";
 
 service Monitor {
