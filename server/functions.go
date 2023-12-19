@@ -83,7 +83,7 @@ func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor)
 	return cfg, nil
 }
 
-func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
+func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) {
 	span := otrace.SpanFromContext(ctx)
 
 	log := srv.log
@@ -136,7 +136,7 @@ func (srv *Server) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 		log.Error("JWTKey not configured")
 	}
 
-	return cfg.PbConfig()
+	return cfg, nil
 }
 
 func (srv *Server) signatureIPData(monitorID uint32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
@@ -169,7 +169,14 @@ func (srv *Server) ValidateIPs(signature []byte, monitorID uint32, batchID []byt
 	return srv.tokens.ValidateBytes(signature, data...)
 }
 
-func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
+type ServerListResponse struct {
+	BatchID []byte
+	Config  *ntpdb.MonitorConfig
+	Servers []ntpdb.Server
+	monitor *ntpdb.Monitor
+}
+
+func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) {
 	span := otrace.SpanFromContext(ctx)
 
 	log := srv.log
@@ -201,13 +208,13 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 	}
 
 	if settings.IntervalActive.Seconds() < 20 {
-		settings.IntervalActive = timeutil.Duration{9 * time.Minute}
+		settings.IntervalActive = timeutil.Duration{Duration: 9 * time.Minute}
 	}
 	if settings.IntervalTesting.Seconds() < 60 {
-		settings.IntervalTesting = timeutil.Duration{45 * time.Minute}
+		settings.IntervalTesting = timeutil.Duration{Duration: 45 * time.Minute}
 	}
 	if settings.IntervalAll.Seconds() < 10 {
-		settings.IntervalAll = timeutil.Duration{60 * time.Second}
+		settings.IntervalAll = timeutil.Duration{Duration: 60 * time.Second}
 	}
 	if settings.BatchSize <= 0 {
 		settings.BatchSize = 10
@@ -249,11 +256,6 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 		return nil, err
 	}
 
-	cfg, err := mcfg.PbConfig()
-	if err != nil {
-		return nil, err
-	}
-
 	servers, err := srv.db.GetServers(ctx, p)
 	if err != nil {
 		return nil, err
@@ -261,37 +263,18 @@ func (srv *Server) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 
 	span.AddEvent("GetServers DB select", otrace.WithAttributes(attribute.Int("serverCount", len(servers))))
 
-	pServers := []*pb.Server{}
-
 	bidb, err := batchID.MarshalText()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, server := range servers {
-		pServer := &pb.Server{}
-
-		ip, err := netip.ParseAddr(server.Ip)
-		if err != nil {
-			return nil, err
-		}
-		pServer.IPBytes, _ = ip.MarshalBinary()
-
-		pServer.Ticket, err = srv.SignIPs(monitor.ID, bidb, &ip)
-		if err != nil {
-			return nil, err
-		}
-
-		pServers = append(pServers, pServer)
-	}
-
-	list := &pb.ServerList{
-		Config:  cfg,
-		Servers: pServers,
+	list := &ServerListResponse{
 		BatchID: bidb,
+		Config:  mcfg,
+		Servers: servers,
 	}
 
-	if count := len(pServers); count > 0 {
+	if count := len(servers); count > 0 {
 		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.MonitorsIpVersion.String()).Add(float64(count))
 	}
 

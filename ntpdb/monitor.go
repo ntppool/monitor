@@ -7,6 +7,7 @@ import (
 	"inet.af/netaddr"
 
 	"go.ntppool.org/monitor/api/pb"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 )
 
 type MonitorConfig struct {
@@ -53,6 +54,43 @@ func (m *Monitor) getConfig(conf []byte) (*MonitorConfig, error) {
 	moncfg.ip = m.Ip.String
 
 	return moncfg, nil
+}
+
+func (cfg *MonitorConfig) APIv2() (*apiv2.GetConfigResponse, error) {
+	rcfg := &apiv2.GetConfigResponse{
+		Samples: cfg.Samples,
+	}
+
+	if len(cfg.BaseChecks) > 0 {
+		for _, s := range cfg.BaseChecks {
+			rcfg.BaseChecks = append(rcfg.BaseChecks, []byte(s))
+		}
+	}
+
+	if len(cfg.NatIP) > 0 {
+		ip, err := netaddr.ParseIP(cfg.NatIP)
+		if err != nil {
+			return nil, err
+		}
+		rcfg.IpNatBytes, _ = ip.MarshalBinary()
+	}
+
+	ip, err := netaddr.ParseIP(cfg.ip)
+	if err != nil {
+		return nil, err
+	}
+	rcfg.IpBytes, _ = ip.MarshalBinary()
+
+	if cfg.MQTT != nil {
+		rcfg.MqttConfig = &apiv2.MQTTConfig{
+			Host:   cfg.MQTT.Host,
+			Port:   cfg.MQTT.Port,
+			Jwt:    cfg.MQTT.JWT,
+			Prefix: cfg.MQTT.Prefix,
+		}
+	}
+
+	return rcfg, nil
 }
 
 func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {

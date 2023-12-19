@@ -25,50 +25,50 @@ message GetServersParams {}
 
 // Config is the server set configuration for the monitoring agent
 message Config {
-  int32  Samples = 1;
-  bytes  IPBytes = 2;
-  bytes  IPNatBytes = 3;
-  repeated bytes BaseChecks = 4;
-  MQTTConfig MQTTConfig = 5;
+  int32  samples = 1;
+  bytes  ipbytes = 2;
+  bytes  ipnatbytes = 3;
+  repeated bytes basechecks = 4;
+  MQTTConfig mqtt_config = 5;
 }
 
 message MQTTConfig {
-  bytes Host   = 1;
-  int32 Port   = 2;
-  bytes JWT    = 3;
-  bytes Prefix = 4; // base prefix for topic ("/devel/monitors/" for example)
+  bytes host   = 1;
+  int32 port   = 2;
+  bytes jwt    = 3;
+  bytes prefix = 4; // base prefix for topic ("/devel/monitors/" for example)
 }
 
 message Server {
-  bytes  IPBytes = 1;
-  bytes  Ticket = 2;
-  bool   Trace = 3;
+  bytes  ipbytes = 1;
+  bytes  ticket = 2;
+  bool   trace = 3;
 }
 
 message ServerList {
   Config config  = 1;
-  repeated Server Servers = 2;
-  bytes BatchID = 3;  // todo future api: move this first
+  repeated Server servers = 2;
+  bytes batchid = 3;  // todo future api: move this first
 }
 
 message ServerStatusList {
-  int32 Version = 1;
+  int32 version = 1;
   repeated ServerStatus List = 2;
-  bytes BatchID = 3;
+  bytes batchid = 3;
 }
 
 message ServerStatusResult {
-  bool Ok = 1;
+  bool ok = 1;
 }
 
 message ServerStatus {
-  bytes  Ticket = 1;
-  bytes  IPBytes = 2;
-  google.protobuf.Timestamp  TS = 3;
-  google.protobuf.Duration   Offset = 4;
-  google.protobuf.Duration   RTT = 5;
-  int32  Stratum = 6;
-  sint32 Leap = 7;
-  string Error = 8;
-  bool   NoResponse = 9;
+  bytes  ticket = 1;
+  bytes  ipbytes = 2;
+  google.protobuf.Timestamp  ts = 3;
+  google.protobuf.Duration   offset = 4;
+  google.protobuf.Duration   rtt = 5;
+  int32  stratum = 6;
+  sint32 leap = 7;
+  string error = 8;
+  bool   no_response = 9;
 }

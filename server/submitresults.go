@@ -32,30 +32,31 @@ type SubmitCounters struct {
 	BatchOrder *CounterOpt
 }
 
-func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
+type SubmitResultsParam struct {
+	Version int32
+	List    []*pb.ServerStatus
+	BatchID []byte
+}
+
+func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (bool, error) {
 	span := otrace.SpanFromContext(ctx)
 	now := time.Now()
-
 	log := logger.FromContext(ctx)
-
-	rv := &pb.ServerStatusResult{
-		Ok: false,
-	}
 
 	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {
 		log.Error("get monitor error", "err", err)
-		return rv, err
+		return false, err
 	}
 
 	log = log.With("mon_id", monitor.ID)
 
 	if !monitor.IsLive() {
-		return rv, twirp.PermissionDenied.Error("monitor not active")
+		return false, twirp.PermissionDenied.Error("monitor not active")
 	}
 
 	if in.Version < 2 || in.Version > 3 {
-		return rv, twirp.InvalidArgumentError("Version", "Unsupported data version")
+		return false, twirp.InvalidArgumentError("Version", "Unsupported data version")
 	}
 
 	counters := &SubmitCounters{
@@ -102,7 +103,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 
 		span.AddEvent("Out of order batch", otrace.WithAttributes(attribute.String("previous", lastSubmit.Time.String())))
 
-		return rv, fmt.Errorf("invalid batch submission")
+		return false, fmt.Errorf("invalid batch submission")
 	}
 
 	srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
@@ -121,7 +122,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 				span.AddEvent("signature validation failed")
 				log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
 				counters.Sig.Counter += len(in.List) - i
-				return nil, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
+				return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
 			}
 		}
 
@@ -129,12 +130,11 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		if err != nil {
 			span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
 			log.Error("error processing status", "status", status, "err", err)
-			return rv, twirp.InternalErrorWith(err)
+			return false, twirp.InternalErrorWith(err)
 		}
 	}
 
-	rv.Ok = true
-	return rv, nil
+	return true, nil
 }
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus, counters *SubmitCounters) error {

@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
@@ -21,6 +23,7 @@ import (
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
@@ -105,6 +108,8 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 
 func (srv *Server) Run() error {
 
+	twSrv := NewTwServer(srv)
+
 	log := logger.FromContext(srv.ctx)
 
 	ctx, cancel := context.WithCancel(srv.ctx)
@@ -155,7 +160,7 @@ func (srv *Server) Run() error {
 		twirpmetrics.NewServerHooks(srv.m.Registry()),
 	)
 
-	twirpHandler := pb.NewMonitorServer(srv,
+	twirpHandler := pb.NewMonitorServer(twSrv,
 		twirp.WithServerPathPrefix("/api/v1"),
 		twirp.WithServerHooks(hooks),
 	)
@@ -171,6 +176,19 @@ func (srv *Server) Run() error {
 			tracer,
 		),
 	)
+
+	conSrv := NewConnectServer(srv)
+
+	urlpath, handler := apiv2connect.NewMonitorServiceHandler(
+		conSrv,
+		connect.WithInterceptors(
+			otelconnect.NewInterceptor(
+				otelconnect.WithTrustRemote(),
+			),
+		),
+	)
+	log.Info("setting up connectrpc", "path", urlpath)
+	mux.Handle(urlpath, handler)
 
 	listen := srv.cfg.Listen
 
