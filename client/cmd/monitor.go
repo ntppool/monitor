@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/cenkalti/backoff"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
@@ -33,6 +34,9 @@ import (
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
+	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
+
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -47,7 +51,13 @@ var (
 const MaxInterval = time.Minute * 2
 
 type SetConfig interface {
-	SetConfig(cfg *pb.Config)
+	SetConfigFromPb(cfg *pb.Config)
+	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
+}
+
+type ConfigStore interface {
+	SetConfig
+	GetConfig() *config.Config
 }
 
 func (cli *CLI) monitorCmd() *cobra.Command {
@@ -162,8 +172,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 			cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
 
-			cfg, err := api.GetConfig(cfgctx, &pb.GetConfigParams{})
-			if err != nil {
+			cfgresp, err := api.GetConfig(cfgctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
+			if err != nil || cfgresp.Msg == nil {
 				errors++
 				if twerr, ok := err.(twirp.Error); ok {
 					// if twerr.Code() == twirp.PermissionDenied {}
@@ -181,8 +191,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 					wait = errorFetchInterval
 				}
 			} else {
-				log.Info("client config", "cfg", cfg)
-				conf.SetConfig(cfg)
+				log.Info("client config", "cfg", cfgresp.Msg)
+				conf.SetConfigFromApi(cfgresp.Msg)
 				if firstRun {
 					initialConfig.Done()
 					firstRun = false
@@ -324,7 +334,7 @@ runLoop:
 
 }
 
-func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) {
+func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore ConfigStore) (bool, error) {
 
 	log := logger.FromContext(ctx)
 
@@ -333,7 +343,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 
 	log.InfoContext(ctx, "monitor-run execution")
 
-	serverlist, err := api.GetServers(ctx, &pb.GetServersParams{})
+	serverresp, err := api.GetServers(ctx, connect.NewRequest(&apiv2.GetServersRequest{}))
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
@@ -343,8 +353,10 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 		return false, fmt.Errorf("getting server list: %s", err)
 	}
 
+	serverlist := serverresp.Msg
+
 	if serverlist.Config != nil {
-		cfgStore.SetConfig(serverlist.Config)
+		cfgStore.SetConfigFromApi(serverlist.Config)
 	}
 
 	if len(serverlist.Servers) == 0 {
@@ -353,7 +365,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 	}
 
 	batchID := ulid.ULID{}
-	batchID.UnmarshalText(serverlist.BatchID)
+	batchID.UnmarshalText(serverlist.BatchId)
 
 	log = log.With("batchID", batchID.String())
 
@@ -368,7 +380,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 		}
 	}
 
-	statuses := []*pb.ServerStatus{}
+	statuses := []*apiv2.ServerStatus{}
 
 	wg := sync.WaitGroup{}
 
@@ -399,9 +411,9 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 				return
 			}
 
-			status, _, err := monitor.CheckHost(ctx, s, serverlist.Config)
+			status, _, err := monitor.CheckHost(ctx, s, cfgStore.GetConfig())
 			if status == nil {
-				status = &pb.ServerStatus{
+				status = &apiv2.ServerStatus{
 					NoResponse: true,
 				}
 				status.SetIP(s)
@@ -420,7 +432,7 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 					status.NoResponse = true
 				}
 			}
-			status.TS = timestamppb.Now()
+			status.Ts = timestamppb.Now()
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -433,17 +445,17 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 
 	log.Info("submitting")
 
-	list := &pb.ServerStatusList{
-		Version: 3,
+	list := &apiv2.SubmitResultsRequest{
+		Version: 4,
 		List:    statuses,
-		BatchID: serverlist.BatchID,
+		BatchId: serverlist.BatchId,
 	}
 
-	r, err := api.SubmitResults(ctx, list)
+	r, err := api.SubmitResults(ctx, connect.NewRequest(list))
 	if err != nil {
 		return false, fmt.Errorf("SubmitResults: %s", err)
 	}
-	if !r.Ok {
+	if !r.Msg.Ok {
 		return false, fmt.Errorf("SubmitResults not okay")
 	}
 

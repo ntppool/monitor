@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.ntppool.org/common/logger"
-	"go.ntppool.org/monitor/api/pb"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 )
@@ -17,12 +17,12 @@ func NewScorer() *StatusScorer {
 	return &StatusScorer{}
 }
 
-func (s *StatusScorer) Score(server *ntpdb.Server, status *pb.ServerStatus) (*score.Score, error) {
+func (s *StatusScorer) Score(server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
 	score, err := s.calc(server, status)
 	return score, err
 }
 
-func (s *StatusScorer) calc(server *ntpdb.Server, status *pb.ServerStatus) (*score.Score, error) {
+func (s *StatusScorer) calc(server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
 
 	attributeStr := sql.NullString{}
 
@@ -44,9 +44,9 @@ func (s *StatusScorer) calc(server *ntpdb.Server, status *pb.ServerStatus) (*sco
 	sc := score.Score{}
 
 	sc.ServerID = server.ID
-	sc.Ts = status.TS.AsTime()
+	sc.Ts = status.Ts.AsTime()
 	sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
-	sc.Rtt = sql.NullInt32{Int32: int32(status.RTT.AsDuration().Microseconds()), Valid: true}
+	sc.Rtt = sql.NullInt32{Int32: int32(status.Rtt.AsDuration().Microseconds()), Valid: true}
 	sc.Attributes = attributeStr
 
 	sc.HasMaxScore = false

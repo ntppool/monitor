@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api/pb"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -29,7 +28,7 @@ type metrics struct {
 }
 
 type LocalOK struct {
-	cfg        *pb.Config
+	cfg        *config.Config
 	metrics    metrics
 	isv4       bool
 	lastCheck  time.Time
@@ -45,7 +44,7 @@ func NewLocalOK(conf config.ConfigUpdater, promreg prometheus.Registerer) *Local
 
 	cfg := conf.GetConfig()
 
-	if cfg.GetIP().Is4() {
+	if cfg.IP.Is4() {
 		isv4 = true
 	} else {
 		isv4 = false
@@ -82,7 +81,7 @@ func (l *LocalOK) NextCheckIn() time.Duration {
 	return wait
 }
 
-func (l *LocalOK) SetConfig(cfg *pb.Config) {
+func (l *LocalOK) SetConfig(cfg *config.Config) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.cfg = cfg
@@ -275,7 +274,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	return ok
 }
 
-func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *pb.Config, name string, ip *netip.Addr) (bool, error) {
+func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *config.Config, name string, ip *netip.Addr) (bool, error) {
 	status, _, err := monitor.CheckHost(ctx, ip, cfg, attribute.String("name", name))
 	if err != nil {
 		return false, err

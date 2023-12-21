@@ -7,6 +7,7 @@ import (
 	"inet.af/netaddr"
 
 	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
 	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 )
 
@@ -15,7 +16,7 @@ type MonitorConfig struct {
 	NatIP      string   `json:"nat_ip,omitempty"` // have the monitor bind to a different IP
 	BaseChecks []string `json:"base_checks,omitempty"`
 	ip         string
-	MQTT       *pb.MQTTConfig
+	MQTT       *config.MQTTConfig
 }
 
 func (m *Monitor) IsLive() bool {
@@ -82,12 +83,7 @@ func (cfg *MonitorConfig) APIv2() (*apiv2.GetConfigResponse, error) {
 	rcfg.IpBytes, _ = ip.MarshalBinary()
 
 	if cfg.MQTT != nil {
-		rcfg.MqttConfig = &apiv2.MQTTConfig{
-			Host:   cfg.MQTT.Host,
-			Port:   cfg.MQTT.Port,
-			Jwt:    cfg.MQTT.JWT,
-			Prefix: cfg.MQTT.Prefix,
-		}
+		rcfg.MqttConfig = cfg.MQTT.ApiConfig()
 	}
 
 	return rcfg, nil
@@ -110,17 +106,50 @@ func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		rcfg.IPNatBytes, _ = ip.MarshalBinary()
+		rcfg.IpNatBytes, _ = ip.MarshalBinary()
 	}
 
 	ip, err := netaddr.ParseIP(cfg.ip)
 	if err != nil {
 		return nil, err
 	}
-	rcfg.IPBytes, _ = ip.MarshalBinary()
+	rcfg.IpBytes, _ = ip.MarshalBinary()
 
 	if cfg.MQTT != nil {
-		rcfg.MQTTConfig = cfg.MQTT
+		rcfg.MqttConfig = cfg.MQTT.PbConfig()
+	}
+
+	return rcfg, nil
+}
+
+func (cfg *MonitorConfig) ApiConfig() (*apiv2.GetConfigResponse, error) {
+
+	rcfg := &apiv2.GetConfigResponse{
+		Samples: cfg.Samples,
+	}
+
+	if len(cfg.BaseChecks) > 0 {
+		for _, s := range cfg.BaseChecks {
+			rcfg.BaseChecks = append(rcfg.BaseChecks, []byte(s))
+		}
+	}
+
+	if len(cfg.NatIP) > 0 {
+		ip, err := netaddr.ParseIP(cfg.NatIP)
+		if err != nil {
+			return nil, err
+		}
+		rcfg.IpNatBytes, _ = ip.MarshalBinary()
+	}
+
+	ip, err := netaddr.ParseIP(cfg.ip)
+	if err != nil {
+		return nil, err
+	}
+	rcfg.IpBytes, _ = ip.MarshalBinary()
+
+	if cfg.MQTT != nil {
+		rcfg.MqttConfig = cfg.MQTT.ApiConfig()
 	}
 
 	return rcfg, nil

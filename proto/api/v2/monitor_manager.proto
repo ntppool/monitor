@@ -50,7 +50,7 @@ message GetServersResponse {
 }
 
 message SubmitResultsRequest {
-  int32 bersion = 1;
+  int32 version = 1;
   repeated ServerStatus list = 2;
   bytes batch_id = 3;
 }

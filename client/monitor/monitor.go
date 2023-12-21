@@ -12,6 +12,8 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -20,12 +22,13 @@ import (
 
 type response struct {
 	Response *ntp.Response
-	Status   *pb.ServerStatus
+	Status   *apiv2.ServerStatus
+	Packet   []byte
 	Error    error
 }
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttributes ...attribute.KeyValue) (*pb.ServerStatus, *ntp.Response, error) {
+func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAttributes ...attribute.KeyValue) (*apiv2.ServerStatus, *ntp.Response, error) {
 
 	log := logger.Setup()
 
@@ -43,14 +46,17 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 
 	span.SetAttributes(attribute.Int("samples", int(cfg.Samples)))
 
+	ntpCaptureBuffer := &CaptureBuffer{}
+
 	opts := ntp.QueryOptions{
-		Timeout: 3 * time.Second,
+		Timeout:    3 * time.Second,
+		Extensions: []ntp.Extension{ntpCaptureBuffer},
 	}
 
-	configIP := cfg.GetIP()
+	configIP := cfg.IP
 	if configIP != nil && configIP.IsValid() {
 		opts.LocalAddress = configIP.String()
-		if natIP := cfg.GetNatIP(); natIP != nil && natIP.IsValid() {
+		if natIP := cfg.IPNat; natIP != nil && natIP.IsValid() {
 			opts.LocalAddress = natIP.String()
 		}
 	} else {
@@ -92,12 +98,12 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 		resp, err := ntp.QueryWithOptions(ipStr, opts)
 		if err != nil {
 			r := &response{
-				Status: &pb.ServerStatus{},
+				Status: &apiv2.ServerStatus{},
 			}
 			r.Status.SetIP(ip)
 			if resp != nil {
 				r.Response = resp
-				r.Status = ntpResponseToStatus(ip, resp)
+				r.Status = ntpResponseToApiStatus(ip, resp)
 			}
 			r.Error = err
 			responses = append(responses, r)
@@ -108,7 +114,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 			continue
 		}
 
-		status := ntpResponseToStatus(ip, resp)
+		status := ntpResponseToApiStatus(ip, resp)
 
 		log.DebugContext(ctx, "ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
 
@@ -137,9 +143,21 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 			return status, resp, fmt.Errorf("bad stratum %d", resp.Stratum)
 		}
 
+		packets := ntpCaptureBuffer.ResponsePackets()
+		if len(packets) > 1 {
+			log.WarnContext(ctx, "got more than one packet for a response")
+		}
+		var packet []byte
+		if len(packets) > 0 {
+			packet = packets[0]
+		}
+
+		ntpCaptureBuffer.Clear()
+
 		responses = append(responses, &response{
 			Status:   status,
 			Response: resp,
+			Packet:   packet,
 		})
 	}
 
@@ -160,7 +178,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 		}
 
 		// todo: ... and it's otherwise a valid response?
-		if (r.Error == nil && best.Error != nil) || (r.Status.RTT.AsDuration() < best.Status.RTT.AsDuration()) {
+		if (r.Error == nil && best.Error != nil) || (r.Status.Rtt.AsDuration() < best.Status.Rtt.AsDuration()) {
 			best = r
 		}
 	}
@@ -179,15 +197,30 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 	return best.Status, best.Response, nil
 }
 
-func ntpResponseToStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {
+func ntpResponseToPbStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {
 	//log.Printf("Leap: %d", resp.Leap)
 	status := &pb.ServerStatus{
-		TS:         timestamppb.Now(),
+		Ts:         timestamppb.Now(),
 		Offset:     durationpb.New(resp.ClockOffset),
 		Stratum:    int32(resp.Stratum),
 		Leap:       int32(resp.Leap),
-		RTT:        durationpb.New(resp.RTT),
+		Rtt:        durationpb.New(resp.RTT),
 		NoResponse: false,
+	}
+	status.SetIP(ip)
+	return status
+}
+
+func ntpResponseToApiStatus(ip *netip.Addr, resp *ntp.Response) *apiv2.ServerStatus {
+	//log.Printf("Leap: %d", resp.Leap)
+	status := &apiv2.ServerStatus{
+		Ts:         timestamppb.Now(),
+		Offset:     durationpb.New(resp.ClockOffset),
+		Stratum:    int32(resp.Stratum),
+		Leap:       int32(resp.Leap),
+		Rtt:        durationpb.New(resp.RTT),
+		NoResponse: false,
+		// Responses:
 	}
 	status.SetIP(ip)
 	return status

@@ -188,7 +188,14 @@ func (srv *Server) Run() error {
 		),
 	)
 	log.Info("setting up connectrpc", "path", urlpath)
-	mux.Handle(urlpath, handler)
+	mux.Handle(
+		urlpath,
+		srv.certificateMiddleware(
+			WithUserAgent(
+				handler,
+			),
+		),
+	)
 
 	listen := srv.cfg.Listen
 

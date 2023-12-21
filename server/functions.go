@@ -16,7 +16,7 @@ import (
 
 	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
-	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
@@ -125,11 +125,11 @@ func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) 
 		mqttPrefix := fmt.Sprintf("/%s/monitors", srv.cfg.DeploymentEnv)
 
 		if len(jwtToken) > 0 {
-			cfg.MQTT = &pb.MQTTConfig{
-				Host:   []byte("mqtt.ntppool.net"),
+			cfg.MQTT = &config.MQTTConfig{
+				Host:   "mqtt.ntppool.net",
 				Port:   1883,
 				JWT:    []byte(jwtToken),
-				Prefix: []byte(mqttPrefix),
+				Prefix: mqttPrefix,
 			}
 		}
 	} else {
@@ -272,6 +272,7 @@ func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) 
 		BatchID: bidb,
 		Config:  mcfg,
 		Servers: servers,
+		monitor: monitor,
 	}
 
 	if count := len(servers); count > 0 {

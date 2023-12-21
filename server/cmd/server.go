@@ -15,8 +15,8 @@ import (
 	"go.ntppool.org/common/metricsserver"
 
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
@@ -50,17 +50,18 @@ type mqconfig struct {
 	port            int
 }
 
-func (mqcfg *mqconfig) GetMQTTConfig() *pb.MQTTConfig {
+func (mqcfg *mqconfig) GetMQTTConfig() *config.MQTTConfig {
 	jwttoken, err := jwt.GetToken(mqcfg.jwtKey, mqcfg.tlsName, true)
 	if err != nil {
 		logger.Setup().Error("jwt token", "err", err)
 		os.Exit(2)
 	}
 
-	return &pb.MQTTConfig{
-		Host: []byte(mqcfg.host),
-		Port: int32(mqcfg.port),
-		JWT:  []byte(jwttoken),
+	return &config.MQTTConfig{
+		Host:   mqcfg.host,
+		Port:   mqcfg.port,
+		JWT:    []byte(jwttoken),
+		Prefix: "",
 	}
 }
 

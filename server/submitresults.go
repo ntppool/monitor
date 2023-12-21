@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -14,7 +15,7 @@ import (
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api/pb"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/statusscore"
 )
@@ -34,11 +35,11 @@ type SubmitCounters struct {
 
 type SubmitResultsParam struct {
 	Version int32
-	List    []*pb.ServerStatus
-	BatchID []byte
+	List    []*apiv2.ServerStatus
+	BatchId []byte
 }
 
-func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (bool, error) {
+func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bool, error) {
 	span := otrace.SpanFromContext(ctx)
 	now := time.Now()
 	log := logger.FromContext(ctx)
@@ -55,8 +56,16 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 		return false, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	if in.Version < 2 || in.Version > 3 {
+	features := struct {
+		Packets bool
+	}{}
+
+	if in.Version < 2 || in.Version > 4 {
 		return false, twirp.InvalidArgumentError("Version", "Unsupported data version")
+	}
+
+	if in.Version >= 4 {
+		features.Packets = true
 	}
 
 	counters := &SubmitCounters{
@@ -73,12 +82,17 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			counters.Timeout, counters.Sig,
 			counters.BatchOrder,
 		} {
-			srv.m.TestsCompleted.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.MonitorsIpVersion.String(), c.Name).Add(float64(c.Counter))
+			srv.m.TestsCompleted.WithLabelValues(
+				monitor.TlsName.String,
+				monitor.IpVersion.MonitorsIpVersion.String(),
+				c.Name,
+				strconv.Itoa(int(in.Version)),
+			).Add(float64(c.Counter))
 		}
 	}()
 
 	batchID := ulid.ULID{}
-	batchID.UnmarshalText(in.BatchID)
+	batchID.UnmarshalText(in.BatchId)
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 	log = log.With("batchID", batchID.String())
@@ -137,7 +151,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 	return true, nil
 }
 
-func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *pb.ServerStatus, counters *SubmitCounters) error {
+func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
 	ctx, span := tracing.Start(ctx, "processStatus")
 	defer span.End()
 

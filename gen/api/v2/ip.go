@@ -1,30 +1,19 @@
-package pb
+package apiv2
 
 import (
 	"net/netip"
-
-	"go.ntppool.org/common/logger"
 )
 
-func (cfg *Config) GetIP() *netip.Addr {
+func (cfg *GetConfigResponse) GetIP() *netip.Addr {
 	return bytesToIP(cfg.GetIpBytes())
 }
 
-func (cfg *Config) GetNatIP() *netip.Addr {
+func (cfg *GetConfigResponse) GetNatIP() *netip.Addr {
 	return bytesToIP(cfg.GetIpNatBytes())
 }
 
 func (s *Server) IP() *netip.Addr {
 	return bytesToIP(s.IpBytes)
-}
-
-func (ss *ServerStatus) SetIP(ip *netip.Addr) {
-	b, err := ip.MarshalBinary()
-	if err != nil {
-		logger.Setup().Error("Could not set IP in ServerStatus", "ip", ip, "err", err)
-		return
-	}
-	ss.IpBytes = b
 }
 
 func bytesToIP(b []byte) *netip.Addr {

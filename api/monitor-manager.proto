@@ -26,9 +26,9 @@ message GetServersParams {}
 // Config is the server set configuration for the monitoring agent
 message Config {
   int32  samples = 1;
-  bytes  ipbytes = 2;
-  bytes  ipnatbytes = 3;
-  repeated bytes basechecks = 4;
+  bytes  ip_bytes = 2;
+  bytes  ip_nat_bytes = 3;
+  repeated bytes base_checks = 4;
   MQTTConfig mqtt_config = 5;
 }
 
@@ -40,7 +40,7 @@ message MQTTConfig {
 }
 
 message Server {
-  bytes  ipbytes = 1;
+  bytes  ip_bytes = 1;
   bytes  ticket = 2;
   bool   trace = 3;
 }
@@ -48,13 +48,13 @@ message Server {
 message ServerList {
   Config config  = 1;
   repeated Server servers = 2;
-  bytes batchid = 3;  // todo future api: move this first
+  bytes batch_id = 3;  // todo future api: move this first
 }
 
 message ServerStatusList {
   int32 version = 1;
   repeated ServerStatus List = 2;
-  bytes batchid = 3;
+  bytes batch_id = 3;
 }
 
 message ServerStatusResult {
@@ -63,7 +63,7 @@ message ServerStatusResult {
 
 message ServerStatus {
   bytes  ticket = 1;
-  bytes  ipbytes = 2;
+  bytes  ip_bytes = 2;
   google.protobuf.Timestamp  ts = 3;
   google.protobuf.Duration   offset = 4;
   google.protobuf.Duration   rtt = 5;

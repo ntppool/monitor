@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/spf13/cobra"
@@ -14,9 +15,9 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/config"
+	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -93,7 +94,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.ErrorContext(ctx, "could not setup API client", "err", err)
 	}
 
-	cfg, err := apiC.GetConfig(ctx, &pb.GetConfigParams{})
+	cfgresp, err := apiC.GetConfig(ctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
 			if twerr.Code() == twirp.PermissionDenied {
@@ -109,17 +110,25 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		os.Exit(2)
 	}
 
+	if cfgresp.Msg == nil {
+		log.ErrorContext(ctx, "did not receive configuration", "resp", cfgresp)
+		return nil
+	}
+
+	cfg := cfgresp.Msg
+
+	conf := config.NewConfigger(nil)
+
 	if cfg == nil {
 		log.WarnContext(ctx, "didn't get configuration from the API")
 	} else {
+		conf.SetConfigFromApi(cfg)
 		if cfg.Samples > 0 {
 			log.InfoContext(ctx, "got valid config; API access validated")
 		} else {
 			log.InfoContext(ctx, "configuration didn't have samples configured")
 		}
 	}
-
-	conf := config.NewConfigger(cfg)
 
 	var mq *autopaho.ConnectionManager
 

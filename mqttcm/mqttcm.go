@@ -158,7 +158,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	mqttcfg.SetConnectPacketConfigurator(func(pc *paho.Connect) *paho.Connect {
 		cfg := conf.GetMQTTConfig()
 		if cfg != nil {
-			log.Debug("Using JWT to authenticate", "jwt", cfg.JWT)
+			log.Debug("Using JWT to authenticate")
 			pc.Password = cfg.JWT
 		}
 		return pc

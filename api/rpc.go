@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twitchtv/twirp"
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
-	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/server/twirptrace"
+	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
 )
 
 func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
@@ -35,7 +35,7 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 	transport := &http.Transport{
 		TLSClientConfig:       tlsConfig,
 		MaxIdleConns:          10,
-		IdleConnTimeout:       90 * time.Second,
+		IdleConnTimeout:       120 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 40 * time.Second,
 	}
@@ -86,9 +86,26 @@ func getServerName(clientName string) (string, error) {
 	return apiServers[depEnv], nil
 }
 
-func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, pb.Monitor, error) {
+func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
+	interceptor := func(next connect.UnaryFunc) connect.UnaryFunc {
+		return connect.UnaryFunc(func(
+			ctx context.Context,
+			req connect.AnyRequest,
+		) (connect.AnyResponse, error) {
+			if req.Spec().IsClient {
+				req.Header().Set("User-Agent", "ntppool-monitor/"+version.Version())
+			}
+			return next(ctx, req)
+		})
+	}
+	return connect.UnaryInterceptorFunc(interceptor)
+}
+
+func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, apiv2connect.MonitorServiceClient, error) {
 
 	log := logger.FromContext(ctx)
+
+	log.Debug("setting up api client")
 
 	serverName, err := getServerName(clientName)
 	if err != nil {
@@ -100,19 +117,14 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 		return ctx, nil, err
 	}
 
-	client := pb.NewMonitorProtobufClient(
+	client := apiv2connect.NewMonitorServiceClient(
+		httpClient,
 		serverName,
-		twirptrace.NewTraceHTTPClient(httpClient),
-		twirp.WithClientPathPrefix("/api/v1"),
+		connect.WithInterceptors(
+			otelconnect.NewInterceptor(),
+		),
+		connect.WithInterceptors(NewHeaderInterceptor()),
 	)
-
-	hdr := make(http.Header)
-	hdr.Set("User-Agent", "ntppool-monitor/"+version.Version())
-	ctx, err = twirp.WithHTTPRequestHeaders(ctx, hdr)
-	if err != nil {
-		log.Error("twirp error setting headers", "err", err)
-		return ctx, nil, err
-	}
 
 	return ctx, client, nil
 }
