@@ -2,6 +2,8 @@ package ntpdb
 
 import "time"
 
+// maintained in monitor/ntpdb
+
 type LogScoreAttributes struct {
 	Leap       int8   `json:"leap,omitempty"`
 	Stratum    int8   `json:"stratum,omitempty"`
