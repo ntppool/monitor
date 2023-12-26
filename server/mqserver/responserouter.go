@@ -2,12 +2,14 @@ package mqserver
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 
 	"github.com/eclipse/paho.golang/paho"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -68,6 +70,8 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 
 		topic := p.Topic
 
+		span.SetAttributes(attribute.String("mqtt.topic", topic))
+
 		if len(topic) < prefixLength {
 			log.Warn("message topic too short", "topic", topic, "len", len(topic))
 			return
@@ -90,6 +94,7 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			ch <- p
 		} else {
 			log.Warn("no response channel for", "id", topicPath[1])
+			span.RecordError(fmt.Errorf("no response channel"))
 		}
 
 	}
