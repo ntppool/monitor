@@ -34,8 +34,8 @@ import (
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
-	apiv2 "go.ntppool.org/monitor/gen/api/v2"
-	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
+	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
+	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 
 	"go.ntppool.org/monitor/mqttcm"
 )

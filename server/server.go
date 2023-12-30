@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
+	"github.com/gorilla/handlers"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
@@ -23,7 +24,7 @@ import (
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
+	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
@@ -190,9 +191,11 @@ func (srv *Server) Run() error {
 	log.Info("setting up connectrpc", "path", urlpath)
 	mux.Handle(
 		urlpath,
-		srv.certificateMiddleware(
-			WithUserAgent(
-				handler,
+		handlers.CombinedLoggingHandler(os.Stdout,
+			srv.certificateMiddleware(
+				WithUserAgent(
+					handler,
+				),
 			),
 		),
 	)

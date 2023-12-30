@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.ntppool.org/common/logger"
-	apiv2 "go.ntppool.org/monitor/gen/api/v2"
+	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 )

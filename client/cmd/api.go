@@ -17,7 +17,7 @@ import (
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/client/auth"
 	"go.ntppool.org/monitor/client/config"
-	apiv2 "go.ntppool.org/monitor/gen/api/v2"
+	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	"go.ntppool.org/monitor/mqttcm"
 )
 

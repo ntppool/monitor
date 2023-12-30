@@ -1,9 +1,20 @@
+build: generate test server client
+
 generate: sqlc
 	go generate ./...
 
 sqlc:
 	sqlc compile
 	sqlc generate
+
+test:
+	go test -v ./...
+
+server:
+	go build ./server/cmd/monitor-api
+
+client:
+	go build ./client/cmd/ntppool-monitor
 
 tools:
 	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest

@@ -9,15 +9,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/beevik/ntp"
-	"go.ntppool.org/common/logger"
-	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/client/config"
-	apiv2 "go.ntppool.org/monitor/gen/api/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
+	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
+	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
 
 type response struct {

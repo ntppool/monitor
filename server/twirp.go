@@ -5,7 +5,7 @@ import (
 	"net/netip"
 
 	"go.ntppool.org/monitor/api/pb"
-	apiv2 "go.ntppool.org/monitor/gen/api/v2"
+	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
 
 type TwServer struct {

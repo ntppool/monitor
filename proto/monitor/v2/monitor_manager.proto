@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package api.v2;
+package monitor.v2;
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
@@ -38,15 +38,16 @@ message MQTTConfig {
 }
 
 message Server {
-  bytes  ip_bytes = 1;
+  bytes  test_id = 1;
   bytes  ticket = 2;
-  bool   trace = 3;
+  bytes  ip_bytes = 3;
+  bool   trace = 4;
 }
 
 message GetServersResponse {
-  GetConfigResponse config  = 1;
-  repeated Server servers = 2;
-  bytes batch_id = 3;  // todo future api: move this first
+  bytes batch_id = 1;
+  GetConfigResponse config  = 2;
+  repeated Server servers = 3;
 }
 
 message SubmitResultsRequest {
@@ -59,16 +60,38 @@ message SubmitResultsResponse {
   bool ok = 1;
 }
 
-message ServerStatus {
-  bytes  ticket = 1;
-  bytes  ip_bytes = 2;
-  google.protobuf.Timestamp  ts = 3;
-  google.protobuf.Duration   offset = 4;
-  google.protobuf.Duration   rtt = 5;
-  int32  stratum = 6;
-  sint32 leap = 7;
-  string error = 8;
-  bool   no_response = 9;
-  repeated bytes responses = 10;
-  sint32 selected_response = 11;
+message NTPPacket {
+  bytes source_ip_bytes = 1;
+  bytes destination_ip_bytes = 2;
+  google.protobuf.Timestamp  t1 = 3;
+  google.protobuf.Timestamp  t4 = 4;
+  bytes data = 5;
 }
+
+message ServerStatus {
+  bytes  test_id = 1;
+  bytes  ticket = 2;
+  bytes  ip_bytes = 3;
+
+  string error = 4;
+  bool   no_response = 5;
+
+  google.protobuf.Timestamp  ts = 6;
+  google.protobuf.Duration   offset = 7;
+  google.protobuf.Duration   rtt = 8;
+
+  int32  stratum = 9;
+  sint32 leap = 10;
+  repeated NTPPacket responses = 11;
+  sint32 selected_response = 12;
+}
+
+// store in results
+//  client t1/t4
+//   t2/t3
+//  leap
+//  precision field
+//  reference id
+//  root delay
+//  root dispersion
+//  stratum

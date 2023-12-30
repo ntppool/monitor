@@ -1,4 +1,4 @@
-package apiv2
+package monitorv2
 
 import (
 	"net/netip"

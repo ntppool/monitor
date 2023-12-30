@@ -15,7 +15,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/gen/api/v2/apiv2connect"
+	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 )
 
 func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
