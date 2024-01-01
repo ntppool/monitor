@@ -148,7 +148,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAtt
 		if len(packets) > 1 {
 			log.WarnContext(ctx, "got more than one packet for a response")
 		}
-		var packet []byte
+		var packet *apiv2.NTPPacket
 		if len(packets) > 0 {
 			packet = packets[0]
 		}

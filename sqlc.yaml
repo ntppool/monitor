@@ -16,6 +16,9 @@ sql:
             go_type: "github.com/lomsa-dev/gonull.Nullable[uint64]"
             unsigned: true
             nullable: true
-
           # - column: "x.avg_rtt"
           #   go_type: "database/sql.NullFloat64"
+    database:
+      managed: true
+cloud:
+    project: '01HJWJRG05B9ZFV0DX4BCJ1FEJ'

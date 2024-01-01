@@ -180,13 +180,15 @@ func (srv *Server) Run() error {
 
 	conSrv := NewConnectServer(srv)
 
+	otelinter, err := otelconnect.NewInterceptor(
+		otelconnect.WithTrustRemote(),
+	)
+	if err != nil {
+		log.ErrorContext(ctx, "could not setup otelconnect interceptor", "err", err)
+	}
 	urlpath, handler := apiv2connect.NewMonitorServiceHandler(
 		conSrv,
-		connect.WithInterceptors(
-			otelconnect.NewInterceptor(
-				otelconnect.WithTrustRemote(),
-			),
-		),
+		connect.WithInterceptors(otelinter),
 	)
 	log.Info("setting up connectrpc", "path", urlpath)
 	mux.Handle(

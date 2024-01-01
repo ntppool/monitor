@@ -117,12 +117,15 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 		return ctx, nil, err
 	}
 
+	otelinter, err := otelconnect.NewInterceptor()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	client := apiv2connect.NewMonitorServiceClient(
 		httpClient,
 		serverName,
-		connect.WithInterceptors(
-			otelconnect.NewInterceptor(),
-		),
+		connect.WithInterceptors(otelinter),
 		connect.WithInterceptors(NewHeaderInterceptor()),
 	)
 
