@@ -1,6 +1,7 @@
 [Unit]
 Description=NTP Pool Monitor (%i)
-After=ntp.service
+After=chronyd.service
+Wants=network-online.target
 
 [Service]
 Type=simple
