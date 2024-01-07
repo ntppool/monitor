@@ -24,7 +24,7 @@ import (
 type response struct {
 	Response *ntp.Response
 	Status   *apiv2.ServerStatus
-	Packet   []byte
+	Packet   *apiv2.NTPPacket
 	Error    error
 }
 
@@ -47,18 +47,13 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAtt
 
 	span.SetAttributes(attribute.Int("samples", int(cfg.Samples)))
 
-	ntpCaptureBuffer := &CaptureBuffer{}
-
-	opts := ntp.QueryOptions{
-		Timeout:    3 * time.Second,
-		Extensions: []ntp.Extension{ntpCaptureBuffer},
-	}
+	var localAddress string
 
 	configIP := cfg.IP
 	if configIP != nil && configIP.IsValid() {
-		opts.LocalAddress = configIP.String()
+		localAddress = configIP.String()
 		if natIP := cfg.IPNat; natIP != nil && natIP.IsValid() {
-			opts.LocalAddress = natIP.String()
+			localAddress = natIP.String()
 		}
 	} else {
 		log.Error("Did not get valid local configuration IP", "configIP", configIP)
@@ -82,7 +77,14 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAtt
 		return nil, nil, err
 	}
 
+	ntpCaptureBuffer := NewCaptureBuffer(ip, configIP)
 	responses := []*response{}
+
+	opts := ntp.QueryOptions{
+		Timeout:      3 * time.Second,
+		Extensions:   []ntp.Extension{ntpCaptureBuffer},
+		LocalAddress: localAddress,
+	}
 
 	for i := int32(0); i < cfg.Samples; i++ {
 
