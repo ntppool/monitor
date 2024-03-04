@@ -5,8 +5,8 @@ go 1.21.6
 toolchain go1.22.0
 
 require (
-	connectrpc.com/connect v1.14.0
-	connectrpc.com/otelconnect v0.6.1-0.20231227182756-eb9596a6386d
+	connectrpc.com/connect v1.15.0
+	connectrpc.com/otelconnect v0.7.0
 	github.com/abh/certman v0.4.0
 	github.com/beevik/ntp v1.3.1
 	github.com/cenkalti/backoff v2.2.1+incompatible
