@@ -21,6 +21,7 @@ import (
 )
 
 func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf config.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
+	log := logger.Setup()
 
 	cfg := conf.GetMQTTConfig()
 
@@ -46,7 +47,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		clientID = clientID[:idx]
 	}
 
-	log := logger.Setup()
+	log.InfoContext(ctx, "mqtt", "clientID", clientID)
 
 	publishOnlineMessage := func(cm *autopaho.ConnectionManager) {
 		msg, err := StatusMessageJSON(true)
@@ -72,6 +73,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	mqttcfg := autopaho.ClientConfig{
 		BrokerUrls: []*url.URL{broker},
 		TlsCfg:     tlsConfig,
+		KeepAlive:  120,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
 
 			log.Info("mqtt connection up")
