@@ -409,16 +409,10 @@ func run(ctx context.Context, api pb.Monitor, cfgStore SetConfig) (bool, error) 
 			status.Ticket = ticket
 			if err != nil {
 				log.Info("ntp error", "server", s, "err", err)
-				status.Error = err.Error()
-				if strings.HasPrefix(status.Error, "read udp") {
-					idx := strings.LastIndex(status.Error, ":")
-					// ": " == two characters
-					if len(status.Error) > idx+2 {
-						idx = idx + 2
-					}
-					status.Error = status.Error[idx:]
+				if strings.HasPrefix(err.Error(), "network:") {
 					status.NoResponse = true
 				}
+				status.Error = err.Error()
 			}
 			status.TS = timestamppb.Now()
 

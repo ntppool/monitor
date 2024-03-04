@@ -92,7 +92,6 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		KeepAlive:                     120,
 
 		ConnectPacketBuilder: func(pc *paho.Connect, u *url.URL) *paho.Connect {
-			log.InfoContext(ctx, "connect builder", "url", u)
 			cfg := conf.GetMQTTConfig()
 			if cfg != nil {
 				log.DebugContext(ctx, "Using JWT to authenticate", "jwt", cfg.JWT)

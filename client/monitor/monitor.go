@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"net"
 	"net/netip"
 	"time"
 	"unicode/utf8"
@@ -99,10 +100,15 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 				r.Response = resp
 				r.Status = ntpResponseToStatus(ip, resp)
 			}
-			r.Error = err
+
+			if netErr, ok := err.(*net.OpError); ok {
+				// drop the protocol and addresses
+				r.Error = fmt.Errorf("network: %w", netErr.Err)
+			}
+
 			responses = append(responses, r)
 
-			span.RecordError(err)
+			// span.RecordError(err) // errors are expected, so don't consider them such
 			log.DebugContext(ctx, "ntp query error", "host", ip.String(), "iteration", i, "error", err)
 
 			continue
