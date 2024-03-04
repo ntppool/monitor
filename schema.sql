@@ -1,4 +1,4 @@
--- MariaDB dump 10.19  Distrib 10.6.12-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.19  Distrib 10.11.6-MariaDB, for Linux (x86_64)
 --
 -- Host: ntp-db-mysql-master.ntpdb.svc.cluster.local    Database: askntp
 -- ------------------------------------------------------
@@ -231,24 +231,6 @@ CREATE TABLE `log_scores_archive_status` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `log_status`
---
-
-DROP TABLE IF EXISTS `log_status`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `log_status` (
-  `server_id` int(10) unsigned NOT NULL,
-  `last_check` datetime NOT NULL,
-  `ts_archived` datetime NOT NULL,
-  PRIMARY KEY (`server_id`),
-  KEY `log_scores_server_ts_idx` (`server_id`,`last_check`),
-  KEY `last_check_idx` (`last_check`),
-  CONSTRAINT `log_status_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `logs`
 --
 
@@ -450,27 +432,6 @@ CREATE TABLE `server_urls` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `server_verification_history`
---
-
-DROP TABLE IF EXISTS `server_verification_history`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `server_verification_history` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `server_id` int(10) unsigned NOT NULL,
-  `user_id` int(10) unsigned DEFAULT NULL,
-  `user_ip` varchar(45) NOT NULL DEFAULT '',
-  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
-  `verified_on` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `server_verifications_ibfk_2` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `server_verifications`
 --
 
@@ -493,6 +454,30 @@ CREATE TABLE `server_verifications` (
   KEY `server_verifications_ibfk_2` (`user_id`),
   CONSTRAINT `server_verifications_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
   CONSTRAINT `server_verifications_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `server_verifications_history`
+--
+
+DROP TABLE IF EXISTS `server_verifications_history`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `server_verifications_history` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `server_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned DEFAULT NULL,
+  `user_ip` varchar(45) NOT NULL DEFAULT '',
+  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
+  `verified_on` datetime DEFAULT NULL,
+  `created_on` datetime NOT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `server_verifications_history_ibfk_1` (`server_id`),
+  KEY `server_verifications_history_ibfk_2` (`user_id`),
+  CONSTRAINT `server_verifications_history_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `server_verifications_history_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -524,14 +509,14 @@ CREATE TABLE `servers` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `ip` varchar(40) NOT NULL,
   `ip_version` enum('v4','v6') NOT NULL DEFAULT 'v4',
-  `user_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned DEFAULT NULL,
   `account_id` int(10) unsigned DEFAULT NULL,
   `hostname` varchar(255) DEFAULT NULL,
   `stratum` tinyint(3) unsigned DEFAULT NULL,
   `in_pool` tinyint(3) unsigned NOT NULL DEFAULT '0',
   `in_server_list` tinyint(3) unsigned NOT NULL DEFAULT '0',
-  `netspeed` mediumint(8) unsigned NOT NULL DEFAULT '10000',
-  `netspeed_target` mediumint(8) unsigned NOT NULL DEFAULT '10000',
+  `netspeed` int(10) unsigned NOT NULL DEFAULT '10000',
+  `netspeed_target` int(10) unsigned NOT NULL DEFAULT '10000',
   `created_on` datetime NOT NULL,
   `updated_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `score_ts` datetime DEFAULT NULL,
@@ -619,6 +604,8 @@ CREATE TABLE `user_identities` (
   `provider` varchar(255) NOT NULL,
   `data` text,
   `email` varchar(255) DEFAULT NULL,
+  `created_on` datetime NOT NULL DEFAULT '2003-01-27 00:00:00',
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `profile_id` (`profile_id`),
   KEY `user_identities_user_id` (`user_id`),
@@ -645,6 +632,28 @@ CREATE TABLE `user_privileges` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `user_tasks`
+--
+
+DROP TABLE IF EXISTS `user_tasks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `user_tasks` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned DEFAULT NULL,
+  `task` enum('download','delete') NOT NULL,
+  `status` text NOT NULL,
+  `traceid` varchar(32) NOT NULL DEFAULT '',
+  `execute_on` datetime DEFAULT NULL,
+  `created_on` datetime NOT NULL,
+  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `user_tasks_user_fk` (`user_id`),
+  CONSTRAINT `user_tasks_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
@@ -657,6 +666,7 @@ CREATE TABLE `users` (
   `name` varchar(255) DEFAULT NULL,
   `username` varchar(40) DEFAULT NULL,
   `public_profile` tinyint(1) NOT NULL DEFAULT '0',
+  `deletion_on` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `username` (`username`)
@@ -769,4 +779,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-11-13  4:19:54
+-- Dump completed on 2024-03-04  2:09:08
