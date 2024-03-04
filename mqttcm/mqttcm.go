@@ -70,10 +70,39 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		}
 	}
 
+	offlineMessage, err := StatusMessageJSON(false)
+	if err != nil {
+		return nil, fmt.Errorf("status message: %w", err)
+	}
+
+	// log.Info("status for will message", "topic", statusChannel, "msg", offlineMessage)
+
+	willMessage := &paho.WillMessage{
+		// QoS:     1,
+		Retain:  true,
+		Topic:   statusChannel,
+		Payload: offlineMessage,
+	}
+
 	mqttcfg := autopaho.ClientConfig{
-		BrokerUrls: []*url.URL{broker},
-		TlsCfg:     tlsConfig,
-		KeepAlive:  120,
+		ServerUrls:                    []*url.URL{broker},
+		CleanStartOnInitialConnection: true,
+		SessionExpiryInterval:         60,
+		TlsCfg:                        tlsConfig,
+		KeepAlive:                     120,
+
+		ConnectPacketBuilder: func(pc *paho.Connect, u *url.URL) *paho.Connect {
+			log.InfoContext(ctx, "connect builder", "url", u)
+			cfg := conf.GetMQTTConfig()
+			if cfg != nil {
+				log.DebugContext(ctx, "Using JWT to authenticate", "jwt", cfg.JWT)
+				pc.Password = cfg.JWT
+			}
+			return pc
+		},
+		ConnectUsername: name,
+		ConnectPassword: cfg.JWT,
+
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
 
 			log.Info("mqtt connection up")
@@ -124,11 +153,12 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		},
 		OnConnectError: func(err error) {
 			log.Error("mqtt connect", "err", err)
+			// cancel()
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: clientID,
 			OnClientError: func(err error) {
-				log.Error("mqtt server requested disconnect (client error)", "err", err)
+				log.Error("mqtt client error", "err", err)
 			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
@@ -149,35 +179,34 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		})
 	}
 
-	// todo: this makes verbose debugging on the server, disable it
-	// completely or make it an option
-	if len(subscribe) > 0 {
-		stdlog := logger.NewStdLog("mqtt debug", true, logger.FromContext(ctx))
-		mqttcfg.Debug = stdlog
-		//  mqttcfg.PahoDebug = log.Default()
-	}
-
-	mqttcfg.SetConnectPacketConfigurator(func(pc *paho.Connect) *paho.Connect {
-		cfg := conf.GetMQTTConfig()
-		if cfg != nil {
-			log.Debug("Using JWT to authenticate", "jwt", cfg.JWT)
-			pc.Password = cfg.JWT
+	if len(statusChannel) < 0 {
+		mqttcfg.WillMessage = willMessage
+		mqttcfg.WillProperties = &paho.WillProperties{
+			WillDelayInterval: paho.Uint32(30),
+			MessageExpiry:     paho.Uint32(86400),
 		}
-		return pc
-	})
-
-	mqttcfg.SetUsernamePassword(name, conf.GetMQTTConfig().JWT)
-
-	offlineMessage, err := StatusMessageJSON(false)
-	if err != nil {
-		return nil, fmt.Errorf("status message: %w", err)
 	}
-	mqttcfg.SetWillMessage(statusChannel, offlineMessage, 1, true)
 
-	// log.Printf("mqtt user name: %s", name)
-	// log.Printf("mqtt credentials: %q", string(cfg.JWT))
+	// todo: make this an option
+	if true {
+		// stdlog := logger.NewStdLog("mqtt debug", true, logger.FromContext(ctx))
+		// mqttcfg.Debug = stdlog
+		// mqttcfg.PahoDebug = stdlog
+
+		errlog := logger.NewStdLog("mqtt error", true, logger.FromContext(ctx))
+		mqttcfg.Errors = errlog
+		mqttcfg.PahoErrors = errlog
+	}
 
 	cm, err := autopaho.NewConnection(ctx, mqttcfg)
+	if err != nil {
+		return cm, err
+	}
+
+	// if err = cm.AwaitConnection(ctx); err != nil {
+	// 	log.ErrorContext(ctx, "mqtt awaitconnection", "err", err)
+	// 	return cm, err
+	// }
 
 	go func() {
 		for {

@@ -1,8 +1,8 @@
 module go.ntppool.org/monitor
 
-go 1.21.6
+go 1.22.0
 
-toolchain go1.22.0
+// replace github.com/eclipse/paho.golang => /Users/ask/src/paho.golang/
 
 require (
 	github.com/abh/certman v0.4.0
@@ -12,7 +12,7 @@ require (
 	github.com/cristalhq/aconfig v0.18.5
 	github.com/cristalhq/aconfig/aconfigdotenv v0.17.1
 	github.com/cristalhq/aconfig/aconfigyaml v0.17.1
-	github.com/eclipse/paho.golang v0.12.0
+	github.com/eclipse/paho.golang v0.21.0
 	github.com/evanphx/json-patch v0.5.2
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -67,7 +67,6 @@ require (
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
