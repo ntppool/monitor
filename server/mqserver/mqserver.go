@@ -623,6 +623,10 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 			WithTraceID: true,
 			// WithSpanID:  true,
 			// WithRequestHeader: true,
+
+			Filters: []slogecho.Filter{
+				slogecho.IgnorePath("/monitor/metrics"),
+			},
 		},
 	))
 	r.Use(
