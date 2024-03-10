@@ -75,7 +75,7 @@ func GetToken(ctx context.Context, key, subject string, admin bool) (string, err
 		)
 	}
 
-	log.DebugContext(ctx, "jwt setup", "subscribe", subscribe, "publish", publish)
+	// log.DebugContext(ctx, "jwt setup", "subscribe", subscribe, "publish", publish)
 
 	claims := MosquittoClaims{
 		subscribe,
@@ -91,7 +91,7 @@ func GetToken(ctx context.Context, key, subject string, admin bool) (string, err
 		},
 	}
 
-	log.Debug("jwt claims", "claims", claims)
+	log.DebugContext(ctx, "jwt claims", "claims", claims)
 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
 	ss, err := token.SignedString(mySigningKey)

@@ -13,10 +13,10 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
-	"github.com/gorilla/handlers"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -186,18 +186,22 @@ func (srv *Server) Run() error {
 	if err != nil {
 		log.ErrorContext(ctx, "could not setup otelconnect interceptor", "err", err)
 	}
-	urlpath, handler := apiv2connect.NewMonitorServiceHandler(
+	urlpath, apiHandler := apiv2connect.NewMonitorServiceHandler(
 		conSrv,
 		connect.WithInterceptors(otelinter),
 	)
+
 	log.Info("setting up connectrpc", "path", urlpath)
 	mux.Handle(
 		urlpath,
-		handlers.CombinedLoggingHandler(os.Stdout,
-			srv.certificateMiddleware(
-				WithUserAgent(
-					handler,
+		otelhttp.NewMiddleware("monitor-api")(
+			WithLogger(
+				srv.certificateMiddleware(
+					WithUserAgent(
+						apiHandler,
+					),
 				),
+				log,
 			),
 		),
 	)
