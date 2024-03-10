@@ -181,7 +181,7 @@ func (srv *Server) Run() error {
 	conSrv := NewConnectServer(srv)
 
 	otelinter, err := otelconnect.NewInterceptor(
-		otelconnect.WithTrustRemote(),
+		otelconnect.WithTrustRemote(), // trust trace ids from the monitors
 	)
 	if err != nil {
 		log.ErrorContext(ctx, "could not setup otelconnect interceptor", "err", err)

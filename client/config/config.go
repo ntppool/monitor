@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"net/netip"
 	"sync"
 	"time"
@@ -10,7 +11,7 @@ import (
 )
 
 type MQConfigger interface {
-	GetMQTTConfig() *MQTTConfig
+	GetMQTTConfig(ctx context.Context) *MQTTConfig
 }
 
 type MQTTConfig struct {
@@ -49,7 +50,7 @@ func (c *Configger) GetConfig() *Config {
 	return c.cfg
 }
 
-func (c *Configger) GetMQTTConfig() *MQTTConfig {
+func (c *Configger) GetMQTTConfig(ctx context.Context) *MQTTConfig {
 	cfg := c.GetConfig()
 	if cfg == nil {
 		return nil

@@ -23,7 +23,7 @@ import (
 func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf config.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
 	log := logger.Setup()
 
-	cfg := conf.GetMQTTConfig()
+	cfg := conf.GetMQTTConfig(ctx)
 
 	capool, err := apitls.CAPool()
 	if err != nil {
@@ -95,9 +95,9 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		KeepAlive:                     120,
 
 		ConnectPacketBuilder: func(pc *paho.Connect, u *url.URL) *paho.Connect {
-			cfg := conf.GetMQTTConfig()
+			cfg := conf.GetMQTTConfig(ctx)
 			if cfg != nil {
-				log.DebugContext(ctx, "Using JWT to authenticate", "jwt", cfg.JWT)
+				// log.DebugContext(ctx, "Using JWT to authenticate", "jwt", cfg.JWT)
 				pc.Password = cfg.JWT
 			}
 			return pc

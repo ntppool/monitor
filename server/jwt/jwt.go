@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -18,7 +19,7 @@ type MosquittoClaims struct {
 	gjwt.RegisteredClaims
 }
 
-func GetToken(key, subject string, admin bool) (string, error) {
+func GetToken(ctx context.Context, key, subject string, admin bool) (string, error) {
 
 	log := logger.Setup()
 
@@ -74,8 +75,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		)
 	}
 
-	log.Debug("jwt setup", "subscribe", subscribe)
-	log.Debug("jwt setup", "publish", publish)
+	log.DebugContext(ctx, "jwt setup", "subscribe", subscribe, "publish", publish)
 
 	claims := MosquittoClaims{
 		subscribe,
