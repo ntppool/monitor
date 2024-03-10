@@ -178,7 +178,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		})
 	}
 
-	if len(statusChannel) < 0 {
+	if len(statusChannel) > 0 {
 		mqttcfg.WillMessage = willMessage
 		mqttcfg.WillProperties = &paho.WillProperties{
 			WillDelayInterval: paho.Uint32(30),
