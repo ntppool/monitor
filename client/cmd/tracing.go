@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"go.ntppool.org/common/logger"
@@ -23,13 +24,19 @@ func InitTracing(name string, cauth *auth.ClientAuth) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get deployment environment: %w", err)
 	}
+
+	endpoint := "otelcol.ntppool.net:443"
+	if ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(ep) > 0 {
+		endpoint = ep
+	}
+
 	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
 			ServiceName:         "monitor",
 			Environment:         deployEnv.String(),
 			RootCAs:             capool,
 			CertificateProvider: cauth.GetClientCertificate,
-			Endpoint:            "otelcol.ntppool.net:443",
+			EndpointURL:         endpoint,
 		},
 	)
 	if err != nil {
