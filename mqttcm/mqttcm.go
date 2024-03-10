@@ -50,6 +50,9 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	log.InfoContext(ctx, "mqtt", "clientID", clientID)
 
 	publishOnlineMessage := func(cm *autopaho.ConnectionManager) {
+		if len(statusChannel) == 0 {
+			return
+		}
 		msg, err := StatusMessageJSON(true)
 		if err != nil {
 			log.Warn("mqtt status error", "err", err)
@@ -134,9 +137,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				log.Debug("mqtt subscription setup")
 			}
 
-			if len(statusChannel) > 0 {
-				publishOnlineMessage(cm)
-			}
+			publishOnlineMessage(cm)
 
 			// old, clear retained message
 			// oldChannel := fmt.Sprintf("%s/status/%s/online", cfg.MQTTConfig.Prefix, cauth.Name)
