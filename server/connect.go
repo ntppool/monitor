@@ -13,7 +13,7 @@ import (
 
 type conServer struct {
 	srv *Server
-	ctx context.Context
+	// ctx context.Context
 	// cfg         *Config
 	// tokens      *vtm.TokenManager
 	// m           *metrics.Metrics

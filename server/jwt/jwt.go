@@ -38,6 +38,7 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		depEnv = api.DeployDevel
 	case "mqtt-admin.mon.ntppool.dev":
 		// for admin cli tool
+		depEnv = api.DeployDevel
 
 	default:
 		depEnv, err = api.GetDeploymentEnvironmentFromName(subject)
@@ -53,6 +54,8 @@ func GetToken(key, subject string, admin bool) (string, error) {
 		// subscribe = append(subscribe, "#", "/#", "devel/#")
 		// publish = append(publish, "#", "/#")
 		subscribe = append(subscribe, "/"+depEnv.String()+"/#")
+		// subscribe = append(subscribe, "#")
+
 		publish = append(publish, "/"+depEnv.String()+"/#")
 	} else {
 		subscribe = append(subscribe,

@@ -10,7 +10,7 @@ import (
 
 type TwServer struct {
 	srv *Server
-	ctx context.Context
+	// ctx context.Context
 	// cfg         *Config
 	// tokens      *vtm.TokenManager
 	// m           *metrics.Metrics
@@ -34,6 +34,9 @@ func (s *TwServer) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 
 func (s *TwServer) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
 	serverList, err := s.srv.GetServers(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	pServers := []*pb.Server{}
 	for _, server := range serverList.Servers {

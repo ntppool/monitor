@@ -128,32 +128,38 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 
 	bidb, _ := batchID.MarshalText()
 
-	for i, status := range in.List {
+	// closure to have a function for the tracing span
+	rv, err := func() (bool, error) {
+		ctx, span := tracing.Start(ctx, "processStatus")
+		defer span.End()
 
-		if in.Version > 2 {
-			ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
-			if err != nil || !ticketOk {
-				span.AddEvent("signature validation failed")
-				log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
-				counters.Sig.Counter += len(in.List) - i
-				return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
+		for i, status := range in.List {
+
+			if in.Version > 2 {
+				ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
+				if err != nil || !ticketOk {
+					span.AddEvent("signature validation failed")
+					log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
+					counters.Sig.Counter += len(in.List) - i
+					return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
+				}
+			}
+
+			err = srv.processStatus(ctx, monitor, status, counters)
+			if err != nil {
+				span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
+				log.Error("error processing status", "status", status, "err", err)
+				return false, twirp.InternalErrorWith(err)
 			}
 		}
 
-		err = srv.processStatus(ctx, monitor, status, counters)
-		if err != nil {
-			span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
-			log.Error("error processing status", "status", status, "err", err)
-			return false, twirp.InternalErrorWith(err)
-		}
-	}
+		return true, nil
+	}()
 
-	return true, nil
+	return rv, err
 }
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
-	ctx, span := tracing.Start(ctx, "processStatus")
-	defer span.End()
 
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
 	if err != nil {
