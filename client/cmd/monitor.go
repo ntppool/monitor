@@ -112,11 +112,11 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				url = "the management site"
 			}
 
-			log.Error("authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
+			log.ErrorContext(ctx, "authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
 			os.Exit(2)
 		}
 
-		log.Error("could not authenticate", "err", err)
+		log.ErrorContext(ctx, "could not authenticate", "err", err)
 		os.Exit(2)
 	}
 
@@ -130,7 +130,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 	// block until we have a valid certificate
 	err = cauth.WaitUntilReady()
 	if err != nil {
-		log.Error("failed waiting for authentication to be ready", "err", err)
+		log.ErrorContext(ctx, "failed waiting for authentication to be ready", "err", err)
 		os.Exit(2)
 	}
 
@@ -167,7 +167,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 			wait := fetchInterval
 
 			if firstRun {
-				log.Info("getting client configuration", "errors", errors)
+				log.InfoContext(ctx, "getting client configuration", "errors", errors)
 			}
 
 			cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
@@ -177,10 +177,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 				errors++
 				if twerr, ok := err.(twirp.Error); ok {
 					// if twerr.Code() == twirp.PermissionDenied {}
-					log.Error("could not get config, api error: %w", "err", twerr)
+					log.ErrorContext(ctx, "could not get config, api error", "err", twerr)
 
 				} else {
-					log.Error("could not get config, http error: %w", "err", err)
+					log.ErrorContext(ctx, "could not get config, http error", "err", err)
 				}
 				if firstRun {
 					wait = time.Second * 10 * time.Duration(errors)
@@ -191,7 +191,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 					wait = errorFetchInterval
 				}
 			} else {
-				log.Info("client config", "cfg", cfgresp.Msg)
+				log.DebugContext(ctx, "client config", "cfg", cfgresp.Msg)
 				conf.SetConfigFromApi(cfgresp.Msg)
 				if firstRun {
 					initialConfig.Done()
@@ -214,7 +214,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command) error {
 
 	if conf.GetConfig() == nil {
 		// we were aborted before getting this far
-		log.Warn("did not load remote configuration")
+		log.WarnContext(ctx, "did not load remote configuration")
 		os.Exit(2)
 	}
 
@@ -371,7 +371,7 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
-	log.Debug("processing", "server_count", len(serverlist.Servers))
+	log.DebugContext(ctx, "processing", "server_count", len(serverlist.Servers))
 
 	// we're testing, so limit how much work ...
 	if *onceFlag {
@@ -437,7 +437,7 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 
 	wg.Wait()
 
-	log.Info("submitting")
+	log.InfoContext(ctx, "submitting")
 
 	list := &apiv2.SubmitResultsRequest{
 		Version: 4,

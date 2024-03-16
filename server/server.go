@@ -38,7 +38,7 @@ type Server struct {
 	cfg         *Config
 	tokens      *vtm.TokenManager
 	m           *metrics.Metrics
-	db          *ntpdb.Queries
+	db          ntpdb.QuerierTx
 	dbconn      *sql.DB
 	log         *slog.Logger
 	shutdownFns []func(ctx context.Context) error
@@ -52,7 +52,7 @@ type Config struct {
 }
 
 func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {
-	db := ntpdb.New(dbconn)
+	db := ntpdb.NewWrappedQuerier(ntpdb.New(dbconn))
 
 	vaultClient, err := vaultClient()
 	if err != nil {

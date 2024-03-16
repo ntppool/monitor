@@ -104,7 +104,7 @@ steps:
     depends_on: [goreleaser]
 
   - name: fury-publish
-    image: golang:1.22.0
+    image: golang:1.22.1
     resources:
       requests:
         cpu: 250
@@ -177,7 +177,7 @@ steps:
     depends_on: ["download"]
 
   - name: fury-publish
-    image: golang:1.22.0
+    image: golang:1.22.1
     resources:
       requests:
         cpu: 250
@@ -199,6 +199,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 48c8358528fd3a1c12703f4bb211619a50fdb504864044e1997276039f677aae
+hmac: edb0ca3d54b531e7a84de0195e1a7f545354afb711f90a0d438246bd5b94c2a7
 
 ...

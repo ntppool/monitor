@@ -94,6 +94,12 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 		log.ErrorContext(ctx, "could not setup API client", "err", err)
 	}
 
+	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
+	if err != nil {
+		log.ErrorContext(ctx, "could not get deployment environment", "err", err)
+		return nil
+	}
+
 	cfgresp, err := apiC.GetConfig(ctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
 	if err != nil {
 		if twerr, ok := err.(twirp.Error); ok {
@@ -102,15 +108,10 @@ func (cli *CLI) apiOK(cmd *cobra.Command) error {
 			}
 		}
 		log.ErrorContext(ctx, "could not get config", "err", err)
+		return nil
 	}
 
-	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
-	if err != nil {
-		log.ErrorContext(ctx, "could not get deployment environment", "err", err)
-		os.Exit(2)
-	}
-
-	if cfgresp.Msg == nil {
+	if cfgresp == nil || cfgresp.Msg == nil {
 		log.ErrorContext(ctx, "did not receive configuration", "resp", cfgresp)
 		return nil
 	}

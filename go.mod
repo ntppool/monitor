@@ -27,7 +27,7 @@ require (
 	github.com/samber/slog-echo v1.12.2
 	github.com/spf13/cobra v1.8.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.2.8
+	go.ntppool.org/common v0.2.9-0.20240316174043-a458dcb2268e
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.49.0
@@ -97,8 +97,8 @@ require (
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240311173647-c811ad7063a7 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240311173647-c811ad7063a7 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240314234333-6e1732d8331c // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240314234333-6e1732d8331c // indirect
 	google.golang.org/grpc v1.62.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

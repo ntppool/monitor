@@ -149,7 +149,7 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 		if sm.ScorerID == 0 {
 			continue
 		}
-		log.Debug("processing", "from_id", sm.LastID)
+		log.DebugContext(ctx, "processing", "from_id", sm.LastID)
 		scount, err := r.process(ctx, name, sm, settings.BatchSize)
 		r.m.processed.WithLabelValues(name).Add(float64(scount))
 		count += scount

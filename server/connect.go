@@ -50,7 +50,7 @@ func (cs *conServer) GetServers(ctx context.Context, req *connect.Request[apiv2.
 		return nil, err
 	}
 
-	log.Info("got servers in apiv2", "count", len(serverList.Servers), "batchID", serverList.BatchID)
+	log.InfoContext(ctx, "got servers in apiv2", "count", len(serverList.Servers), "batchID", serverList.BatchID)
 
 	// if len(serverList.Servers) == 0 {
 	// 	log.Warn("no servers returned")

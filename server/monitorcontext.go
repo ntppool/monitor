@@ -29,6 +29,8 @@ func WithUserAgent(base http.Handler) http.Handler {
 		span := otrace.SpanFromContext(ctx)
 		span.SetAttributes(attribute.String("User-Agent", ua))
 
+		// logger.Setup().InfoContext(ctx, "got user agent", "ua", ua, "traceX", span.SpanContext().TraceID())
+
 		base.ServeHTTP(w, r)
 	})
 }

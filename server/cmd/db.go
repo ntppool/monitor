@@ -51,7 +51,7 @@ func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	smon, err := db.GetSystemMonitor(ctx, "settings", mon.IpVersion)
+	smon, err := ntpdb.GetSystemMonitor(ctx, db, "settings", mon.IpVersion)
 	if err == nil {
 		mconf, err := mon.GetConfigWithDefaults([]byte(smon.Config))
 		if err != nil {

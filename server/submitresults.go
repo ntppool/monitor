@@ -161,12 +161,13 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
 
+	db := srv.db
+
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	db := srv.db.WithTx(tx)
 
 	server, err := db.GetServerIP(ctx, status.GetIP().String())
 	if err != nil {

@@ -43,11 +43,11 @@ func createConnector(cfg DBConfig) CreateConnectorFunc {
 			return nil, err
 		}
 
-		if user := cfg.User; len(user) > 0 && err == nil {
+		if user := cfg.User; len(user) > 0 {
 			dbcfg.User = user
 		}
 
-		if pass := cfg.Pass; len(pass) > 0 && err == nil {
+		if pass := cfg.Pass; len(pass) > 0 {
 			dbcfg.Passwd = pass
 		}
 
