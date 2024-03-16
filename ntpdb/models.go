@@ -284,6 +284,7 @@ type ServerScore struct {
 	ScoreRaw   float64            `json:"score_raw"`
 	Stratum    sql.NullInt32      `json:"stratum"`
 	Status     ServerScoresStatus `json:"status"`
+	QueueTs    sql.NullTime       `json:"queue_ts"`
 	CreatedOn  time.Time          `json:"created_on"`
 	ModifiedOn time.Time          `json:"modified_on"`
 }

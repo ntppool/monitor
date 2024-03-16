@@ -8,6 +8,7 @@ package ntpdb
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -412,7 +413,7 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 }
 
 const getServerScore = `-- name: GetServerScore :one
-SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, created_on, modified_on FROM server_scores
+SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on FROM server_scores
   WHERE
     server_id=? AND
     monitor_id=?
@@ -434,6 +435,7 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 		&i.ScoreRaw,
 		&i.Stratum,
 		&i.Status,
+		&i.QueueTs,
 		&i.CreatedOn,
 		&i.ModifiedOn,
 	)
@@ -447,16 +449,16 @@ SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum,
         ON (s.id=ss.server_id)
 WHERE (monitor_id = ?
     AND s.ip_version = ?
-    AND (ss.score_ts IS NULL
+    AND (ss.queue_ts IS NULL
           OR (ss.score_raw > -90 AND ss.status = "active"
-               AND ss.score_ts < DATE_SUB( NOW(), INTERVAL ? second))
+               AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL ? second))
           OR (ss.score_raw > -90 AND ss.status = "testing"
-              AND ss.score_ts < DATE_SUB( NOW(), INTERVAL ? second))
-          OR (ss.score_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
+              AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL ? second))
+          OR (ss.queue_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL ? second) ))
     AND (deletion_on IS NULL or deletion_on > NOW()))
-ORDER BY ss.score_ts
+ORDER BY ss.queue_ts
 LIMIT  ?
 OFFSET ?
 `
@@ -803,6 +805,40 @@ func (q *Queries) UpdateServerScore(ctx context.Context, arg UpdateServerScorePa
 	return err
 }
 
+const updateServerScoreQueue = `-- name: UpdateServerScoreQueue :exec
+UPDATE server_scores
+  SET queue_ts  = ?
+  WHERE
+    monitor_id = ?
+    AND server_id IN (/*SLICE:server_ids*/?)
+    AND (queue_ts < ?
+         OR queue_ts is NULL)
+`
+
+type UpdateServerScoreQueueParams struct {
+	QueueTs   sql.NullTime `json:"queue_ts"`
+	MonitorID uint32       `json:"monitor_id"`
+	ServerIds []uint32     `json:"server_ids"`
+}
+
+func (q *Queries) UpdateServerScoreQueue(ctx context.Context, arg UpdateServerScoreQueueParams) error {
+	query := updateServerScoreQueue
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.QueueTs)
+	queryParams = append(queryParams, arg.MonitorID)
+	if len(arg.ServerIds) > 0 {
+		for _, v := range arg.ServerIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:server_ids*/?", strings.Repeat(",?", len(arg.ServerIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:server_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.QueueTs)
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const updateServerScoreStatus = `-- name: UpdateServerScoreStatus :exec
 update server_scores
   set status = ?
@@ -822,7 +858,7 @@ func (q *Queries) UpdateServerScoreStatus(ctx context.Context, arg UpdateServerS
 
 const updateServerScoreStratum = `-- name: UpdateServerScoreStratum :exec
 UPDATE server_scores
-  SET stratum  = ?
+  SET stratum = ?
   WHERE id = ?
 `
 

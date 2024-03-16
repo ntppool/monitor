@@ -403,6 +403,7 @@ CREATE TABLE `server_scores` (
   `score_raw` double NOT NULL DEFAULT '0',
   `stratum` tinyint(3) unsigned DEFAULT NULL,
   `status` enum('new','testing','active') NOT NULL DEFAULT 'new',
+  `queue_ts` datetime DEFAULT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -779,4 +780,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2024-03-04  2:09:08
+-- Dump completed on 2024-03-16 17:43:33

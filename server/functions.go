@@ -256,7 +256,15 @@ func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) 
 		return nil, err
 	}
 
-	servers, err := srv.db.GetServers(ctx, p)
+	tx, err := srv.dbconn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	db := ntpdb.New(srv.dbconn).WithTx(tx)
+
+	servers, err := db.GetServers(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +285,30 @@ func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) 
 
 	if count := len(servers); count > 0 {
 		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.MonitorsIpVersion.String()).Add(float64(count))
+
+		now := sql.NullTime{Time: time.Now(), Valid: true}
+
+		ids := make([]uint32, len(servers))
+		for i, s := range servers {
+			ids[i] = s.ID
+		}
+
+		err = db.UpdateServerScoreQueue(ctx,
+			ntpdb.UpdateServerScoreQueueParams{
+				MonitorID: monitor.ID,
+				QueueTs:   now,
+				ServerIds: ids,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
 	}
 
 	return list, nil

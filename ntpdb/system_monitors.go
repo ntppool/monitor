@@ -22,7 +22,7 @@ func (mipv MonitorsIpVersion) String() string {
 	return string(mipv)
 }
 
-func (q *Queries) GetSystemMonitor(ctx context.Context, name string, ipVersion NullMonitorsIpVersion) (*SystemMonitor, error) {
+func GetSystemMonitor(ctx context.Context, q QuerierTx, name string, ipVersion NullMonitorsIpVersion) (*SystemMonitor, error) {
 
 	name = name + "-" + ipVersion.MonitorsIpVersion.String()
 
