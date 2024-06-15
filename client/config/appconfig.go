@@ -23,6 +23,7 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
+// ErrAuthorization is returned when the API key is unauthorized or invalid.
 var ErrAuthorization = errors.New("api key unauthorized")
 
 // AppConfig is the configured runtime information that's stored

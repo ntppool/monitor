@@ -40,6 +40,13 @@ import (
 
 const MaxInterval = time.Minute * 2
 
+const (
+	DefaultConfigWait     = 3 * time.Second
+	DefaultMQTTWait       = 2 * time.Second
+	DefaultFetchInterval  = 60 * time.Minute
+	DefaultErrorRetryBase = 10 * time.Second
+)
+
 // type SetConfig interface {
 // 	SetConfigFromPb(cfg *pb.Config)
 // 	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
@@ -114,16 +121,16 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	mqconfigger := checkconfig.NewConfigger(nil)
 
 	for ix, ipc := range []config.IPConfig{cli.Config.IPv4(), cli.Config.IPv6()} {
-		var ip_version string
+		var ipVersion string
 		switch ix {
 		case 0:
-			ip_version = "v4"
+			ipVersion = "v4"
 			if !cli.IPv4 {
 				log.DebugContext(ctx, "skipping IPv4 monitor")
 				continue
 			}
 		case 1:
-			ip_version = "v6"
+			ipVersion = "v6"
 			if !cli.IPv6 {
 				log.DebugContext(ctx, "skipping IPv6 monitor")
 				continue
@@ -131,7 +138,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		}
 
 		g.Go(func() error {
-			log = log.With("ip_version", ip_version)
+			log = log.With("ip_version", ipVersion)
 			ctx := logger.NewContext(ctx, log)
 
 			if ipc.IP == nil {
@@ -157,7 +164,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-time.After(3 * time.Second):
+			case <-time.After(DefaultConfigWait):
 			}
 		}
 		log.InfoContext(ctx, "starting mqtt client", "name", cli.Config.TLSName())
@@ -216,13 +223,15 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 		}
 	}
 
-	mq.Disconnect(ctx)
+	if mq != nil {
+		mq.Disconnect(ctx)
+	}
 
 	if mq != nil {
 		// wait until the mqtt connection is done; or two seconds
 		select {
 		case <-mq.Done():
-		case <-time.After(2 * time.Second):
+		case <-time.After(DefaultMQTTWait):
 		}
 	}
 
@@ -244,7 +253,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 	go func() {
 		firstRun := true
 
-		fetchInterval := 60 * time.Minute
+		fetchInterval := DefaultFetchInterval
 		errorFetchInterval := fetchInterval / 3
 		errors := 0
 
@@ -262,7 +271,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 				log.WarnContext(ctx, "fetching config", "err", err, "monitor_ip", ipc.IP.String())
 				errors++
 				if firstRun {
-					wait = time.Second * 10 * time.Duration(errors)
+					wait = DefaultErrorRetryBase * time.Duration(errors)
 					if wait > errorFetchInterval {
 						wait = errorFetchInterval
 					}
@@ -317,7 +326,7 @@ runLoop:
 
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
-		boff.InitialInterval = 3 * time.Second
+		boff.InitialInterval = DefaultConfigWait
 		boff.MaxInterval = MaxInterval
 
 		doBatch := func() (int, error) {

@@ -251,7 +251,6 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 		"batchID", batchID.String(),
 		"cn", monitor.TlsName.String,
 	)
-	log.With() // to avoid the not used warning above
 
 	mcfg, err := srv.getMonitorConfig(ctx, monitor)
 	if err != nil {

@@ -1,4 +1,4 @@
-# CLAUDE.md
+# LLM_CODING_AGENT.md
 
 This file provides guidance to Claude Code (claude.ai/code) and other LLM-based coding agents when working with code in this repository.
 
@@ -9,6 +9,17 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 - `ntppool-agent` - Monitoring client that runs on distributed nodes
 - `monitor-api` - Central API server for coordination and configuration
 - `monitor-scorer` - Processes monitoring results and calculates server scores
+
+## Pre-Commit Checklist
+
+**MANDATORY: Before any git commit or task completion:**
+
+1. **Run `gofumpt -w`** on all changed `.go` files to fix formatting and whitespace
+2. **Run `go test ./...`** to ensure all tests pass
+3. **Verify compilation** with `go build` for affected packages
+4. **Check for Go lint tools** and run them if available (e.g., `golangci-lint run`, `go vet ./...`)
+
+**Never commit changes unless explicitly asked by the user.**
 
 ## Development Commands
 
@@ -27,6 +38,57 @@ make build          # Build all components
 make test           # Run comprehensive test suite
 gofumpt -w          # Format Go code (required before commits)
 ```
+
+## Problem Analysis Framework
+
+When diagnosing issues, follow this systematic approach:
+
+1. **Understand the exact symptoms** - What specifically isn't working? When does it fail?
+2. **Trace the code flow** - Follow the execution path step by step
+3. **Identify state and caching** - Where is data stored, cached, or persisted?
+4. **Consider simple explanations first** - Connection pooling, timing issues, configuration
+5. **Verify assumptions** - Test each hypothesis before implementing solutions
+6. **Prefer targeted fixes** - Avoid complex architectural changes when simple solutions exist
+
+## Task Completion Criteria
+
+Before marking any coding task as complete:
+
+1. **Code compiles successfully** - Run `go build` on affected packages
+2. **Tests pass** - Run `go test ./...` (or package-specific tests)
+3. **Code is formatted** - Run `gofumpt -w` on changed files
+4. **Basic functionality verified** - Test the implemented feature works as expected
+5. **No compilation or runtime errors** - Verify the code actually works
+
+Never mark a task as completed if:
+- Tests are failing
+- Implementation is partial
+- Unresolved compilation errors exist
+- You couldn't verify the functionality works
+
+## Go Code Standards
+
+### Logging
+- Use `*slog.Logger` type for logger fields
+- Use contextual logging: `log.InfoContext(ctx, ...)` and `log.DebugContext(ctx, ...)`
+- Get logger from context: `log := logger.FromContext(ctx)`
+- Create loggers with: `logger.Setup().WithGroup("component-name")`
+
+### Error Handling
+- Always include context in error messages
+- Use structured logging for errors with relevant fields
+- Follow existing patterns for error wrapping and propagation
+
+### Imports and Organization
+- Follow existing import grouping patterns
+- Use consistent naming conventions for packages
+- Prefer explicit imports over dot imports
+
+### Testing
+- Use table-driven tests
+- Avoid `testify/assert` or similar tools
+- Use mocks only when necessary
+- Follow existing test patterns in the codebase
 
 ## Key Architecture Components
 
@@ -153,6 +215,21 @@ mysql:
 - Flag any existing or new global variables and panics; avoid introducing new ones.
 - When introducing a third-party package not already in go.mod, ask for confirmation and discuss options.
 - Discourage global variables and disallow panics unless absolutely necessary and justified.
+
+### Code Quality Best Practices
+
+- **Use camelCase for variable names** - Follow Go naming conventions (e.g., `ipVersion` not `ip_version`)
+- **Document exported identifiers** - All exported functions, types, and variables must have godoc comments
+- **Define constants for magic numbers** - Replace hardcoded timeouts, limits, and other values with named constants
+- **Check for nil pointers** - Always verify pointers are not nil before dereferencing
+- **Remove unused code** - Eliminate unused variables, imports, and dead code that exists only to avoid compiler warnings
+
+### Code Review Approach
+
+- **Use the Task tool for comprehensive analysis** - When reviewing code quality across multiple files, use Task tool for systematic analysis rather than manual file-by-file review
+- **Prioritize safety issues first** - Address potential panics, nil pointer dereferences, and other safety issues before style improvements
+- **Batch similar changes** - Use MultiEdit for multiple changes in the same file to improve efficiency
+- **Verify changes** - Run tests after code quality improvements to ensure functionality remains intact
 
 ## General Guidance
 
