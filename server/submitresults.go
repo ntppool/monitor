@@ -194,7 +194,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 	}
 
 	if status.Stratum > 0 {
-		nullStratum := sql.NullInt32{Int32: status.Stratum, Valid: true}
+		nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
 		db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
 			ID:      serverScore.ID,
 			Stratum: nullStratum,

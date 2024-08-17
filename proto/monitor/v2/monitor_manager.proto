@@ -81,9 +81,9 @@ message ServerStatus {
   google.protobuf.Duration   rtt = 8;
 
   int32  stratum = 9;
-  sint32 leap = 10;
-  repeated NTPPacket responses = 11;
-  sint32 selected_response = 12;
+  int32 leap = 10;
+  // repeated NTPPacket responses = 11;
+  // int32 selected_response = 12;
 }
 
 // store in results
