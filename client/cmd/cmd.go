@@ -21,6 +21,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 
 	cmd.AddCommand(cli.monitorCmd())
 	cmd.AddCommand(cli.apiCmd())
+	cmd.AddCommand(cli.checkCmd())
 	cmd.AddCommand(version.VersionCmd("ntppool-monitor"))
 	// cmd.AddCommand(cli.DebugCmd())
 

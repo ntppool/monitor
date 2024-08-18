@@ -45,7 +45,7 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 	return apiOkCmd
 }
 
-func (cli *CLI) apiOK(cmd *cobra.Command) error {
+func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 	log := logger.Setup()
 

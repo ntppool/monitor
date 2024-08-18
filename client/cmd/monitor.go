@@ -73,7 +73,7 @@ func (cli *CLI) monitorCmd() *cobra.Command {
 	return monitorCmd
 }
 
-func (cli *CLI) startMonitor(cmd *cobra.Command) error {
+func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	ctx, stopMonitor := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopMonitor()
 

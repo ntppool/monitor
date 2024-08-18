@@ -53,12 +53,16 @@ func (cfg *APIConfig) Load(args []string) error {
 		return nil
 	}
 
-	cfg.setLoader(args)
+	log := logger.Setup()
+
+	cfg.setLoader([]string{})
 
 	err := cfg.loader.Load()
 	if err != nil {
 		return err
 	}
+
+	log.Info("config loaded", "cfg", cfg)
 
 	if len(cfg.StateDir) == 0 {
 		return fmt.Errorf("state-dir configuration required")
@@ -100,7 +104,7 @@ func (cfg *APIConfig) setLoader(args []string) {
 
 }
 
-func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []string) error {
+func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 
 		logger.Setup().Info("ntppool-monitor", "version", version.Version())
@@ -111,7 +115,7 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command) error) func(*cobra.Command, []st
 			return err
 		}
 
-		err = fn(cmd)
+		err = fn(cmd, args)
 		if err != nil {
 			fmt.Printf("error: %s", err)
 			return err
