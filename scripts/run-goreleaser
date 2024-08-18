@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-go install github.com/goreleaser/goreleaser@v1.24.0
+go install github.com/goreleaser/goreleaser@v1.26.2
 
 if [ ! -z "${harbor_username:-}" ]; then
   DOCKER_FILE=~/.docker/config.json
