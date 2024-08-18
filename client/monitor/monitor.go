@@ -93,7 +93,9 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 		resp, err := ntp.QueryWithOptions(ipStr, opts)
 		if err != nil {
 			r := &response{
-				Status: &pb.ServerStatus{},
+				Status: &pb.ServerStatus{
+					NoResponse: true,
+				},
 			}
 			r.Status.SetIP(ip)
 			if resp != nil {
@@ -104,7 +106,10 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 			if netErr, ok := err.(*net.OpError); ok {
 				// drop the protocol and addresses
 				r.Error = fmt.Errorf("network: %w", netErr.Err)
+			} else {
+				r.Error = err
 			}
+			r.Status.Error = r.Error.Error()
 
 			responses = append(responses, r)
 
@@ -151,7 +156,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 
 	var best *response
 
-	// log.Printf("for %s we collected %d samples, now find the best result", ip.String(), len(statuses))
+	// log.Debug("collection done, now find the best result", "ip", ip.String(), "count", len(responses))
 
 	// todo: if there are more than 2 (3?) samples with an offset, throw
 	// away the offset outlier(s)
