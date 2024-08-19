@@ -101,6 +101,8 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *pb.Config, traceAttribu
 			if resp != nil {
 				r.Response = resp
 				r.Status = ntpResponseToStatus(ip, resp)
+				// ignore the offset if there also was an error
+				r.Status.Offset = nil
 			}
 
 			if netErr, ok := err.(*net.OpError); ok {

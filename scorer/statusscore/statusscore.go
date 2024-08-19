@@ -30,7 +30,11 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *p
 
 	sc.ServerID = server.ID
 	sc.Ts = status.TS.AsTime()
-	sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
+	if status.Offset != nil {
+		sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
+	} else {
+		sc.Offset = sql.NullFloat64{Valid: false}
+	}
 	sc.Rtt = sql.NullInt32{Int32: int32(status.RTT.AsDuration().Microseconds()), Valid: true}
 
 	sc.HasMaxScore = false
@@ -46,14 +50,13 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *p
 		sc.HasMaxScore = true
 		sc.MaxScore = -50
 	} else if status.Stratum == 0 && (status.Error == "" || status.Error == "untrusted zero offset") {
-		log.InfoContext(ctx, "unexpected zero stratum", "offset", status.Offset.AsDuration(), "status", status)
 		step = -2
 		sc.MaxScore = 5
 		sc.HasMaxScore = true
 		if status.Error == "" {
 			status.Error = "unexpected stratum 0"
 		}
-	} else if len(status.Error) > 0 {
+	} else if len(status.Error) > 0 || status.Offset == nil {
 		step = -4 // what errors would this be that have a response but aren't RATE?
 	} else {
 		offsetAbs := status.AbsoluteOffset()

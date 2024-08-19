@@ -144,6 +144,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 				// network errors, so don't trust zero offset.
 				if status.Stratum == 0 && status.Offset.AsDuration() == 0 {
 					if status.Error == "" {
+						status.Offset = nil
 						status.Error = "untrusted zero offset"
 					}
 				}
