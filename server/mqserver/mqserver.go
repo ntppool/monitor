@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/mod/semver"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/eclipse/paho.golang/autopaho"
@@ -232,17 +231,6 @@ func (mqs *server) seenClients() []client {
 	return online
 }
 
-func checkVersion(version, minimumVersion string) bool {
-	if version == "dev-snapshot" {
-		return true
-	}
-	if semver.Compare(version, minimumVersion) < 0 {
-		// log.Debug("version too old", "v", cl.Version.Version)
-		return false
-	}
-	return true
-}
-
 func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) error {
 
 	minimumVersion := "v3.6.0-rc3"
@@ -255,7 +243,7 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 			if !cl.Online || cl.Data == nil {
 				continue
 			}
-			if !checkVersion(cl.Version.Version, minimumVersion) {
+			if !version.CheckVersion(cl.Version.Version, minimumVersion) {
 				continue
 			}
 
@@ -452,7 +440,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				if !checkVersion(cl.Version.Version, minimumVersion) {
+				if !version.CheckVersion(cl.Version.Version, minimumVersion) {
 					// log.Debug("version too old", "v", cl.Version.Version)
 					continue
 				}
