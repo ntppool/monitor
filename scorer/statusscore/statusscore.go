@@ -1,11 +1,13 @@
 package statusscore
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"time"
 
 	"go.ntppool.org/common/logger"
+
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
@@ -17,37 +19,24 @@ func NewScorer() *StatusScorer {
 	return &StatusScorer{}
 }
 
-func (s *StatusScorer) Score(server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
-	score, err := s.calc(server, status)
+func (s *StatusScorer) Score(ctx context.Context, server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
+	score, err := s.calc(ctx, server, status)
 	return score, err
 }
 
-func (s *StatusScorer) calc(server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
-
-	attributeStr := sql.NullString{}
-
-	if status.Leap > 0 || len(status.Error) > 0 {
-		log := logger.Setup()
-		log.Debug("Got attributes", "status", status)
-		attributes := ntpdb.LogScoreAttributes{
-			Leap:  int8(status.Leap),
-			Error: status.Error,
-		}
-		b, err := json.Marshal(attributes)
-		if err != nil {
-			log.Warn("could not marshal attributes", "attributes", attributes, "err", err)
-		}
-		attributeStr.String = string(b)
-		attributeStr.Valid = true
-	}
+func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
+	log := logger.FromContext(ctx)
 
 	sc := score.Score{}
 
 	sc.ServerID = server.ID
 	sc.Ts = status.Ts.AsTime()
-	sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
+	if status.Offset != nil {
+		sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
+	} else {
+		sc.Offset = sql.NullFloat64{Valid: false}
+	}
 	sc.Rtt = sql.NullInt32{Int32: int32(status.Rtt.AsDuration().Microseconds()), Valid: true}
-	sc.Attributes = attributeStr
 
 	sc.HasMaxScore = false
 
@@ -61,7 +50,14 @@ func (s *StatusScorer) calc(server *ntpdb.Server, status *apiv2.ServerStatus) (*
 		step = -10
 		sc.HasMaxScore = true
 		sc.MaxScore = -50
-	} else if len(status.Error) > 0 {
+	} else if status.Stratum == 0 && (status.Error == "" || status.Error == "untrusted zero offset") {
+		step = -2
+		sc.MaxScore = 5
+		sc.HasMaxScore = true
+		if status.Error == "" {
+			status.Error = "unexpected stratum 0"
+		}
+	} else if len(status.Error) > 0 || status.Offset == nil {
 		step = -4 // what errors would this be that have a response but aren't RATE?
 	} else {
 		offsetAbs := status.AbsoluteOffset()
@@ -81,6 +77,23 @@ func (s *StatusScorer) calc(server *ntpdb.Server, status *apiv2.ServerStatus) (*
 	}
 
 	sc.Step = step
+
+	attributeStr := sql.NullString{}
+
+	if status.Leap > 0 || len(status.Error) > 0 {
+		log.Debug("Got attributes", "status", status)
+		attributes := ntpdb.LogScoreAttributes{
+			Leap:  int8(status.Leap),
+			Error: status.Error,
+		}
+		b, err := json.Marshal(attributes)
+		if err != nil {
+			log.Warn("could not marshal attributes", "attributes", attributes, "err", err)
+		}
+		attributeStr.String = string(b)
+		attributeStr.Valid = true
+	}
+	sc.Attributes = attributeStr
 
 	return &sc, nil
 }

@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/mod/semver"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/eclipse/paho.golang/autopaho"
@@ -29,7 +28,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/common/logger"
@@ -232,17 +230,6 @@ func (mqs *server) seenClients() []client {
 	return online
 }
 
-func checkVersion(version, minimumVersion string) bool {
-	if version == "dev-snapshot" {
-		return true
-	}
-	if semver.Compare(version, minimumVersion) < 0 {
-		// log.Debug("version too old", "v", cl.Version.Version)
-		return false
-	}
-	return true
-}
-
 func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) error {
 
 	minimumVersion := "v3.6.0-rc3"
@@ -255,7 +242,7 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 			if !cl.Online || cl.Data == nil {
 				continue
 			}
-			if !checkVersion(cl.Version.Version, minimumVersion) {
+			if !version.CheckVersion(cl.Version.Version, minimumVersion) {
 				continue
 			}
 
@@ -452,7 +439,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				if !checkVersion(cl.Version.Version, minimumVersion) {
+				if !version.CheckVersion(cl.Version.Version, minimumVersion) {
 					// log.Debug("version too old", "v", cl.Version.Version)
 					continue
 				}
@@ -633,7 +620,7 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 		func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
 				request := c.Request()
-				span := trace.SpanFromContext(request.Context())
+				span := otrace.SpanFromContext(request.Context())
 				span.SetAttributes(attribute.String("http.real_ip", c.RealIP()))
 				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
 				return next(c)

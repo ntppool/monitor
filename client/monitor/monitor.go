@@ -110,6 +110,8 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAtt
 			if resp != nil {
 				r.Response = resp
 				r.Status = ntpResponseToApiStatus(ip, resp)
+				// ignore the offset if there also was an error
+				r.Status.Offset = nil
 			}
 
 			if netErr, ok := err.(*net.OpError); ok {

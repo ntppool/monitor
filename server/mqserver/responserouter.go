@@ -20,7 +20,7 @@ type mqttResponseRouter struct {
 	mu     sync.RWMutex
 }
 
-func (mqs *server) setupResponseRouter(ctx context.Context, topicPrefix string) *mqttResponseRouter {
+func (mqs *server) setupResponseRouter(_ context.Context, topicPrefix string) *mqttResponseRouter {
 	topicPrefix = strings.TrimSuffix(topicPrefix, "#")
 	return &mqttResponseRouter{
 		prefix: topicPrefix,

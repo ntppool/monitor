@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -15,6 +16,7 @@ import (
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
+	"go.ntppool.org/common/version"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/statusscore"
@@ -126,6 +128,14 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 		LastSeen:   sql.NullTime{Time: now, Valid: true},
 	})
 
+	clientVersion := monitor.ClientVersion
+	if idx := strings.Index(clientVersion, "/"); idx >= 0 {
+		clientVersion = clientVersion[0:idx]
+	}
+
+	safeZeroOffset := version.CheckVersion(clientVersion, "v3.8.5")
+	// log.InfoContext(ctx, "safeZeroOffset", "version", monitor.ClientVersion, "isSafe", safeZeroOffset)
+
 	bidb, _ := batchID.MarshalText()
 
 	// closure to have a function for the tracing span
@@ -142,6 +152,17 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 					log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
 					counters.Sig.Counter += len(in.List) - i
 					return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
+				}
+			}
+
+			if !safeZeroOffset {
+				// client might have broken error handling for some
+				// network errors, so don't trust zero offset.
+				if status.Stratum == 0 && status.Offset.AsDuration() == 0 {
+					if status.Error == "" {
+						status.Offset = nil
+						status.Error = "untrusted zero offset"
+					}
 				}
 			}
 
@@ -183,7 +204,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 
 	scorer := statusscore.NewScorer()
 
-	score, err := scorer.Score(&server, status)
+	score, err := scorer.Score(ctx, &server, status)
 	if err != nil {
 		return err
 	}
