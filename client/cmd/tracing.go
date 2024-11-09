@@ -25,9 +25,10 @@ func InitTracing(name string, cauth *auth.ClientAuth) (func(), error) {
 		return nil, fmt.Errorf("could not get deployment environment: %w", err)
 	}
 
-	endpoint := "otelcol.ntppool.net:443"
+	endpoint := "https://api-buzz.mon.ntppool.dev/"
+
 	if ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(ep) > 0 {
-		endpoint = ep
+		endpoint = ""
 	}
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,

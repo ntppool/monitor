@@ -10,7 +10,6 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/spf13/cobra"
-	"github.com/twitchtv/twirp"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
@@ -102,12 +101,22 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 	cfgresp, err := apiC.GetConfig(ctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
 	if err != nil {
-		if twerr, ok := err.(twirp.Error); ok {
-			if twerr.Code() == twirp.PermissionDenied {
-				log.ErrorContext(ctx, "permission error getting config", "err", twerr.Msg())
+		if conerr, ok := err.(*connect.Error); ok {
+			if conerr.Code() == connect.CodePermissionDenied {
+				log.ErrorContext(ctx,
+					"permission error getting config",
+					"err", conerr.Error(),
+				)
+			} else {
+				log.ErrorContext(ctx,
+					"error getting config",
+					"code", conerr.Code(),
+					"err", conerr.Error(),
+				)
 			}
+		} else {
+			log.ErrorContext(ctx, "could not get config", "err", err)
 		}
-		log.ErrorContext(ctx, "could not get config", "err", err)
 		return nil
 	}
 

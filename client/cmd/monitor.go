@@ -19,7 +19,6 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
 	"github.com/spf13/cobra"
-	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -175,13 +174,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 			cfgresp, err := api.GetConfig(cfgctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
 			if err != nil || cfgresp.Msg == nil {
 				errors++
-				if twerr, ok := err.(twirp.Error); ok {
-					// if twerr.Code() == twirp.PermissionDenied {}
-					log.ErrorContext(ctx, "could not get config, api error", "err", twerr)
-
-				} else {
-					log.ErrorContext(ctx, "could not get config, http error", "err", err)
-				}
+				log.ErrorContext(ctx, "could not get config, http error", "err", err)
 				if firstRun {
 					wait = time.Second * 10 * time.Duration(errors)
 					if wait > errorFetchInterval {
@@ -345,11 +338,6 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 
 	serverresp, err := api.GetServers(ctx, connect.NewRequest(&apiv2.GetServersRequest{}))
 	if err != nil {
-		if twerr, ok := err.(twirp.Error); ok {
-			if twerr.Code() == twirp.PermissionDenied {
-				return false, fmt.Errorf("getting server list: %s", twerr.Msg())
-			}
-		}
 		return false, fmt.Errorf("getting server list: %s", err)
 	}
 
