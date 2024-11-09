@@ -137,7 +137,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
-	defer tracingShutdown()
+	defer tracingShutdown(context.Background())
 
 	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
 	if err != nil {

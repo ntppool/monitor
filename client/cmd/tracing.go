@@ -13,7 +13,7 @@ import (
 	"go.ntppool.org/monitor/client/auth"
 )
 
-func InitTracing(name string, cauth *auth.ClientAuth) (func(), error) {
+func InitTracing(name string, cauth *auth.ClientAuth) (tracing.TpShutdownFunc, error) {
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
@@ -44,13 +44,14 @@ func InitTracing(name string, cauth *auth.ClientAuth) (func(), error) {
 		return nil, err
 	}
 
-	return func() {
+	return func(ctx context.Context) error {
 		log := logger.Setup()
-		log.Debug("Shutting down trace provider")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		log.Debug("shutting down trace provider")
+		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		tpShutdownFn(shutdownCtx)
-		log.Debug("trace provider shutdown")
+		err := tpShutdownFn(shutdownCtx)
+		// log.Debug("trace provider shutdown", "err", err)
+		return err
 	}, nil
 
 }

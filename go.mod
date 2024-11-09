@@ -28,7 +28,7 @@ require (
 	github.com/samber/slog-echo v1.14.7
 	github.com/spf13/cobra v1.8.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.2.13
+	go.ntppool.org/common v0.2.14-0.20241109105911-152be9d956c2
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.56.0

@@ -46,7 +46,7 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 
 func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
-	log := logger.Setup()
+	log := logger.SetupMultiLogger()
 
 	timeout := time.Second * 20
 	timeout = time.Minute * 5
@@ -76,7 +76,13 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
-	defer tracingShutdown()
+	defer func() {
+		time.Sleep(3 * time.Second)
+		err := tracingShutdown(context.Background())
+		if err != nil {
+			log.Info("tracing shutdown", "err", err)
+		}
+	}()
 
 	ctx, span := tracing.Start(ctx, "api-test")
 	defer span.End()
