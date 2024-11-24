@@ -5,8 +5,8 @@ before:
   #  - go generate ./...
 builds:
   - main: ./client/cmd/ntppool-monitor/
-    id: ntppool-monitor
-    binary: ntppool-monitor
+    id: ntpmon
+    binary: ntpmon
     env:
       - CGO_ENABLED=0
     goos:
@@ -60,11 +60,9 @@ changelog:
       - "^test:"
 
 nfpms:
-  - id: ntppool-monitor
+  - id: ntpmon
 
-    # Name of the package.
-    # Defaults to `ProjectName`.
-    package_name: ntppool-monitor
+    package_name: ntpmon
 
     #file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     file_name_template: "{{ .ConventionalFileName }}"
@@ -94,18 +92,18 @@ nfpms:
         #  - (ntp or chrony)
 
     contents:
-      - src: "scripts/ntppool-monitor@.service"
-        dst: "/etc/systemd/system/ntppool-monitor@.service"
+      - src: "scripts/ntpmon@.service"
+        dst: "/etc/systemd/system/ntpmon@.service"
 
       - src: "scripts/enable-ntppool-monitors"
         dst: "/usr/bin/enable-ntppool-monitors"
 
       - src: "scripts/defaults"
-        dst: "/etc/default/ntppool-monitor.sample"
+        dst: "/etc/default/ntpmon.sample"
         type: config
 
       - src: "scripts/defaults"
-        dst: "/etc/default/ntppool-monitor"
+        dst: "/etc/default/ntpmon"
         type: config|noreplace
 
     scripts:

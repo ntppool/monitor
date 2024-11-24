@@ -8,7 +8,7 @@ RUN touch ~ntpmon/.zshrc ~root/.zshrc; chown ntpmon:ntpmon ~ntpmon/.zshrc
 
 RUN mkdir /app
 ADD dist/monitor-api_linux_amd64_v1/monitor-api /app/
-ADD dist/ntppool-monitor_linux_amd64_v1/ntppool-monitor /app/
+ADD dist/ntpmon_linux_amd64_v1/ntpmon /app/
 ADD dist/monitor-scorer_linux_amd64_v1/monitor-scorer /app/
 
 EXPOSE 8000
