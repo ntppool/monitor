@@ -1,8 +1,6 @@
-before:
-  # we don't want this in the CI environment
-  #hooks:
-  #  - go mod tidy
-  #  - go generate ./...
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
 builds:
   - main: ./client/cmd/ntppool-monitor/
     id: ntpmon
@@ -51,7 +49,7 @@ archives:
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  name_template: '{{ .Tag }}{{ if index .Env "DRONE_BUILD_NUMBER" }}-{{ .Env.DRONE_BUILD_NUMBER }}{{ else }}-next{{ end }}'
+  version_template: '{{ .Tag }}{{ if index .Env "DRONE_BUILD_NUMBER" }}-{{ .Env.DRONE_BUILD_NUMBER }}{{ else }}-next{{ end }}'
 changelog:
   sort: asc
   filters:
