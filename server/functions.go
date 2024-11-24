@@ -117,7 +117,7 @@ func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) 
 	}
 
 	if key := srv.cfg.JWTKey; len(key) > 0 {
-		jwtToken, err := jwt.GetToken(ctx, key, monitor.TlsName.String, false)
+		jwtToken, err := jwt.GetToken(ctx, key, monitor.TlsName.String, jwt.KeyTypeStandard)
 		if err != nil {
 			log.Error("error generating jwtToken", "err", err)
 		}

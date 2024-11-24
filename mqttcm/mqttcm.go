@@ -94,13 +94,13 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		TlsCfg:                        tlsConfig,
 		KeepAlive:                     120,
 
-		ConnectPacketBuilder: func(pc *paho.Connect, u *url.URL) *paho.Connect {
+		ConnectPacketBuilder: func(pc *paho.Connect, u *url.URL) (*paho.Connect, error) {
 			cfg := conf.GetMQTTConfig(ctx)
 			if cfg != nil {
 				// log.DebugContext(ctx, "Using JWT to authenticate", "jwt", cfg.JWT)
 				pc.Password = cfg.JWT
 			}
-			return pc
+			return pc, nil
 		},
 		ConnectUsername: name,
 		ConnectPassword: cfg.JWT,
