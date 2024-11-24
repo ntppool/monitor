@@ -58,17 +58,17 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 		return false, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	features := struct {
-		Packets bool
-	}{}
+	// features := struct {
+	// 	Packets bool
+	// }{}
 
 	if in.Version < 2 || in.Version > 4 {
 		return false, twirp.InvalidArgumentError("Version", "Unsupported data version")
 	}
 
-	if in.Version >= 4 {
-		features.Packets = true
-	}
+	// if in.Version >= 5 {
+	// 	features.Packets = true
+	// }
 
 	counters := &SubmitCounters{
 		Ok:         &CounterOpt{"ok", 0},
