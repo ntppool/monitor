@@ -412,7 +412,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 
 		rc := make(chan *paho.Publish)
 
-		span.SetAttributes(attribute.String("Request ID", id.String()))
+		span.SetAttributes(attribute.String("Request-ID", id.String()))
 		mqs.rr.AddResponseID(id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
