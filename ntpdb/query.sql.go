@@ -90,7 +90,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 }
 
 const getMonitorTLSName = `-- name: GetMonitorTLSName :one
-SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
+SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, api_key_id, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 WHERE tls_name = ? LIMIT 1
 `
 
@@ -108,6 +108,7 @@ func (q *Queries) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString)
 		&i.IpVersion,
 		&i.TlsName,
 		&i.ApiKey,
+		&i.ApiKeyID,
 		&i.Status,
 		&i.Config,
 		&i.ClientVersion,
@@ -653,7 +654,7 @@ func (q *Queries) InsertServerScore(ctx context.Context, arg InsertServerScorePa
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on FROM monitors
+SELECT id, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, api_key_id, status, config, client_version, last_seen, last_submit, created_on FROM monitors
 ORDER BY name
 `
 
@@ -677,6 +678,7 @@ func (q *Queries) ListMonitors(ctx context.Context) ([]Monitor, error) {
 			&i.IpVersion,
 			&i.TlsName,
 			&i.ApiKey,
+			&i.ApiKeyID,
 			&i.Status,
 			&i.Config,
 			&i.ClientVersion,

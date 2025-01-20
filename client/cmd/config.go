@@ -49,16 +49,19 @@ func (cfg *APIConfig) Flags() *flag.FlagSet {
 }
 
 func (cfg *APIConfig) Load(args []string) error {
+	log := logger.Setup()
+
+	log.Info("Load()", "args", args)
+
 	if cfg.loaded {
 		return nil
 	}
-
-	log := logger.Setup()
 
 	cfg.setLoader([]string{})
 
 	err := cfg.loader.Load()
 	if err != nil {
+		log.Error("load error", "err", err)
 		return err
 	}
 

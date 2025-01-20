@@ -248,6 +248,7 @@ type Monitor struct {
 	IpVersion     NullMonitorsIpVersion `json:"ip_version"`
 	TlsName       sql.NullString        `json:"tls_name"`
 	ApiKey        sql.NullString        `json:"api_key"`
+	ApiKeyID      sql.NullInt32         `json:"api_key_id"`
 	Status        MonitorsStatus        `json:"status"`
 	Config        string                `json:"config"`
 	ClientVersion string                `json:"client_version"`
