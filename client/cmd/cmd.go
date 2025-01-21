@@ -11,7 +11,6 @@ func init() {
 }
 
 func (cli *CLI) RootCmd() *cobra.Command {
-
 	logger.Setup()
 
 	cmd := &cobra.Command{
@@ -25,7 +24,7 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	cmd.AddCommand(version.VersionCmd("ntppool-monitor"))
 	// cmd.AddCommand(cli.DebugCmd())
 
-	cmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	cmd.PersistentFlags().AddGoFlagSet(cli.Flags())
 
 	return cmd
 }

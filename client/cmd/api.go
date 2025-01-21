@@ -21,13 +21,12 @@ import (
 )
 
 func (cli *CLI) apiCmd() *cobra.Command {
-
 	apiCmd := &cobra.Command{
 		Use:   "api",
 		Short: "API admin commands",
 		Long:  ``,
 	}
-	apiCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	apiCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
 	apiCmd.AddCommand(cli.apiOkCmd())
 
 	return apiCmd
@@ -40,12 +39,11 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 		Long:  ``,
 		RunE:  cli.Run(cli.apiOK),
 	}
-	apiOkCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	apiOkCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
 	return apiOkCmd
 }
 
 func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
-
 	log := logger.SetupMultiLogger()
 
 	timeout := time.Second * 20
@@ -72,7 +70,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 		log.Error("getting certificates failed", "err", err)
 	}
 
-	tracingShutdown, err := InitTracing(cli.Config.Name, cauth)
+	tracingShutdown, err := InitTracing(cli.Config.Name(), cauth)
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
@@ -87,23 +85,19 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 	ctx, span := tracing.Start(ctx, "api-test")
 	defer span.End()
 
-	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name)
+	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name())
 	if err != nil {
 		log.ErrorContext(ctx, "Could not get metadata for API secret", "err", err)
 	}
 
 	log.InfoContext(ctx, "API key information", "expiration", secretInfo["expiration_time"], "created", secretInfo["creation_time"], "remaining_uses", secretInfo["secret_id_num_uses"])
 
-	ctx, apiC, err := api.Client(ctx, cli.Config.Name, cauth)
+	ctx, apiC, err := api.Client(ctx, cli.Config.Name(), cauth)
 	if err != nil {
 		log.ErrorContext(ctx, "could not setup API client", "err", err)
 	}
 
-	depEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
-	if err != nil {
-		log.ErrorContext(ctx, "could not get deployment environment", "err", err)
-		return nil
-	}
+	depEnv := cli.Config.Env()
 
 	cfgresp, err := apiC.GetConfig(ctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
 	if err != nil {
@@ -150,7 +144,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 	if cfg := conf.GetConfig(); cfg != nil {
 		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
-			mq, err = mqttcm.Setup(ctx, cauth.Name, "", []string{}, nil, conf, cauth)
+			mq, err = mqttcm.Setup(ctx, cli.Config.Name(), "", []string{}, nil, conf, cauth)
 			if err != nil {
 				log.Error("mqtt", "err", err)
 				os.Exit(2)
@@ -168,7 +162,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 			_, err = mq.Publish(ctx, &paho.Publish{
 				QoS:     1,
-				Topic:   topics.StatusAPITest(cauth.Name),
+				Topic:   topics.StatusAPITest(cli.Config.Name()),
 				Payload: msg,
 				Retain:  false,
 			})
@@ -203,15 +197,11 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 }
 
 func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
-	cfg := cli.Config
-	stateDir := cfg.StateDir
-	name := cfg.Name
-
 	log := logger.FromContext(ctx)
 
-	log.Info("configuring authentication", "name", name, "api_key", cfg.API.Key)
+	log.InfoContext(ctx, "configuring authentication")
 
-	cauth, err := auth.New(ctx, stateDir, name, cfg.API.Key, cfg.API.Secret)
+	cauth, err := auth.New(ctx, cli.Config)
 	if err != nil {
 		return nil, err
 	}

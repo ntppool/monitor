@@ -14,7 +14,6 @@ import (
 )
 
 func (cli *CLI) checkCmd() *cobra.Command {
-
 	checkCmd := &cobra.Command{
 		Use:   "check",
 		Short: "do a single check",
@@ -22,13 +21,12 @@ func (cli *CLI) checkCmd() *cobra.Command {
 		RunE:  cli.Run(cli.checkRun),
 		Args:  cobra.MatchAll(cobra.MinimumNArgs(1)),
 	}
-	checkCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	checkCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
 
 	return checkCmd
 }
 
 func (cli *CLI) checkRun(cmd *cobra.Command, args []string) error {
-
 	log := logger.Setup()
 
 	timeout := time.Second * 20

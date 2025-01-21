@@ -60,14 +60,13 @@ type ConfigStore interface {
 }
 
 func (cli *CLI) monitorCmd() *cobra.Command {
-
 	monitorCmd := &cobra.Command{
 		Use:   "monitor",
 		Short: "Run monitor",
 		Long:  ``,
 		RunE:  cli.Run(cli.startMonitor),
 	}
-	monitorCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	monitorCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
 
 	return monitorCmd
 }
@@ -90,17 +89,12 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("auth: %w", err)
 	}
 
-	deployEnv, err := api.GetDeploymentEnvironmentFromName(cli.Config.Name)
-	if err != nil {
-		return err
-	}
-
 	err = cauth.Login()
 	if err != nil {
 		var aerr auth.AuthenticationError
 		if errors.As(err, &aerr) {
 			var url string
-			switch deployEnv {
+			switch cli.Config.Env() {
 			case api.DeployDevel:
 				url = "https://manage.askdev.grundclock.com/manage/monitors"
 			case api.DeployTest:
@@ -133,13 +127,13 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 		os.Exit(2)
 	}
 
-	tracingShutdown, err := InitTracing(cli.Config.Name, cauth)
+	tracingShutdown, err := InitTracing(cli.Config.Name(), cauth)
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
 	defer tracingShutdown(context.Background())
 
-	ctx, api, err := api.Client(ctx, cli.Config.Name, cauth)
+	ctx, api, err := api.Client(ctx, cli.Config.Name(), cauth)
 	if err != nil {
 		return fmt.Errorf("could not setup API: %w", err)
 	}
@@ -147,7 +141,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	go func() {
 		// this goroutine is just for logging
 		<-ctx.Done()
-		log.Info("Shutting down monitor", "name", cauth.Name)
+		log.Info("Shutting down monitor", "name", cli.Config.Name())
 	}()
 
 	conf := config.NewConfigger(nil)
@@ -212,8 +206,8 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	}
 
 	var mq *autopaho.ConnectionManager
-	topics := mqttcm.NewTopics(deployEnv)
-	statusChannel := topics.Status(cauth.Name)
+	topics := mqttcm.NewTopics(cli.Config.Env())
+	statusChannel := topics.Status(cli.Config.Name())
 
 	{
 		cfg := conf.GetConfig()
@@ -225,9 +219,9 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 			router := paho.NewSingleHandlerRouter(mqc.Handler)
 
 			mq, err = mqttcm.Setup(
-				ctx, cauth.Name, statusChannel,
+				ctx, cli.Config.Name(), statusChannel,
 				[]string{
-					topics.RequestSubscription(cauth.Name),
+					topics.RequestSubscription(cli.Config.Name()),
 				}, router, conf, cauth,
 			)
 			if err != nil {
@@ -268,7 +262,6 @@ runLoop:
 		boff.MaxElapsedTime = 0
 
 		err := backoff.Retry(func() error {
-
 			if checkDone(ctx) {
 				return nil
 			}
@@ -296,7 +289,6 @@ runLoop:
 			boff.Reset()
 			return nil
 		}, boff)
-
 		if err != nil {
 			log.Error("backoff error", "err", err)
 		}
@@ -324,11 +316,9 @@ runLoop:
 	}
 
 	return nil
-
 }
 
 func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore ConfigStore) (bool, error) {
-
 	log := logger.FromContext(ctx)
 
 	ctx, span := tracing.Start(ctx, "monitor-run")
@@ -379,7 +369,6 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 		wg.Add(1)
 
 		go func(s *netip.Addr, trace bool, ticket []byte) {
-
 			if trace {
 				// todo: get psuedo lock from channel to manage parallel traceroutes
 
@@ -442,7 +431,6 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 	}
 
 	return true, nil
-
 }
 
 func checkDone(ctx context.Context) bool {

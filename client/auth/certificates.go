@@ -35,7 +35,6 @@ func (ca *ClientAuth) LoadOrIssueCertificates() error {
 	}
 
 	return err
-
 }
 
 // CertificateDates returns NotBefore, NotAfter and the remaining validity
@@ -55,7 +54,6 @@ func (ca *ClientAuth) CertificateDates() (time.Time, time.Time, time.Duration, e
 // checkCertificateValidity checks if the certificate is
 // valid and how long until it needs renewal
 func (ca *ClientAuth) checkCertificateValidity() (bool, time.Duration, error) {
-
 	notAfter, notBefore, _, err := ca.CertificateDates()
 	if err != nil {
 		return false, 0, err
@@ -77,7 +75,6 @@ func (ca *ClientAuth) checkCertificateValidity() (bool, time.Duration, error) {
 }
 
 func (ca *ClientAuth) RenewCertificates() error {
-
 	log := logger.FromContext(ca.ctx)
 
 	for {
@@ -105,12 +102,9 @@ func (ca *ClientAuth) RenewCertificates() error {
 }
 
 func (ca *ClientAuth) LoadCertificates(ctx context.Context) error {
+	// todo: delegate reading/writing this to appConfig?
 
-	certPem, err := os.ReadFile(ca.stateFilePrefix("cert.pem"))
-	if err != nil {
-		return err
-	}
-	keyPem, err := os.ReadFile(ca.stateFilePrefix("key.pem"))
+	certPem, keyPem, err := ca.appConfig.LoadCertificates()
 	if err != nil {
 		return err
 	}
@@ -126,7 +120,7 @@ func (ca *ClientAuth) LoadCertificates(ctx context.Context) error {
 }
 
 func (ca *ClientAuth) IssueCertificates() error {
-	certPem, keyPem, err := ca.Vault.IssueCertificates(ca.ctx, ca.Name)
+	certPem, keyPem, err := ca.Vault.IssueCertificates(ca.ctx, ca.appConfig.Name())
 	if err != nil {
 		return err
 	}
@@ -138,12 +132,7 @@ func (ca *ClientAuth) IssueCertificates() error {
 
 	ca.SetCertificate(&tlsCert)
 
-	err = replaceFile(ca.stateFilePrefix("cert.pem"), certPem)
-	if err != nil {
-		return err
-	}
-
-	err = replaceFile(ca.stateFilePrefix("key.pem"), keyPem)
+	err = ca.appConfig.SaveCertificates(certPem, keyPem)
 	if err != nil {
 		return err
 	}
@@ -152,7 +141,6 @@ func (ca *ClientAuth) IssueCertificates() error {
 }
 
 func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []byte, error) {
-
 	data := map[string]interface{}{
 		"common_name": name,
 		"ttl":         "120h",
@@ -186,11 +174,9 @@ func (v *Vault) IssueCertificates(ctx context.Context, name string) ([]byte, []b
 	}
 
 	return []byte(cert + "\n" + issuingCA), []byte(privateKey), nil
-
 }
 
 func getVaultDataString(rv *vaultapi.Secret, k string) (string, error) {
-
 	var d string
 
 	iv, ok := rv.Data[k]
