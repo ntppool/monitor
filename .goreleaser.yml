@@ -2,7 +2,7 @@
 version: 2
 
 builds:
-  - main: ./client/cmd/ntpmon/
+  - main: ./cmd/ntpmon/
     id: ntpmon
     binary: ntpmon
     env:
@@ -15,7 +15,7 @@ builds:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
 
-  - main: ./server/cmd/monitor-api/
+  - main: ./cmd/monitor-api/
     id: monitor-api
     binary: monitor-api
     env:
@@ -28,7 +28,7 @@ builds:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
 
-  - main: ./scorer/cmd/monitor-scorer/
+  - main: ./cmd/monitor-scorer/
     id: monitor-scorer
     binary: monitor-scorer
     env:
