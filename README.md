@@ -48,10 +48,14 @@ installed and available as well.
 ### Files
 
 If you don't add username and password to the `DATABASE_DSN`, it has to
-be provided in a file named `/vault/secrets/database.yaml` in the format:
+be provided in a file named `database.yaml` or
+`/vault/secrets/database.yaml` in the format:
 
 ```
-database:
+mysql:
   user: some-db-user
   pass: ...
 ```
+
+You can also provide a `dsn:` field in that datastructure
+and omit the DATABASE_DSN altogether.

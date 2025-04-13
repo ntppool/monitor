@@ -69,7 +69,7 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, _ []string, continuous bool) error
 		}
 	}()
 
-	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
+	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	log := logger.Setup()
 
-	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
+	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err
 	}

@@ -10,8 +10,7 @@ import (
 )
 
 func (cli *CLI) dbCmd() *cobra.Command {
-
-	var dbCmd = &cobra.Command{
+	dbCmd := &cobra.Command{
 		Use:   "db",
 		Short: "db utility functions",
 		// DisableFlagParsing: true,
@@ -31,7 +30,6 @@ func (cli *CLI) dbCmd() *cobra.Command {
 }
 
 func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
-
 	if len(args) < 1 {
 		return fmt.Errorf("db mon [monitername]")
 	}
@@ -40,7 +38,7 @@ func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
+	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err
 	}

@@ -84,7 +84,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		os.Exit(2)
 	}
 
-	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
+	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		log.Error("database error", "err", err.Error())
 		os.Exit(2)

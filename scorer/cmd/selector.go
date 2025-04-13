@@ -56,7 +56,7 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, _ []string, continuous bool) err
 
 	log.Info("selector starting")
 
-	dbconn, err := ntpdb.OpenDB(cli.Config.Database)
+	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err
 	}
