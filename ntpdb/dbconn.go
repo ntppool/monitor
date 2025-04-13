@@ -19,9 +19,10 @@ type Config struct {
 }
 
 type DBConfig struct {
-	DSN  string `default:"" flag:"dsn" usage:"Database DSN"`
-	User string `default:"" flag:"user"`
-	Pass string `default:"" flag:"pass"`
+	DSN    string `default:"" flag:"dsn" usage:"Database DSN"`
+	User   string
+	Pass   string
+	DBName string
 }
 
 func OpenDB() (*sql.DB, error) {
@@ -91,8 +92,12 @@ func createConnector(configFile string) CreateConnectorFunc {
 		// log.Printf("db cfg: %+v", cfg)
 
 		dsn := cfg.MySQL.DSN
+
 		if len(dsn) == 0 {
-			return nil, fmt.Errorf("--database.dsn flag or DATABASE_DSN environment variable required")
+			dsn = os.Getenv("DATABASE_DSN")
+			if len(dsn) == 0 {
+				return nil, fmt.Errorf("dsn config in database.yaml or DATABASE_DSN environment variable required")
+			}
 		}
 
 		dbcfg, err := mysql.ParseDSN(dsn)
@@ -106,6 +111,10 @@ func createConnector(configFile string) CreateConnectorFunc {
 
 		if pass := cfg.MySQL.Pass; len(pass) > 0 {
 			dbcfg.Passwd = pass
+		}
+
+		if name := cfg.MySQL.DBName; len(name) > 0 {
+			dbcfg.DBName = name
 		}
 
 		return mysql.NewConnector(dbcfg)
