@@ -20,6 +20,10 @@ func Run(cmd any, name, description string) {
 		kong.Name(name),
 		kong.Description(description),
 		kong.BindTo(ctx, (*context.Context)(nil)),
+		kong.ConfigureHelp(kong.HelpOptions{
+			Tree: true,
+		}),
+		kong.UsageOnError(),
 	)
 	if err != nil {
 		log.Printf("error: %v", err)

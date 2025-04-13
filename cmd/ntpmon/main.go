@@ -1,14 +1,10 @@
 package main
 
 import (
-	"os"
-
 	"go.ntppool.org/monitor/client/cmd"
+	basecmd "go.ntppool.org/monitor/cmd"
 )
 
 func main() {
-	cli := cmd.NewCLI()
-	if err := cli.RootCmd().Execute(); err != nil {
-		os.Exit(1)
-	}
+	basecmd.Run(&cmd.ClientCmd{}, "ntpmon", "Monitoring daemon for the NTP Pool system")
 }

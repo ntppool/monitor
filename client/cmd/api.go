@@ -9,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/spf13/cobra"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
@@ -19,35 +18,18 @@ import (
 	"go.ntppool.org/monitor/mqttcm"
 )
 
-func (cli *CLI) apiCmd() *cobra.Command {
-	apiCmd := &cobra.Command{
-		Use:   "api",
-		Short: "API admin commands",
-		Long:  ``,
-	}
-	apiCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
-	apiCmd.AddCommand(cli.apiOkCmd())
-
-	return apiCmd
+type apiCmd struct {
+	Ok apiOkCmd `cmd:"" help:"Check API connection"`
 }
 
-func (cli *CLI) apiOkCmd() *cobra.Command {
-	apiOkCmd := &cobra.Command{
-		Use:   "ok",
-		Short: "Check API connection",
-		Long:  ``,
-		RunE:  cli.Run(cli.apiOK),
-	}
-	apiOkCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
-	return apiOkCmd
-}
+type apiOkCmd struct{}
 
-func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
+func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log := logger.SetupMultiLogger()
 
 	timeout := time.Second * 40
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	log.InfoContext(ctx, "ok command", "env", cli.DeployEnv)

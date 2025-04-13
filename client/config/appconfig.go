@@ -93,7 +93,7 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 		return nil, fmt.Errorf("deployment environment invalid or undefined")
 	}
 
-	log.InfoContext(ctx, "loading config", "env", deployEnv, "stateDir", stateDir)
+	log.DebugContext(ctx, "loading config", "env", deployEnv, "stateDir", stateDir)
 
 	ac := &appConfig{
 		e:   deployEnv,

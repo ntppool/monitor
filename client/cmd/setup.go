@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/spf13/cobra"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
@@ -19,21 +19,9 @@ import (
 	"go.ntppool.org/monitor/client/httpclient"
 )
 
-func (cli *CLI) setupCmd() *cobra.Command {
-	setupCmd := &cobra.Command{
-		Use:   "setup",
-		Short: "initial authentication and configuration",
-		Long:  ``,
-		RunE:  cli.Run(cli.setupRun),
-		Args:  cobra.MatchAll(cobra.NoArgs),
-	}
-	setupCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
+type setupCmd struct{}
 
-	return setupCmd
-}
-
-func (cli *CLI) setupRun(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
+func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log := logger.FromContext(ctx)
 
 	ctx, span := tracing.Start(ctx, "monitor.setup")

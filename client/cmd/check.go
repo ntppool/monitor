@@ -5,33 +5,22 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/monitor"
 )
 
-func (cli *CLI) checkCmd() *cobra.Command {
-	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "do a single check",
-		Long:  ``,
-		RunE:  cli.Run(cli.checkRun),
-		Args:  cobra.MatchAll(cobra.MinimumNArgs(1)),
-	}
-	checkCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
-
-	return checkCmd
+type checkCmd struct {
+	IP []string `arg:"" help:"IP addresses to check"`
 }
 
-func (cli *CLI) checkRun(cmd *cobra.Command, args []string) error {
+func (cmd *checkCmd) Run(ctx context.Context) error {
 	log := logger.Setup()
 
 	timeout := time.Second * 60
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	ctx, span := tracing.Start(ctx, "api-test")
@@ -39,7 +28,7 @@ func (cli *CLI) checkRun(cmd *cobra.Command, args []string) error {
 
 	cfg := &checkconfig.Config{}
 
-	for _, h := range args {
+	for _, h := range cmd.IP {
 
 		ip, err := netip.ParseAddr(h)
 		if err != nil {

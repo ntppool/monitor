@@ -6,18 +6,16 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
-	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -57,24 +55,13 @@ type ConfigStore interface {
 	GetConfig() *checkconfig.Config
 }
 
-func (cli *CLI) monitorCmd() *cobra.Command {
-	monitorCmd := &cobra.Command{
-		Use:   "monitor",
-		Short: "Run monitor",
-		Long:  ``,
-		RunE:  cli.Run(cli.startMonitor),
-	}
-	monitorCmd.PersistentFlags().AddGoFlagSet(cli.Flags())
+type monitorCmd struct{}
 
-	return monitorCmd
-}
-
-func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
-	ctx, stopMonitor := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+func (cmd *monitorCmd) Run(ctx context.Context, kctx kong.Context, cli *ClientCmd) error {
+	ctx, stopMonitor := context.WithCancel(ctx)
 	defer stopMonitor()
 
-	log := logger.Setup()
-	ctx = logger.NewContext(ctx, log)
+	log := logger.FromContext(ctx)
 
 	err := cli.Config.WaitUntilReady(ctx)
 	if err != nil {
