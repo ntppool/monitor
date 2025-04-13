@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 
+	"github.com/alecthomas/kong"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
@@ -24,23 +23,17 @@ import (
 	"go.ntppool.org/monitor/server/jwt"
 	"go.ntppool.org/monitor/server/mqserver"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/spf13/cobra"
 )
 
-func (cli *CLI) serverCmd() *cobra.Command {
-	serverCmd := &cobra.Command{
-		Use:   "server",
-		Short: "server starts the API server",
-		Long:  `starts the API server on (default) port 8000`,
-		// DisableFlagParsing: true,
-		// Args:  cobra.ExactArgs(1),
-		RunE: cli.Run(cli.serverCLI),
-	}
+type serverCmd struct {
+	Listen string `default:":8000" help:"Listen address" flag:"listen"`
 
-	serverCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	TLS struct {
+		Key  string `default:"/etc/tls/tls.key" help:"TLS key file"`
+		Cert string `default:"/etc/tls/tls.crt" help:"TLS certificate file" alias:"crt"`
+	} `embed:"" prefix:"tls."`
 
-	return serverCmd
+	JWTKey string `help:"JWT signing key" flag:"jwtkey" env:"JWT_KEY"`
 }
 
 type mqconfig struct {
@@ -64,17 +57,14 @@ func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *checkconfig.MQTTConfi
 	}
 }
 
-func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
-	cfg := cli.Config
+func (cfg *serverCmd) Run(ctx context.Context, kctx *kong.Context, root *ApiCmd) error {
+	log := logger.FromContext(ctx)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	log := logger.Setup()
+	deploymentMode := root.DeploymentMode
 
 	// log.Printf("acfg: %+v", cfg)
 
-	if len(cfg.DeploymentMode) == 0 {
+	if len(root.DeploymentMode) == 0 {
 		return fmt.Errorf("deployment_mode configuration required")
 	}
 
@@ -94,7 +84,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		Listen:        cfg.Listen,
 		CertProvider:  cm,
 		JWTKey:        cfg.JWTKey,
-		DeploymentEnv: cfg.DeploymentMode,
+		DeploymentEnv: deploymentMode,
 	}
 
 	tlsName, err := func() (string, error) {
@@ -127,9 +117,9 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	depEnv := depenv.DeploymentEnvironmentFromString(cfg.DeploymentMode)
+	depEnv := depenv.DeploymentEnvironmentFromString(deploymentMode)
 	if depEnv == depenv.DeployUndefined {
-		log.Error("unknown deployment mode", "deployment_mode", cfg.DeploymentMode)
+		log.Error("unknown deployment mode", "deployment_mode", deploymentMode)
 		os.Exit(2)
 	}
 
@@ -150,7 +140,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	topicPrefix := fmt.Sprintf("/%s/monitors", cfg.DeploymentMode)
+	topicPrefix := fmt.Sprintf("/%s/monitors", depEnv.String())
 
 	router := mqs.MQTTRouter(ctx, topicPrefix)
 

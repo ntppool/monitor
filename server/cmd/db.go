@@ -3,40 +3,26 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
-	"github.com/spf13/cobra"
+	"github.com/alecthomas/kong"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-func (cli *CLI) dbCmd() *cobra.Command {
-	dbCmd := &cobra.Command{
-		Use:   "db",
-		Short: "db utility functions",
-		// DisableFlagParsing: true,
-		// Args:  cobra.ExactArgs(1),
-	}
-
-	dbCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
-
-	dbCmd.AddCommand(
-		&cobra.Command{
-			Use:   "mon",
-			Short: "monitor config debug",
-			RunE:  cli.Run(cli.dbMonitorConfig),
-		})
-
-	return dbCmd
+type dbCmd struct {
+	Mon dbMonitorCmd `cmd:"" help:"monitor config debug"`
 }
 
-func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
-	if len(args) < 1 {
+type dbMonitorCmd struct {
+	Name string `arg:"" help:"monitor name"`
+}
+
+func (cmd *dbMonitorCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	name := cmd.Name
+	if name == "" {
 		return fmt.Errorf("db mon [monitername]")
 	}
-
-	name := args[0]
-
-	ctx := context.Background()
 
 	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
@@ -46,6 +32,10 @@ func (cli *CLI) dbMonitorConfig(cmd *cobra.Command, args []string) error {
 
 	mon, err := db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("No monitor found")
+			return nil
+		}
 		return err
 	}
 

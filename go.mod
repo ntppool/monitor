@@ -16,12 +16,10 @@ require (
 	connectrpc.com/otelconnect v0.7.2
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/abh/certman v0.4.0
+	github.com/alecthomas/kong v1.10.0
 	github.com/beevik/ntp v1.4.3
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/cristalhq/aconfig v0.18.6
-	github.com/cristalhq/aconfig/aconfigdotenv v0.17.1
-	github.com/cristalhq/aconfig/aconfigyaml v0.17.1
 	github.com/eclipse/paho.golang v0.22.0
 	github.com/evanphx/json-patch v0.5.2
 	github.com/go-sql-driver/mysql v1.9.2
@@ -33,7 +31,6 @@ require (
 	github.com/prometheus/common v0.63.0
 	github.com/samber/slog-echo v1.16.1
 	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.10.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	go.ntppool.org/common v0.3.2-0.20250126190844-e5836a8b97f6
 	go.ntppool.org/pingtrace v0.0.4
@@ -80,7 +77,6 @@ require (
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
@@ -104,7 +100,6 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
@@ -140,5 +135,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250409194420-de1ac958c67a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250409194420-de1ac958c67a // indirect
 	google.golang.org/grpc v1.71.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

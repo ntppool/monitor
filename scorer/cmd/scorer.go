@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/cobra"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
@@ -15,51 +15,17 @@ import (
 	"go.ntppool.org/monitor/scorer"
 )
 
-func (cli *CLI) scorerCmd() *cobra.Command {
-	scorerCmd := &cobra.Command{
-		Use:   "scorer",
-		Short: "scorer execution",
-	}
-
-	scorerCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
-
-	scorerCmd.AddCommand(
-		&cobra.Command{
-			Use:   "run",
-			Short: "scorer run once",
-			RunE:  cli.Run(cli.scorer),
-		})
-
-	scorerCmd.AddCommand(
-		&cobra.Command{
-			Use:   "server",
-			Short: "run continously",
-			RunE:  cli.Run(cli.scorerServer),
-		})
-
-	scorerCmd.AddCommand(
-		&cobra.Command{
-			Use:   "setup",
-			Short: "setup scorers",
-			RunE:  cli.Run(cli.scorerSetup),
-		})
-
-	return scorerCmd
+func (cmd *scorerOnceCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	return scorerRun(ctx, kctx, false)
 }
 
-func (cli *CLI) scorerServer(cmd *cobra.Command, args []string) error {
-	return cli.scorerRun(cmd, args, true)
+func (cmd *scorerServerCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	return scorerRun(ctx, kctx, true)
 }
 
-func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
-	return cli.scorerRun(cmd, args, false)
-}
-
-func (cli *CLI) scorerRun(cmd *cobra.Command, _ []string, continuous bool) error {
-	log := logger.FromContext(cmd.Context())
+func scorerRun(ctx context.Context, _ *kong.Context, continuous bool) error {
+	log := logger.FromContext(ctx)
 	log.Info("starting", "continuous", continuous)
-
-	ctx := context.Background()
 
 	metricssrv := metricsserver.New()
 	go func() {
@@ -111,9 +77,8 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, _ []string, continuous bool) error
 	return nil
 }
 
-func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	log := logger.Setup()
+func (cmd *scorerSetupCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	log := logger.FromContext(ctx)
 
 	dbconn, err := ntpdb.OpenDB()
 	if err != nil {

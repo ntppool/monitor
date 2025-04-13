@@ -1,23 +1,36 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+	"context"
+	"fmt"
+
 	"go.ntppool.org/common/version"
 )
 
-func (cli *CLI) RootCmd() *cobra.Command {
+type RootCmd struct {
+	Scorer   ScorerCmd   `cmd:"scorer" help:"Scoring commands"`
+	Selector selectorCmd `cmd:"selector" help:"monitor selection"`
 
-	cmd := &cobra.Command{
-		Use:   "monitor-scorer",
-		Short: "Run scoring on monitoring data",
-		// DisableFlagParsing: true,
-	}
-	// cmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+	Db      dbCmd      `cmd:"db" help:"Database operations"`
+	Version versionCmd `cmd:"version" help:"Show version"`
+}
 
-	cmd.AddCommand(version.VersionCmd("monitor-scorer"))
-	cmd.AddCommand(cli.scorerCmd())
-	cmd.AddCommand(cli.selectorCmd())
-	cmd.AddCommand(cli.dbCmd())
+type ScorerCmd struct {
+	Run    scorerOnceCmd   `cmd:"run" help:"Run once"`
+	Server scorerServerCmd `cmd:"server" help:"Run continuously"`
+	Setup  scorerSetupCmd  `cmd:"setup" help:"Setup scorers"`
+}
 
-	return cmd
+type (
+	scorerOnceCmd   struct{}
+	scorerServerCmd struct{}
+	scorerSetupCmd  struct{}
+)
+
+type versionCmd struct{}
+
+func (c *versionCmd) Run(_ context.Context) error {
+	ver := version.Version()
+	fmt.Printf("%s %s\n", "monitor-scorer", ver)
+	return nil
 }

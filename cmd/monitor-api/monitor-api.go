@@ -1,15 +1,10 @@
 package main
 
 import (
-	"os"
-
+	basecmd "go.ntppool.org/monitor/cmd"
 	"go.ntppool.org/monitor/server/cmd"
 )
 
 func main() {
-
-	cli := cmd.NewCLI()
-	if err := cli.RootCmd().Execute(); err != nil {
-		os.Exit(1)
-	}
+	basecmd.Run(&cmd.ApiCmd{}, "monitor-api", "Monitor API Server")
 }

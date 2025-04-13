@@ -34,10 +34,19 @@ func openDB(configFiles []string) (*sql.DB, error) {
 	log := logger.Setup()
 
 	var configFile string
+	configFiles = append(configFiles, "")
 
+	var err error
 	for _, configFile = range configFiles {
-		if _, err := os.Stat(configFile); err == nil {
+		if configFile == "" {
+			continue
+		}
+		if _, sterr := os.Stat(configFile); sterr == nil {
 			break
+		} else {
+			if err == nil {
+				err = sterr
+			}
 		}
 	}
 	if configFile == "" {
@@ -50,7 +59,7 @@ func openDB(configFiles []string) (*sql.DB, error) {
 	dbconn.SetMaxOpenConns(10)
 	dbconn.SetMaxIdleConns(5)
 
-	err := dbconn.Ping()
+	err = dbconn.Ping()
 	if err != nil {
 		log.Error("could not connect to database", "err", err)
 		return nil, err

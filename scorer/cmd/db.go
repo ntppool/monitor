@@ -2,35 +2,20 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
-	"github.com/spf13/cobra"
+	"github.com/alecthomas/kong"
+
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-func (cli *CLI) dbCmd() *cobra.Command {
-	dbCmd := &cobra.Command{
-		Use:   "db",
-		Short: "db utility functions",
-		// DisableFlagParsing: true,
-		// Args:  cobra.ExactArgs(1),
-	}
-
-	dbCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
-
-	dbCmd.AddCommand(
-		&cobra.Command{
-			Use:   "scorer-status",
-			Short: "scorer status debug",
-			RunE:  cli.Run(cli.dbScorerStatus),
-		})
-
-	return dbCmd
+type dbCmd struct {
+	ScorerStatus bool `cmd:"" help:"Show scorer status"`
 }
 
-func (cli *CLI) dbScorerStatus(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
+func (cmd *dbCmd) Run(ctx context.Context, kctx *kong.Context) error {
 	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err
@@ -39,6 +24,10 @@ func (cli *CLI) dbScorerStatus(cmd *cobra.Command, args []string) error {
 
 	ss, err := db.GetScorerStatus(ctx)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("No scorers found")
+			return nil
+		}
 		return err
 	}
 

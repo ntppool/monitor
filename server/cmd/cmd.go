@@ -1,7 +1,9 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+	"context"
+	"fmt"
+
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 )
@@ -10,21 +12,18 @@ func init() {
 	logger.ConfigPrefix = "MONITOR"
 }
 
-func (cli *CLI) RootCmd() *cobra.Command {
+type ApiCmd struct {
+	Db      dbCmd      `cmd:"" help:"database commands"`
+	Version versionCmd `cmd:"" help:"show version and build info"`
+	Server  serverCmd  `cmd:"" help:"run the monitoring api server"`
 
-	log := logger.Setup()
-	log.Info("monitor-api", "version", version.Version())
+	DeploymentMode string `help:"Deployment mode" env:"DEPLOYMENT_MODE" enum:"devel,test,prod" default:"devel"`
+}
 
-	cmd := &cobra.Command{
-		Use:   "monitor-api",
-		Short: "API server for the NTP Pool monitor",
-		// DisableFlagParsing: true,
-	}
-	// cmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
+type versionCmd struct{}
 
-	cmd.AddCommand(cli.serverCmd())
-	cmd.AddCommand(version.VersionCmd("monitor-api"))
-	cmd.AddCommand(cli.dbCmd())
-
-	return cmd
+func (c *versionCmd) Run(_ context.Context) error {
+	ver := version.Version()
+	fmt.Printf("%s %s\n", "ntpmon", ver)
+	return nil
 }

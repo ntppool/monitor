@@ -10,48 +10,32 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/spf13/cobra"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-func (cli *CLI) selectorCmd() *cobra.Command {
-	selectorCmd := &cobra.Command{
-		Use:   "selector",
-		Short: "monitor selection",
-	}
-
-	selectorCmd.PersistentFlags().AddGoFlagSet(cli.Config.Flags())
-
-	selectorCmd.AddCommand(
-		&cobra.Command{
-			Use:   "run",
-			Short: "run once",
-			RunE:  cli.Run(cli.selector),
-		})
-
-	selectorCmd.AddCommand(
-		&cobra.Command{
-			Use:   "server",
-			Short: "run continously",
-			RunE:  cli.Run(cli.selectorServer),
-		})
-
-	return selectorCmd
+type selectorCmd struct {
+	Server selectorServerCmd `cmd:"server" help:"run continously"`
+	Run    selectorOnceCmd   `cmd:"once" help:"run once"`
 }
 
-func (cli *CLI) selectorServer(cmd *cobra.Command, args []string) error {
-	return cli.selectorRun(cmd, args, true)
+type (
+	selectorServerCmd struct{}
+	selectorOnceCmd   struct{}
+)
+
+func (cmd selectorServerCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	return selectorRun(ctx, kctx, true)
 }
 
-func (cli *CLI) selector(cmd *cobra.Command, args []string) error {
-	return cli.selectorRun(cmd, args, false)
+func (cmd selectorOnceCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	return selectorRun(ctx, kctx, false)
 }
 
-func (cli *CLI) selectorRun(cmd *cobra.Command, _ []string, continuous bool) error {
-	ctx := cmd.Context()
+func selectorRun(ctx context.Context, _ *kong.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
 
 	log.Info("selector starting")
@@ -88,6 +72,7 @@ func (cli *CLI) selectorRun(cmd *cobra.Command, _ []string, continuous bool) err
 			sl := expback.NextBackOff()
 			time.Sleep(sl)
 		} else {
+			expback.Reset()
 			expback.Reset()
 		}
 
