@@ -62,6 +62,9 @@ nfpms:
 
     package_name: ntpmon
 
+    builds:
+      - ntpmon
+
     #file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     file_name_template: "{{ .ConventionalFileName }}"
 
