@@ -14,7 +14,7 @@ RUN touch ~ntpmon/.zshrc ~root/.zshrc; chown ntpmon:ntpmon ~ntpmon/.zshrc
 
 RUN mkdir /app
 COPY --from=build /go/bin/monitor-api /app/
-COPY --from=build /go/bin/ntppool-monitor /app/
+COPY --from=build /go/bin/ntpmon /app/
 COPY --from=build /go/bin/monitor-scorer /app/
 
 EXPOSE 8000

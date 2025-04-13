@@ -16,7 +16,7 @@ RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
 RuntimeDirectory=ntpmon
 
-EnvironmentFile=-/etc/default/ntppool-monitor
+EnvironmentFile=-/etc/default/ntpmon
 ExecStart=/usr/bin/ntpmon --env %i monitor
 Restart=always
 TimeoutStartSec=10

@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-
-for f in `ls /etc/ntpmon/*.json`; do
-    h=`basename $f .json`
-    sudo systemctl enable --now ntppool-monitor@$h
-done

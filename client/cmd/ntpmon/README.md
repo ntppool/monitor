@@ -15,11 +15,12 @@ instructions see https://builds.ntppool.dev/repo/
 
 ## Setup
 
-After the monitor has been provisioned on the management website,
-download the .json configuration file and place it in
-`/var/run/ntpmon` on the monitoring system.
+Run `ntpmon --env test setup` (or `prod` for production environment)
+to setup an API key, and then `ntpmon --env test monitor` to
+run the monitor. See the README file at the root of the git
+repository for further instructions.
 
-With the configuration in place, enable the monitor for that
-configuration with the name from the configuarion:
+If you installed from the .deb or .rpm package, you can start
+the test monitor with
 
-   sudo systemctl systemctl enable --now ntppool-monitor@[client-name]
+   sudo systemctl systemctl enable --now ntpmon@test

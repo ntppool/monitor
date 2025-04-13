@@ -131,7 +131,7 @@ func (ac *appConfig) WaitUntilReady(ctx context.Context) error {
 		}
 
 		if i == 1 || i%60 == 0 {
-			log.WarnContext(ctx, "no API key, please run `ntppool-monitor setup`")
+			log.WarnContext(ctx, "no API key, please run `ntpmon setup`")
 		}
 
 		select {

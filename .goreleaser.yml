@@ -2,7 +2,7 @@
 version: 2
 
 builds:
-  - main: ./client/cmd/ntppool-monitor/
+  - main: ./client/cmd/ntpmon/
     id: ntpmon
     binary: ntpmon
     env:
@@ -93,8 +93,8 @@ nfpms:
       - src: "scripts/ntpmon@.service"
         dst: "/etc/systemd/system/ntpmon@.service"
 
-      - src: "scripts/enable-ntppool-monitors"
-        dst: "/usr/bin/enable-ntppool-monitors"
+      #- src: "scripts/enable-ntppool-monitors"
+      #  dst: "/usr/bin/enable-ntppool-monitors"
 
       - src: "scripts/defaults"
         dst: "/etc/default/ntpmon.sample"

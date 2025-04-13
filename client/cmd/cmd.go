@@ -14,14 +14,14 @@ func (cli *CLI) RootCmd() *cobra.Command {
 	logger.Setup()
 
 	cmd := &cobra.Command{
-		Use:   "ntppool-monitor",
+		Use:   "ntpmon",
 		Short: "Monitoring daemon for the NTP Pool system",
 	}
 
 	cmd.AddCommand(cli.monitorCmd())
 	cmd.AddCommand(cli.apiCmd())
 	cmd.AddCommand(cli.checkCmd())
-	cmd.AddCommand(version.VersionCmd("ntppool-monitor"))
+	cmd.AddCommand(version.VersionCmd("ntpmon"))
 	cmd.AddCommand(cli.setupCmd())
 	// cmd.AddCommand(cli.DebugCmd())
 

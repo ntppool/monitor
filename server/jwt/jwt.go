@@ -109,7 +109,7 @@ func GetToken(ctx context.Context, key, subject string, keyType KeyType) (string
 			Subject:   subject,
 
 			// mosquitto-jwt-auth doesn't know how to use these
-			// Issuer:    "ntppool-monitor",
+			// Issuer:    "monitor-api",
 			// Audience:  []string{"mqtt.ntppool.net"},
 		},
 	}

@@ -316,6 +316,7 @@ func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) erro
 	ua := ctx.Value(sctx.ClientVersionKey).(string)
 
 	ua = strings.TrimPrefix(ua, "ntppool-monitor/")
+	ua = strings.TrimPrefix(ua, "ntpmon/")
 
 	if ua != mon.ClientVersion {
 		srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{

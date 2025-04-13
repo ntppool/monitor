@@ -83,7 +83,7 @@ func (cli *CLI) LoadConfig(ctx context.Context, args []string) error {
 
 func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		logger.Setup().Info("ntppool-monitor", "version", version.Version())
+		logger.Setup().Info("ntpmon", "version", version.Version())
 
 		err := cli.LoadConfig(cmd.Context(), args)
 		if err != nil {

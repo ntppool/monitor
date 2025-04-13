@@ -1,8 +1,8 @@
 .vscode
 .devspace
 *~
-/ntppool-monitor
-/client/cmd/ntppool-monitor/ntppool-monitor
+/ntpmon
+/client/cmd/ntpmon/ntpmon
 /monitor-api
 /server/cmd/monitor-api/monitor-api
 dist/

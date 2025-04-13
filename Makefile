@@ -14,7 +14,7 @@ server:
 	go build ./server/cmd/monitor-api
 
 client:
-	go build ./client/cmd/ntppool-monitor
+	go build ./client/cmd/ntpmon
 
 tools:
 	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest

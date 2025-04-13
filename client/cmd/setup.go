@@ -66,7 +66,7 @@ func (cli *CLI) setupRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	req.Header.Set("User-Agent", "ntppool-monitor/"+version.Version())
+	req.Header.Set("User-Agent", "ntpmon/"+version.Version())
 	req.Header.Set("Registration-ID", registrationID.String())
 
 	type registrationResponse struct {

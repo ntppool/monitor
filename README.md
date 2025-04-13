@@ -5,30 +5,30 @@
 Configure the appropriate repository (test or production)
 from [builds.ntppool.dev/repo/](https://builds.ntppool.dev/repo/).
 
-Install the `ntppool-monitor` package, copy the configuration files to
-`/etc/ntpmon` and then start the systemd units (or file and unit, if you
-are only running either a v4 or v6 monitor instead of both).
+Install the `ntpmon` package, and start the systemd units for
+test and/or production (example below starts both).
 
 ```
 sudo apt update
-sudo apt install -y ntppool-monitor
+sudo apt install -y ntpmon
 
 cd /etc/ntpmon;
-for f in *ntppool.dev.json; do
-  n=`basename $f .json`;
-  sudo systemctl enable --now ntppool-monitor@$n;
+for f in test prod; do
+  sudo systemctl enable --now ntpmon@$n;
 done
 
-sudo journalctl -u ntppool-monitor@\* -f
+sudo journalctl -u ntpmon@\* -f
 ```
 
 ## Client requirements
 
 A well connected Linux or FreeBSD system (x86_64 or arm64).
 
-Each instance (you need one for each of IPv4 and IPv6, and maybe for
-the beta system and the production system) takes less than 20MB memory
-currently and approximately no CPU.
+Each instance (for the beta system and/or the production system)
+takes less than 30MB memory currently and approximately no CPU
+(very little anyway). However it's best if the system isn't
+excessively loaded, as that can impact the NTP measurements.
+The network needs to be consistently low latency "to the internet".
 
 A future version will either require or work best with traceroute
 installed and available as well.
