@@ -16,7 +16,7 @@ import (
 
 	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
@@ -30,7 +30,6 @@ type MonitorSettings struct {
 }
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
-
 	log := srv.log
 
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
@@ -125,7 +124,7 @@ func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) 
 		mqttPrefix := fmt.Sprintf("/%s/monitors", srv.cfg.DeploymentEnv)
 
 		if len(jwtToken) > 0 {
-			cfg.MQTT = &config.MQTTConfig{
+			cfg.MQTT = &checkconfig.MQTTConfig{
 				Host:   "mqtt.ntppool.net",
 				Port:   1883,
 				JWT:    []byte(jwtToken),
@@ -140,7 +139,6 @@ func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) 
 }
 
 func (srv *Server) signatureIPData(monitorID uint32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
-
 	monIDb := strconv.AppendInt([]byte{}, int64(monitorID), 10)
 
 	ipb, err := ip.MarshalBinary()

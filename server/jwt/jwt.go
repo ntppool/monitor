@@ -7,8 +7,8 @@ import (
 
 	gjwt "github.com/golang-jwt/jwt/v4"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
-	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
@@ -29,7 +29,6 @@ type MosquittoClaims struct {
 }
 
 func GetToken(ctx context.Context, key, subject string, keyType KeyType) (string, error) {
-
 	log := logger.Setup()
 
 	mySigningKey := []byte(key)
@@ -43,21 +42,21 @@ func GetToken(ctx context.Context, key, subject string, keyType KeyType) (string
 	notBefore := time.Now().Add(-30 * time.Second)
 	// log.Printf("not before: %s", notBefore)
 
-	depEnv := api.DeployUndefined
+	depEnv := depenv.DeployUndefined
 	var err error
 
 	switch subject {
 	case "monitor-api-dev.ntppool.net":
-		depEnv = api.DeployDevel
+		depEnv = depenv.DeployDevel
 	case "mqtt-admin.mon.ntppool.dev":
 		// for admin cli tool
-		depEnv = api.DeployDevel
+		depEnv = depenv.DeployDevel
 	case "exporter.mqtt.ntppool.net":
 		// for the prometheus exporter
-		depEnv = api.DeployDevel
+		depEnv = depenv.DeployDevel
 
 	default:
-		depEnv, err = api.GetDeploymentEnvironmentFromName(subject)
+		depEnv, err = depenv.GetDeploymentEnvironmentFromName(subject)
 		if err != nil {
 			return "", err
 		}

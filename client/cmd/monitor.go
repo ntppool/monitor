@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/netip"
@@ -29,8 +28,7 @@ import (
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/client/auth"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
@@ -56,7 +54,7 @@ type SetConfig interface {
 
 type ConfigStore interface {
 	SetConfig
-	GetConfig() *config.Config
+	GetConfig() *checkconfig.Config
 }
 
 func (cli *CLI) monitorCmd() *cobra.Command {
@@ -72,11 +70,16 @@ func (cli *CLI) monitorCmd() *cobra.Command {
 }
 
 func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
-	ctx, stopMonitor := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stopMonitor := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stopMonitor()
 
 	log := logger.Setup()
 	ctx = logger.NewContext(ctx, log)
+
+	err := cli.Config.WaitUntilReady(ctx)
+	if err != nil {
+		return fmt.Errorf("waiting for config: %w", err)
+	}
 
 	metricssrv := metricsserver.New()
 	promreg := metricssrv.Registry()
@@ -84,56 +87,17 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	// todo: option to enable local metrics?
 	// go metricssrv.ListenAndServe(ctx, 9999)
 
-	cauth, err := cli.ClientAuth(ctx)
-	if err != nil {
-		return fmt.Errorf("auth: %w", err)
-	}
+	// todo: do we need to wait on a certificate here? It should
+	// have been taken care of earlier in the config setup.
+	// (previously we waited for the vault cert here)
 
-	err = cauth.Login()
-	if err != nil {
-		var aerr auth.AuthenticationError
-		if errors.As(err, &aerr) {
-			var url string
-			switch cli.Config.Env() {
-			case api.DeployDevel:
-				url = "https://manage.askdev.grundclock.com/manage/monitors"
-			case api.DeployTest:
-				url = "https://manage.beta.grundclock.com/manage/monitors"
-			case api.DeployProd:
-				url = "https://manage.ntppool.org/manage/monitors"
-			default:
-				url = "the management site"
-			}
-
-			log.ErrorContext(ctx, "authentication error, go to manage site to rotate and download a new API secret", "err", aerr, "url", url)
-			os.Exit(2)
-		}
-
-		log.ErrorContext(ctx, "could not authenticate", "err", err)
-		os.Exit(2)
-	}
-
-	err = cauth.LoadOrIssueCertificates()
-	if err != nil {
-		return fmt.Errorf("LoadOrIssueCertificates: %w", err)
-	}
-
-	go cauth.Manager(promreg)
-
-	// block until we have a valid certificate
-	err = cauth.WaitUntilReady()
-	if err != nil {
-		log.ErrorContext(ctx, "failed waiting for authentication to be ready", "err", err)
-		os.Exit(2)
-	}
-
-	tracingShutdown, err := InitTracing(cli.Config.Name(), cauth)
+	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, nil)
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
 	defer tracingShutdown(context.Background())
 
-	ctx, api, err := api.Client(ctx, cli.Config.Name(), cauth)
+	ctx, api, err := api.Client(ctx, cli.Config.TLSName(), cli.Config)
 	if err != nil {
 		return fmt.Errorf("could not setup API: %w", err)
 	}
@@ -141,10 +105,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 	go func() {
 		// this goroutine is just for logging
 		<-ctx.Done()
-		log.Info("Shutting down monitor", "name", cli.Config.Name())
+		log.Info("Shutting down monitor", "name", cli.Config.TLSName())
 	}()
 
-	conf := config.NewConfigger(nil)
+	conf := checkconfig.NewConfigger(nil)
 
 	initialConfig := sync.WaitGroup{}
 	initialConfig.Add(1)
@@ -207,7 +171,7 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 
 	var mq *autopaho.ConnectionManager
 	topics := mqttcm.NewTopics(cli.Config.Env())
-	statusChannel := topics.Status(cli.Config.Name())
+	statusChannel := topics.Status(cli.Config.TLSName())
 
 	{
 		cfg := conf.GetConfig()
@@ -219,10 +183,10 @@ func (cli *CLI) startMonitor(cmd *cobra.Command, _ []string) error {
 			router := paho.NewSingleHandlerRouter(mqc.Handler)
 
 			mq, err = mqttcm.Setup(
-				ctx, cli.Config.Name(), statusChannel,
+				ctx, cli.Config.TLSName(), statusChannel,
 				[]string{
-					topics.RequestSubscription(cli.Config.Name()),
-				}, router, conf, cauth,
+					topics.RequestSubscription(cli.Config.TLSName()),
+				}, router, conf, nil, // todo: add app config
 			)
 			if err != nil {
 				return fmt.Errorf("mqtt: %w", err)

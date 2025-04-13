@@ -19,19 +19,19 @@ import (
 
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/mqttcm"
 )
 
 type mqclient struct {
 	mq     *autopaho.ConnectionManager
 	topics *mqttcm.MQTTTopics
-	conf   config.ConfigUpdater
+	conf   checkconfig.ConfigUpdater
 	log    *slog.Logger
 	prom   prometheus.Gatherer
 }
 
-func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf config.ConfigUpdater, promreg prometheus.Gatherer) *mqclient {
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf checkconfig.ConfigUpdater, promreg prometheus.Gatherer) *mqclient {
 	return &mqclient{topics: topics, conf: conf, log: log, prom: promreg}
 }
 
@@ -40,7 +40,6 @@ func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
 }
 
 func (mqc *mqclient) Handler(m *paho.Publish) {
-
 	log := mqc.log
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -137,11 +136,9 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 		}
 
 	}
-
 }
 
 func (mqc *mqclient) sendResponse(ctx context.Context, log *slog.Logger, data []byte, m *paho.Publish) error {
-
 	rmsg := &paho.Publish{
 		Topic:   m.Properties.ResponseTopic,
 		Payload: data,

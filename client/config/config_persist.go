@@ -1,10 +1,15 @@
-package api
+package config
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path"
+
+	"go.ntppool.org/common/logger"
 )
 
 const stateFile = "state.json"
@@ -23,20 +28,28 @@ func (ac *appConfig) SaveCertificates(certPem, keyPem []byte) error {
 	return nil
 }
 
-func (ac *appConfig) LoadCertificates() ([]byte, []byte, error) {
+func (ac *appConfig) LoadCertificates(ctx context.Context) error {
 	certPem, err := os.ReadFile(ac.stateFilePrefix("cert.pem"))
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	keyPem, err := os.ReadFile(ac.stateFilePrefix("key.pem"))
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	return certPem, keyPem, nil
+
+	tlsCert, err := tls.X509KeyPair(certPem, keyPem)
+	if err != nil {
+		return err
+	}
+
+	return ac.setCertificate(ctx, &tlsCert)
 }
 
 func (ac *appConfig) stateFilePrefix(filename string) string {
-	dir := path.Join(ac.dir, ac.Name())
+	// spew.Dump("ac", ac)
+
+	dir := path.Join(ac.dir, ac.Env().String())
 
 	_, err := os.Stat(dir)
 	if err != nil {
@@ -46,11 +59,44 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 	return path.Join(dir, filename)
 }
 
-func (ac *appConfig) load() error {
+func (ac *appConfig) load(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
+	err := ac.loadFromDisk(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = ac.LoadCertificates(ctx)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.InfoContext(ctx, "load certificate", "err", err)
+		}
+	}
+
+	haveAPIKey := ac.API.APIKey != ""
+	// log.DebugContext(ctx, "loaded configuration from disk", "name", ac.Name(), "api_key", haveAPIKey)
+
+	if haveAPIKey {
+		err = ac.LoadAPIAppConfig(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	// todo: check if it changed?
+	return ac.save()
+}
+
+func (ac *appConfig) loadFromDisk(_ context.Context) error {
 	path := ac.stateFilePrefix(stateFile)
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		if errors.Is(err, os.ErrNotExist) {
+			return ac.save()
+		} else {
+			return err
+		}
 	}
 
 	ac.lock.Lock()

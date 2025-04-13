@@ -18,7 +18,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
 
@@ -30,8 +30,7 @@ type response struct {
 }
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
-func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAttributes ...attribute.KeyValue) (*apiv2.ServerStatus, *ntp.Response, error) {
-
+func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, traceAttributes ...attribute.KeyValue) (*apiv2.ServerStatus, *ntp.Response, error) {
 	log := logger.Setup()
 
 	traceAttributes = append(traceAttributes, attribute.String("ip", ip.String()))
@@ -214,7 +213,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *config.Config, traceAtt
 }
 
 func ntpResponseToPbStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {
-	//log.Printf("Leap: %d", resp.Leap)
+	// log.Printf("Leap: %d", resp.Leap)
 	status := &pb.ServerStatus{
 		Ts:         timestamppb.Now(),
 		Offset:     durationpb.New(resp.ClockOffset),
@@ -228,7 +227,7 @@ func ntpResponseToPbStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus 
 }
 
 func ntpResponseToApiStatus(ip *netip.Addr, resp *ntp.Response) *apiv2.ServerStatus {
-	//log.Printf("Leap: %d", resp.Leap)
+	// log.Printf("Leap: %d", resp.Leap)
 	status := &apiv2.ServerStatus{
 		Ts:         timestamppb.Now(),
 		Offset:     durationpb.New(resp.ClockOffset),

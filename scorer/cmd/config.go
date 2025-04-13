@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 
 	"github.com/cristalhq/aconfig"
 	"github.com/cristalhq/aconfig/aconfigdotenv"
@@ -56,7 +55,6 @@ func (cfg *APIConfig) Load(args []string) error {
 }
 
 func (cfg *APIConfig) setLoader(args []string) {
-
 	acfg := aconfig.Config{
 		// MergeFiles: true,
 		FileFlag: "config",
@@ -76,7 +74,6 @@ func (cfg *APIConfig) setLoader(args []string) {
 	}
 
 	cfg.loader = aconfig.LoaderFor(cfg, acfg)
-
 }
 
 func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
@@ -91,7 +88,7 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobr
 
 		err = fn(cmd, args)
 		if err != nil {
-			fmt.Printf("error: %s", err)
+			log.ErrorContext(cmd.Context(), "runtime error", "err", err)
 			return err
 		}
 		return nil

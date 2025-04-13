@@ -9,7 +9,7 @@ import (
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/monitor"
 )
 
@@ -29,16 +29,15 @@ func (cli *CLI) checkCmd() *cobra.Command {
 func (cli *CLI) checkRun(cmd *cobra.Command, args []string) error {
 	log := logger.Setup()
 
-	timeout := time.Second * 20
-	timeout = time.Minute * 5
+	timeout := time.Second * 60
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
 	ctx, span := tracing.Start(ctx, "api-test")
 	defer span.End()
 
-	cfg := &config.Config{}
+	cfg := &checkconfig.Config{}
 
 	for _, h := range args {
 

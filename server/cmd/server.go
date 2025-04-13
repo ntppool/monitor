@@ -10,13 +10,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 
-	"go.ntppool.org/monitor/api"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/server"
@@ -29,8 +29,7 @@ import (
 )
 
 func (cli *CLI) serverCmd() *cobra.Command {
-
-	var serverCmd = &cobra.Command{
+	serverCmd := &cobra.Command{
 		Use:   "server",
 		Short: "server starts the API server",
 		Long:  `starts the API server on (default) port 8000`,
@@ -50,14 +49,14 @@ type mqconfig struct {
 	port            int
 }
 
-func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *config.MQTTConfig {
+func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *checkconfig.MQTTConfig {
 	jwttoken, err := jwt.GetToken(ctx, mqcfg.jwtKey, mqcfg.tlsName, jwt.KeyTypeServer)
 	if err != nil {
 		logger.Setup().Error("jwt token", "err", err)
 		os.Exit(2)
 	}
 
-	return &config.MQTTConfig{
+	return &checkconfig.MQTTConfig{
 		Host:   mqcfg.host,
 		Port:   mqcfg.port,
 		JWT:    []byte(jwttoken),
@@ -66,7 +65,6 @@ func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *config.MQTTConfig {
 }
 
 func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
-
 	cfg := cli.Config
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -74,7 +72,7 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 
 	log := logger.Setup()
 
-	//log.Printf("acfg: %+v", cfg)
+	// log.Printf("acfg: %+v", cfg)
 
 	if len(cfg.DeploymentMode) == 0 {
 		return fmt.Errorf("deployment_mode configuration required")
@@ -129,9 +127,9 @@ func (cli *CLI) serverCLI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	depEnv, err := api.DeploymentEnvironmentFromString(cfg.DeploymentMode)
-	if err != nil {
-		log.Error("unknown deployment mode", "deployment_mode", cfg.DeploymentMode, "err", err)
+	depEnv := depenv.DeploymentEnvironmentFromString(cfg.DeploymentMode)
+	if depEnv == depenv.DeployUndefined {
+		log.Error("unknown deployment mode", "deployment_mode", cfg.DeploymentMode)
 		os.Exit(2)
 	}
 

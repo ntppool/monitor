@@ -14,8 +14,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/client/auth"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	"go.ntppool.org/monitor/mqttcm"
 )
@@ -46,33 +45,40 @@ func (cli *CLI) apiOkCmd() *cobra.Command {
 func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 	log := logger.SetupMultiLogger()
 
-	timeout := time.Second * 20
-	timeout = time.Minute * 5
+	timeout := time.Second * 40
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
-	log.Info("checking API")
-	cauth, err := cli.ClientAuth(ctx)
+	log.InfoContext(ctx, "ok command", "env", cli.DeployEnv)
+
+	err := cli.Config.WaitUntilReady(ctx)
 	if err != nil {
-		log.Error("auth setup error", "err", err)
-		os.Exit(2)
+		log.ErrorContext(ctx, "config not ready", "err", err)
 	}
 
-	err = cauth.Login()
-	if err != nil {
-		log.Error("could not authenticate to API", "err", err)
-		os.Exit(2)
+	if !(cli.Config.IPv4().InUse() || cli.Config.IPv6().InUse()) {
+		args := []any{}
+		if cli.Config.IPv4().IP != nil {
+			args = append(args, "ipv4", string(cli.Config.IPv4().Status))
+		}
+		if cli.Config.IPv6().IP != nil {
+			args = append(args, "ipv6", string(cli.Config.IPv6().Status))
+		}
+		log.ErrorContext(ctx, "monitor isn't active", args...)
+		return nil
 	}
 
-	err = cauth.LoadOrIssueCertificates()
+	_, certNotAfter, _, err := cli.Config.CertificateDates()
 	if err != nil {
-		log.Error("getting certificates failed", "err", err)
+		log.ErrorContext(ctx, "could not get certificate notAfter date", "err", err)
+	} else {
+		log.InfoContext(ctx, "certificate expires", "date", certNotAfter)
 	}
 
-	tracingShutdown, err := InitTracing(cli.Config.Name(), cauth)
+	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
 	if err != nil {
-		log.Error("tracing error", "err", err)
+		log.ErrorContext(ctx, "tracing error", "err", err)
 	}
 	defer func() {
 		time.Sleep(3 * time.Second)
@@ -85,14 +91,10 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 	ctx, span := tracing.Start(ctx, "api-test")
 	defer span.End()
 
-	secretInfo, err := cauth.Vault.SecretInfo(ctx, cli.Config.Name())
-	if err != nil {
-		log.ErrorContext(ctx, "Could not get metadata for API secret", "err", err)
-	}
+	// todo: print certificate information
+	log.InfoContext(ctx, "client name", "name", cli.Config.TLSName())
 
-	log.InfoContext(ctx, "API key information", "expiration", secretInfo["expiration_time"], "created", secretInfo["creation_time"], "remaining_uses", secretInfo["secret_id_num_uses"])
-
-	ctx, apiC, err := api.Client(ctx, cli.Config.Name(), cauth)
+	ctx, apiC, err := api.Client(ctx, cli.Config.TLSName(), cli.Config)
 	if err != nil {
 		log.ErrorContext(ctx, "could not setup API client", "err", err)
 	}
@@ -127,7 +129,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 	cfg := cfgresp.Msg
 
-	conf := config.NewConfigger(nil)
+	conf := checkconfig.NewConfigger(nil)
 
 	if cfg == nil {
 		log.WarnContext(ctx, "didn't get configuration from the API")
@@ -144,7 +146,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 	if cfg := conf.GetConfig(); cfg != nil {
 		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
-			mq, err = mqttcm.Setup(ctx, cli.Config.Name(), "", []string{}, nil, conf, cauth)
+			mq, err = mqttcm.Setup(ctx, cli.Config.TLSName(), "", []string{}, nil, conf, nil)
 			if err != nil {
 				log.Error("mqtt", "err", err)
 				os.Exit(2)
@@ -162,7 +164,7 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 
 			_, err = mq.Publish(ctx, &paho.Publish{
 				QoS:     1,
-				Topic:   topics.StatusAPITest(cli.Config.Name()),
+				Topic:   topics.StatusAPITest(cli.Config.TLSName()),
 				Payload: msg,
 				Retain:  false,
 			})
@@ -194,17 +196,4 @@ func (cli *CLI) apiOK(cmd *cobra.Command, _ []string) error {
 	log.InfoContext(ctx, "api test done")
 
 	return nil
-}
-
-func (cli *CLI) ClientAuth(ctx context.Context) (*auth.ClientAuth, error) {
-	log := logger.FromContext(ctx)
-
-	log.InfoContext(ctx, "configuring authentication")
-
-	cauth, err := auth.New(ctx, cli.Config)
-	if err != nil {
-		return nil, err
-	}
-
-	return cauth, nil
 }

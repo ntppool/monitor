@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/common/config/depenv"
 )
 
 type MQTTTopics struct {
-	e api.DeploymentEnvironment
+	e depenv.DeploymentEnvironment
 }
 
-func NewTopics(depEnv api.DeploymentEnvironment) *MQTTTopics {
+func NewTopics(depEnv depenv.DeploymentEnvironment) *MQTTTopics {
 	return &MQTTTopics{e: depEnv}
 }
 
@@ -56,5 +56,4 @@ func (t *MQTTTopics) ParseRequestTopic(topic string) (string, string, error) {
 		return "", "", fmt.Errorf("could not parse request topic: %q", topic)
 	}
 	return p[3], p[2], nil
-
 }

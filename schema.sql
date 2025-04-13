@@ -96,6 +96,7 @@ DROP TABLE IF EXISTS `accounts`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `accounts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_token` varchar(36) DEFAULT NULL,
   `name` varchar(255) DEFAULT NULL,
   `organization_name` varchar(150) DEFAULT NULL,
   `organization_url` varchar(150) DEFAULT NULL,
@@ -107,7 +108,8 @@ CREATE TABLE `accounts` (
   `stripe_customer_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `url_slug_idx` (`url_slug`),
-  UNIQUE KEY `stripe_customer_id` (`stripe_customer_id`)
+  UNIQUE KEY `stripe_customer_id` (`stripe_customer_id`),
+  UNIQUE KEY `id_token` (`id_token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -131,7 +133,11 @@ CREATE TABLE `api_keys` (
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `api_key` (`api_key`)
+  UNIQUE KEY `api_key` (`api_key`),
+  KEY `api_keys_account_fk` (`account_id`),
+  KEY `api_keys_user_fk` (`user_id`),
+  CONSTRAINT `api_keys_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
+  CONSTRAINT `api_keys_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -306,6 +312,7 @@ DROP TABLE IF EXISTS `monitors`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `monitors` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_token` varchar(36) DEFAULT NULL,
   `type` enum('monitor','score') NOT NULL DEFAULT 'monitor',
   `user_id` int unsigned DEFAULT NULL,
   `account_id` int unsigned DEFAULT NULL,
@@ -322,10 +329,14 @@ CREATE TABLE `monitors` (
   `last_seen` datetime(6) DEFAULT NULL,
   `last_submit` datetime(6) DEFAULT NULL,
   `created_on` datetime NOT NULL,
+  `deleted_on` datetime DEFAULT NULL,
+  `is_current` tinyint(1) DEFAULT '1',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `ip` (`ip`,`ip_version`),
   UNIQUE KEY `api_key` (`api_key`),
   UNIQUE KEY `monitors_tls_name` (`tls_name`,`ip_version`),
+  UNIQUE KEY `token_id` (`id_token`),
+  UNIQUE KEY `id_token` (`id_token`),
+  UNIQUE KEY `ip` (`ip`,`is_current`),
   KEY `monitors_user_id` (`user_id`),
   KEY `monitors_account_fk` (`account_id`),
   KEY `type_status` (`type`,`status`),
@@ -668,6 +679,7 @@ CREATE TABLE `user_privileges` (
   `vendor_admin` tinyint NOT NULL DEFAULT '0',
   `equipment_admin` tinyint NOT NULL DEFAULT '0',
   `support_staff` tinyint NOT NULL DEFAULT '0',
+  `monitor_admin` tinyint NOT NULL DEFAULT '0',
   PRIMARY KEY (`user_id`),
   CONSTRAINT `user_privileges_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
@@ -725,6 +737,7 @@ DROP TABLE IF EXISTS `users`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `users` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_token` varchar(36) DEFAULT NULL,
   `email` varchar(255) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
   `username` varchar(40) DEFAULT NULL,
@@ -732,7 +745,8 @@ CREATE TABLE `users` (
   `deletion_on` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
-  UNIQUE KEY `username` (`username`)
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `id_token` (`id_token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -745,6 +759,7 @@ DROP TABLE IF EXISTS `vendor_zones`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `vendor_zones` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_token` varchar(36) DEFAULT NULL,
   `zone_name` varchar(90) NOT NULL,
   `status` enum('New','Pending','Approved','Rejected') NOT NULL DEFAULT 'New',
   `user_id` int unsigned DEFAULT NULL,
@@ -764,6 +779,7 @@ CREATE TABLE `vendor_zones` (
   `account_id` int unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `zone_name` (`zone_name`,`dns_root_id`),
+  UNIQUE KEY `id_token` (`id_token`),
   KEY `vendor_zones_user_id` (`user_id`),
   KEY `dns_root_fk` (`dns_root_id`),
   KEY `vendor_zone_account_fk` (`account_id`),
@@ -842,4 +858,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-01-17  8:38:42
+-- Dump completed on 2025-04-12 21:49:55

@@ -3,15 +3,14 @@ package api
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 	apitls "go.ntppool.org/monitor/api/tls"
@@ -19,7 +18,6 @@ import (
 )
 
 func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
-
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
@@ -46,44 +44,17 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 	return client, nil
 }
 
-func GetDeploymentEnvironmentFromName(clientName string) (DeploymentEnvironment, error) {
-
-	clientName = strings.ToLower(clientName)
-
-	if !strings.HasSuffix(clientName, ".mon.ntppool.dev") {
-		return DeployUndefined, fmt.Errorf("invalid client name %s", clientName)
-	}
-
-	if clientName == "api.mon.ntppool.dev" {
-		return DeployProd, nil
-	}
-
-	prefix := clientName[:strings.Index(clientName, ".mon.ntppool.dev")]
-	parts := strings.Split(prefix, ".")
-	if len(parts) != 2 {
-		return DeployUndefined, fmt.Errorf("invalid client name %s", clientName)
-	}
-
-	if d, err := DeploymentEnvironmentFromString(parts[1]); err == nil {
-		return d, nil
-	}
-
-	return DeployUndefined, fmt.Errorf("invalid client name %s (unknown environment %s)", clientName, parts[1])
-
-}
-
 func getServerName(clientName string) (string, error) {
-
 	if e := os.Getenv("DEVEL_API_SERVER"); len(e) > 0 {
 		return e, nil
 	}
 
-	depEnv, err := GetDeploymentEnvironmentFromName(clientName)
+	depEnv, err := depenv.GetDeploymentEnvironmentFromName(clientName)
 	if err != nil {
 		return "", err
 	}
 
-	return apiServers[depEnv], nil
+	return depEnv.MonitorAPIHost(), nil
 }
 
 func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
@@ -102,10 +73,9 @@ func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
 }
 
 func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, apiv2connect.MonitorServiceClient, error) {
-
 	log := logger.FromContext(ctx)
 
-	log.Debug("setting up api client")
+	log.DebugContext(ctx, "setting up api client", "name", clientName)
 
 	serverName, err := getServerName(clientName)
 	if err != nil {

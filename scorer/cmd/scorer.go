@@ -16,8 +16,7 @@ import (
 )
 
 func (cli *CLI) scorerCmd() *cobra.Command {
-
-	var scorerCmd = &cobra.Command{
+	scorerCmd := &cobra.Command{
 		Use:   "scorer",
 		Short: "scorer execution",
 	}
@@ -56,9 +55,8 @@ func (cli *CLI) scorer(cmd *cobra.Command, args []string) error {
 	return cli.scorerRun(cmd, args, false)
 }
 
-func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) error {
-
-	log := logger.Setup()
+func (cli *CLI) scorerRun(cmd *cobra.Command, _ []string, continuous bool) error {
+	log := logger.FromContext(cmd.Context())
 	log.Info("starting", "continuous", continuous)
 
 	ctx := context.Background()
@@ -114,7 +112,6 @@ func (cli *CLI) scorerRun(cmd *cobra.Command, args []string, continuous bool) er
 }
 
 func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
-
 	ctx := context.Background()
 	log := logger.Setup()
 
@@ -186,5 +183,4 @@ func (cli *CLI) scorerSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-
 }

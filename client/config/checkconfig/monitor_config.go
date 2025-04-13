@@ -1,4 +1,7 @@
-package config
+// checkconfig has the configuration data that's sent by the
+// monitoring API. More of this (certainly the MQTT config)
+// should be moved to the configuration API.
+package checkconfig
 
 import (
 	"context"

@@ -7,7 +7,7 @@ import (
 	"inet.af/netaddr"
 
 	"go.ntppool.org/monitor/api/pb"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
 
@@ -16,7 +16,7 @@ type MonitorConfig struct {
 	NatIP      string   `json:"nat_ip,omitempty"` // have the monitor bind to a different IP
 	BaseChecks []string `json:"base_checks,omitempty"`
 	ip         string
-	MQTT       *config.MQTTConfig
+	MQTT       *checkconfig.MQTTConfig
 }
 
 func (m *Monitor) IsLive() bool {
@@ -29,7 +29,6 @@ func (m *Monitor) IsLive() bool {
 }
 
 func (m *Monitor) GetConfigWithDefaults(defaults []byte) (*MonitorConfig, error) {
-
 	merged, err := jsonpatch.MergePatch(defaults, []byte(m.Config))
 	if err != nil {
 		return nil, err
@@ -38,7 +37,6 @@ func (m *Monitor) GetConfigWithDefaults(defaults []byte) (*MonitorConfig, error)
 	// fmt.Printf("mx: %s\n", merged)
 
 	return m.getConfig(merged)
-
 }
 
 func (m *Monitor) GetConfig() (*MonitorConfig, error) {
@@ -90,7 +88,6 @@ func (cfg *MonitorConfig) APIv2() (*apiv2.GetConfigResponse, error) {
 }
 
 func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {
-
 	rcfg := &pb.Config{
 		Samples: cfg.Samples,
 	}
@@ -123,7 +120,6 @@ func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {
 }
 
 func (cfg *MonitorConfig) ApiConfig() (*apiv2.GetConfigResponse, error) {
-
 	rcfg := &apiv2.GetConfigResponse{
 		Samples: cfg.Samples,
 	}

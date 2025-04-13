@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"go.ntppool.org/common/logger"
-	"go.ntppool.org/common/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go4.org/netipx"
 	"golang.org/x/sync/errgroup"
 
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/tracing"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/monitor"
 )
 
@@ -28,7 +28,7 @@ type metrics struct {
 }
 
 type LocalOK struct {
-	cfg        *config.Config
+	cfg        *checkconfig.Config
 	metrics    metrics
 	isv4       bool
 	lastCheck  time.Time
@@ -36,10 +36,12 @@ type LocalOK struct {
 	mu         sync.RWMutex
 }
 
-const localCacheTTL = 180 * time.Second
-const maxOffset = 10 * time.Millisecond
+const (
+	localCacheTTL = 180 * time.Second
+	maxOffset     = 10 * time.Millisecond
+)
 
-func NewLocalOK(conf config.ConfigUpdater, promreg prometheus.Registerer) *LocalOK {
+func NewLocalOK(conf checkconfig.ConfigUpdater, promreg prometheus.Registerer) *LocalOK {
 	var isv4 bool
 
 	cfg := conf.GetConfig()
@@ -81,7 +83,7 @@ func (l *LocalOK) NextCheckIn() time.Duration {
 	return wait
 }
 
-func (l *LocalOK) SetConfig(cfg *config.Config) {
+func (l *LocalOK) SetConfig(cfg *checkconfig.Config) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.cfg = cfg
@@ -105,7 +107,6 @@ func (l *LocalOK) Check(ctx context.Context) bool {
 }
 
 func (l *LocalOK) update(ctx context.Context) bool {
-
 	ctx, span := tracing.Start(ctx,
 		"localcheck-update",
 		trace.WithSpanKind(trace.SpanKindInternal),
@@ -274,7 +275,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	return ok
 }
 
-func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *config.Config, name string, ip *netip.Addr) (bool, error) {
+func (l *LocalOK) sanityCheckHost(ctx context.Context, cfg *checkconfig.Config, name string, ip *netip.Addr) (bool, error) {
 	status, _, err := monitor.CheckHost(ctx, ip, cfg, attribute.String("name", name))
 	if err != nil {
 		return false, err

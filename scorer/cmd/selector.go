@@ -1,6 +1,7 @@
 package cmd
 
-//go:generate stringer -type=candidateState
+//go:generate go tool github.com/dmarkham/enumer -type=candidateState
+//-text -trimprefix=DuplicateHandling
 
 import (
 	"context"
@@ -17,8 +18,7 @@ import (
 )
 
 func (cli *CLI) selectorCmd() *cobra.Command {
-
-	var selectorCmd = &cobra.Command{
+	selectorCmd := &cobra.Command{
 		Use:   "selector",
 		Short: "monitor selection",
 	}
@@ -50,11 +50,9 @@ func (cli *CLI) selector(cmd *cobra.Command, args []string) error {
 	return cli.selectorRun(cmd, args, false)
 }
 
-func (cli *CLI) selectorRun(cmd *cobra.Command, args []string, continuous bool) error {
-
-	ctx := context.Background()
-
-	log := logger.Setup()
+func (cli *CLI) selectorRun(cmd *cobra.Command, _ []string, continuous bool) error {
+	ctx := cmd.Context()
+	log := logger.FromContext(ctx)
 
 	log.Info("selector starting")
 
@@ -128,7 +126,6 @@ type newStatus struct {
 type newStatusList []newStatus
 
 func (sl *selector) Run() (int, error) {
-
 	tx, err := sl.dbconn.BeginTx(sl.ctx, nil)
 	if err != nil {
 		return 0, err
@@ -179,7 +176,6 @@ func (sl *selector) Run() (int, error) {
 }
 
 func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
-
 	// target this many active servers
 	targetNumber := 5
 
@@ -320,7 +316,6 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 		case candidateBlock:
 			blockedMonitors++
 		}
-
 	}
 
 	log.Info("monitor status", "ok", okMonitors, "healthy", healthyMonitors, "active", currentActiveMonitors, "blocked", blockedMonitors)
@@ -449,7 +444,6 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	}
 
 	return changed, nil
-
 }
 
 // IsOutOfOrder returns the "most out of order" of the currently active monitors.
@@ -457,7 +451,6 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 // the first return parameter the ID to be replaced. The last parameter
 // is false if no relevant replacement was found.
 func (nsl newStatusList) IsOutOfOrder() (uint32, uint32, bool) {
-
 	best := uint32(0)
 	replace := uint32(0)
 

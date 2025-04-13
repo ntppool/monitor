@@ -2,27 +2,19 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/client/auth"
 )
 
-func InitTracing(name string, cauth *auth.ClientAuth) (tracing.TpShutdownFunc, error) {
+func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth any) (tracing.TpShutdownFunc, error) {
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
-	}
-
-	ctx := context.Background()
-	deployEnv, err := api.GetDeploymentEnvironmentFromName(name)
-	if err != nil {
-		return nil, fmt.Errorf("could not get deployment environment: %w", err)
 	}
 
 	endpoint := "https://api-buzz.mon.ntppool.dev/"
@@ -33,11 +25,12 @@ func InitTracing(name string, cauth *auth.ClientAuth) (tracing.TpShutdownFunc, e
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
-			ServiceName:         "monitor",
-			Environment:         deployEnv.String(),
-			RootCAs:             capool,
-			CertificateProvider: cauth.GetClientCertificate,
-			EndpointURL:         endpoint,
+			ServiceName: "monitor",
+			Environment: deployEnv.String(),
+			RootCAs:     capool,
+			// todo: get certificates from configuration
+			// CertificateProvider: cauth.GetClientCertificate,
+			EndpointURL: endpoint,
 		},
 	)
 	if err != nil {
@@ -53,5 +46,4 @@ func InitTracing(name string, cauth *auth.ClientAuth) (tracing.TpShutdownFunc, e
 		// log.Debug("trace provider shutdown", "err", err)
 		return err
 	}, nil
-
 }

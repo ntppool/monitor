@@ -17,10 +17,10 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 	apitls "go.ntppool.org/monitor/api/tls"
-	"go.ntppool.org/monitor/client/config"
+	"go.ntppool.org/monitor/client/config/checkconfig"
 )
 
-func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf config.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
+func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf checkconfig.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
 	log := logger.Setup()
 
 	cfg := conf.GetMQTTConfig(ctx)
@@ -106,7 +106,6 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		ConnectPassword: cfg.JWT,
 
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-
 			log.Info("mqtt connection up")
 
 			if len(subscribe) > 0 {
@@ -120,8 +119,8 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				}
 
 				suback, err := cm.Subscribe(context.Background(), &paho.Subscribe{
-					Subscriptions: subscriptions})
-
+					Subscriptions: subscriptions,
+				})
 				if err != nil {
 					if suback == nil {
 						log.Error("mqtt subscribe error", "err", err)
@@ -149,7 +148,6 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 			// 		Retain:  true,
 			// 	})
 			// }
-
 		},
 		OnConnectError: func(err error) {
 			log.Error("mqtt connect", "err", err)
@@ -239,5 +237,4 @@ func StatusMessageJSON(online bool) ([]byte, error) {
 		return nil, err
 	}
 	return js, err
-
 }

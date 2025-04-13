@@ -44,14 +44,6 @@ const (
 	MonitorServiceSubmitResultsProcedure = "/monitor.v2.MonitorService/SubmitResults"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
-var (
-	monitorServiceServiceDescriptor             = v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService")
-	monitorServiceGetConfigMethodDescriptor     = monitorServiceServiceDescriptor.Methods().ByName("GetConfig")
-	monitorServiceGetServersMethodDescriptor    = monitorServiceServiceDescriptor.Methods().ByName("GetServers")
-	monitorServiceSubmitResultsMethodDescriptor = monitorServiceServiceDescriptor.Methods().ByName("SubmitResults")
-)
-
 // MonitorServiceClient is a client for the monitor.v2.MonitorService service.
 type MonitorServiceClient interface {
 	GetConfig(context.Context, *connect.Request[v2.GetConfigRequest]) (*connect.Response[v2.GetConfigResponse], error)
@@ -70,23 +62,24 @@ type MonitorServiceClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewMonitorServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) MonitorServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
+	monitorServiceMethods := v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods()
 	return &monitorServiceClient{
 		getConfig: connect.NewClient[v2.GetConfigRequest, v2.GetConfigResponse](
 			httpClient,
 			baseURL+MonitorServiceGetConfigProcedure,
-			connect.WithSchema(monitorServiceGetConfigMethodDescriptor),
+			connect.WithSchema(monitorServiceMethods.ByName("GetConfig")),
 			connect.WithClientOptions(opts...),
 		),
 		getServers: connect.NewClient[v2.GetServersRequest, v2.GetServersResponse](
 			httpClient,
 			baseURL+MonitorServiceGetServersProcedure,
-			connect.WithSchema(monitorServiceGetServersMethodDescriptor),
+			connect.WithSchema(monitorServiceMethods.ByName("GetServers")),
 			connect.WithClientOptions(opts...),
 		),
 		submitResults: connect.NewClient[v2.SubmitResultsRequest, v2.SubmitResultsResponse](
 			httpClient,
 			baseURL+MonitorServiceSubmitResultsProcedure,
-			connect.WithSchema(monitorServiceSubmitResultsMethodDescriptor),
+			connect.WithSchema(monitorServiceMethods.ByName("SubmitResults")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -129,22 +122,23 @@ type MonitorServiceHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewMonitorServiceHandler(svc MonitorServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	monitorServiceMethods := v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods()
 	monitorServiceGetConfigHandler := connect.NewUnaryHandler(
 		MonitorServiceGetConfigProcedure,
 		svc.GetConfig,
-		connect.WithSchema(monitorServiceGetConfigMethodDescriptor),
+		connect.WithSchema(monitorServiceMethods.ByName("GetConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
 	monitorServiceGetServersHandler := connect.NewUnaryHandler(
 		MonitorServiceGetServersProcedure,
 		svc.GetServers,
-		connect.WithSchema(monitorServiceGetServersMethodDescriptor),
+		connect.WithSchema(monitorServiceMethods.ByName("GetServers")),
 		connect.WithHandlerOptions(opts...),
 	)
 	monitorServiceSubmitResultsHandler := connect.NewUnaryHandler(
 		MonitorServiceSubmitResultsProcedure,
 		svc.SubmitResults,
-		connect.WithSchema(monitorServiceSubmitResultsMethodDescriptor),
+		connect.WithSchema(monitorServiceMethods.ByName("SubmitResults")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/monitor.v2.MonitorService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -8,21 +9,21 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
-	"go.ntppool.org/monitor/api"
+	"go.ntppool.org/monitor/client/config"
 )
 
 type CLI struct {
-	Config api.AppConfig
+	Config config.AppConfig
 
-	flags    *flag.FlagSet
-	EnvName  string
-	StateDir string
-	Debug    bool
+	flags     *flag.FlagSet
+	envName   string
+	DeployEnv depenv.DeploymentEnvironment
+	StateDir  string
+	Debug     bool
 }
-
-var envPrefix = "MONITOR"
 
 func NewCLI() *CLI {
 	log := logger.Setup()
@@ -41,7 +42,7 @@ func NewCLI() *CLI {
 		cli.StateDir = filepath.Join(configDir, "ntpmon")
 	}
 
-	flags.StringVar(&cli.EnvName, "env", "beta", "Environment name")
+	flags.StringVar(&cli.envName, "env", "test", "Environment name")
 	flags.StringVar(&cli.StateDir, "state-dir", cli.StateDir, "Directory for storing state")
 	flags.BoolVar(&cli.Debug, "debug", cli.Debug, "Enable debug logging")
 
@@ -52,7 +53,7 @@ func (cli *CLI) Flags() *flag.FlagSet {
 	return cli.flags
 }
 
-func (cli *CLI) LoadConfig(args []string) error {
+func (cli *CLI) LoadConfig(ctx context.Context, args []string) error {
 	// cfg := cli.Config
 
 	err := cli.Flags().Parse(args)
@@ -67,7 +68,12 @@ func (cli *CLI) LoadConfig(args []string) error {
 		os.Setenv("MONITOR_DEBUG", "true")
 	}
 
-	cli.Config, err = api.NewAppConfig(cli.EnvName, cli.StateDir)
+	cli.DeployEnv = depenv.DeploymentEnvironmentFromString(cli.envName)
+	if cli.DeployEnv == depenv.DeployUndefined {
+		return fmt.Errorf("deployment environment %q invalid or undefined", cli.envName)
+	}
+
+	cli.Config, err = config.NewAppConfig(ctx, cli.DeployEnv, cli.StateDir, false)
 	if err != nil {
 		return err
 	}
@@ -79,9 +85,8 @@ func (cli *CLI) Run(fn func(cmd *cobra.Command, args []string) error) func(*cobr
 	return func(cmd *cobra.Command, args []string) error {
 		logger.Setup().Info("ntppool-monitor", "version", version.Version())
 
-		err := cli.LoadConfig(args)
+		err := cli.LoadConfig(cmd.Context(), args)
 		if err != nil {
-			fmt.Printf("Could not load config: %s", err)
 			return err
 		}
 
