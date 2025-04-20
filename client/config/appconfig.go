@@ -133,7 +133,7 @@ func (ac *appConfig) WaitUntilReady(ctx context.Context) error {
 
 		if i == 1 || i%60 == 0 {
 			cmdName := fmt.Sprintf(
-				"ntpmon setup --deploy-env %s --state-dir '%s'",
+				"ntpmon setup --env %s --state-dir '%s'",
 				ac.e.String(),
 				ac.dir,
 			)

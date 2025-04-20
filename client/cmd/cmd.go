@@ -23,10 +23,10 @@ func init() {
 type ClientCmd struct {
 	Config config.AppConfig `kong:"-"`
 
-	Debug    bool   `flag:"debug" help:"Enable debug logging"`
-	StateDir string `flag:"state-dir" env:"MONITOR_STATE_DIR" help:"Directory for storing state"`
+	Debug    bool   `name:"debug" help:"Enable debug logging"`
+	StateDir string `name:"state-dir" env:"MONITOR_STATE_DIR" help:"Directory for storing state"`
 
-	DeployEnv depenv.DeploymentEnvironment `kong:"env,default=test" flag:"env" help:"Deployment environment"`
+	DeployEnv depenv.DeploymentEnvironment `name:"env" short:"e" aliases:"deploy-env" required:"" default:"test" env:"DEPLOYMENT_MODE" help:"Deployment environment (prod, test, devel)"`
 
 	API     apiCmd     `cmd:"" help:"check API connection"`
 	Monitor monitorCmd `cmd:"" help:"run monitor"`
