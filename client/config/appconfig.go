@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -131,7 +132,19 @@ func (ac *appConfig) WaitUntilReady(ctx context.Context) error {
 		}
 
 		if i == 1 || i%60 == 0 {
-			log.WarnContext(ctx, "no API key, please run `ntpmon setup`")
+			cmdName := fmt.Sprintf(
+				"ntpmon setup --deploy-env %s --state-dir '%s'",
+				ac.e.String(),
+				ac.dir,
+			)
+			log.WarnContext(ctx, "no API key, please run ntpmon setup", "cmd", cmdName)
+			if i == 1 {
+				// Check if stdin is a terminal
+				fileInfo, err := os.Stdin.Stat()
+				if err == nil && (fileInfo.Mode()&os.ModeCharDevice) != 0 {
+					fmt.Printf("\nSetup API key with:\n\n    %s\n\n", cmdName)
+				}
+			}
 		}
 
 		select {

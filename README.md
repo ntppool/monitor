@@ -20,6 +20,14 @@ done
 sudo journalctl -u ntpmon@\* -f
 ```
 
+Installed from the rpm or deb package, state will by default
+be stored in `/var/run/ntpmon`. You can change the default in
+`/var/default/ntpmon`, or with the `--state-dir` parameter
+or by setting `$MONITOR_STATE_DIR` in the environment.
+
+The `--deploy-env` parameter specifies which server to use (prod, test
+or devel).
+
 ## Client requirements
 
 A well connected Linux or FreeBSD system (x86_64 or arm64).

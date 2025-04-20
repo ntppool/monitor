@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/alecthomas/kong"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
@@ -19,8 +23,8 @@ func init() {
 type ClientCmd struct {
 	Config config.AppConfig `kong:"-"`
 
-	Debug    bool   `kong:"debug" help:"Enable debug logging"`
-	StateDir string `kong:"state-dir" help:"Directory for storing state"`
+	Debug    bool   `flag:"debug" help:"Enable debug logging"`
+	StateDir string `flag:"state-dir" env:"MONITOR_STATE_DIR" help:"Directory for storing state"`
 
 	DeployEnv depenv.DeploymentEnvironment `kong:"env,default=test" flag:"env" help:"Deployment environment"`
 
@@ -30,6 +34,45 @@ type ClientCmd struct {
 	Setup   setupCmd   `cmd:"" help:"initial authentication and configuration"`
 
 	Version version.KongVersionCmd `cmd:"" help:"show version"`
+}
+
+func (c *ClientCmd) BeforeResolve() error {
+	c.Version = version.KongVersionCmd{
+		Name: "ntpmon",
+	}
+	defaultsFile := "/etc/default/ntpmon"
+	if _, err := os.Stat(defaultsFile); err == nil {
+		log.Printf("Loading defaults from %s", defaultsFile)
+		file, err := os.Open(defaultsFile)
+		if err != nil {
+			return fmt.Errorf("could not open defaults file: %s", err)
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue // Skip invalid lines
+			}
+			key, value := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			if key == "" {
+				continue
+			}
+
+			// Only set if environment variable is not already set
+			if _, exists := os.LookupEnv(key); !exists {
+				log.Printf("Setting environment variable %s=%s", key, value)
+				os.Setenv(key, value)
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("error reading defaults file: %s", err)
+		}
+	}
+	return nil
 }
 
 func (c *ClientCmd) BeforeApply() error {
@@ -51,6 +94,12 @@ func (c *ClientCmd) AfterApply(ctx context.Context) error {
 	}
 	if c.DeployEnv == depenv.DeployUndefined {
 		return fmt.Errorf("deployment environment invalid or undefined")
+	}
+
+	if c.StateDir == "" {
+		return fmt.Errorf("state directory not set")
+	} else {
+		c.StateDir = kong.ExpandPath(c.StateDir)
 	}
 
 	var err error
