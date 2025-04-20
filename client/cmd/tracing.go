@@ -21,7 +21,7 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 		return nil, apitls.ErrNoCertificateProvider
 	}
 
-	endpoint := "https://api-buzz.mon.ntppool.dev/"
+	endpoint := "api-buzz.mon.ntppool.dev"
 
 	if ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(ep) > 0 {
 		endpoint = ""
@@ -33,7 +33,7 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 			Environment:         deployEnv.String(),
 			RootCAs:             capool,
 			CertificateProvider: tlsAuth.GetClientCertificate,
-			EndpointURL:         endpoint,
+			Endpoint:            endpoint,
 		},
 	)
 	if err != nil {
