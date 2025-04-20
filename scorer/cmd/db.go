@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/alecthomas/kong"
-
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -15,7 +13,7 @@ type dbCmd struct {
 	ScorerStatus bool `cmd:"" help:"Show scorer status"`
 }
 
-func (cmd *dbCmd) Run(ctx context.Context, kctx *kong.Context) error {
+func (cmd *dbCmd) Run(ctx context.Context) error {
 	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
 		return err

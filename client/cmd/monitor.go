@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
@@ -57,7 +56,7 @@ type ConfigStore interface {
 
 type monitorCmd struct{}
 
-func (cmd *monitorCmd) Run(ctx context.Context, kctx kong.Context, cli *ClientCmd) error {
+func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	ctx, stopMonitor := context.WithCancel(ctx)
 	defer stopMonitor()
 

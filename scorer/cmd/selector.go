@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff/v4"
 
 	"go.ntppool.org/common/logger"
@@ -27,15 +26,15 @@ type (
 	selectorOnceCmd   struct{}
 )
 
-func (cmd selectorServerCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	return selectorRun(ctx, kctx, true)
+func (cmd selectorServerCmd) Run(ctx context.Context) error {
+	return selectorRun(ctx, true)
 }
 
-func (cmd selectorOnceCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	return selectorRun(ctx, kctx, false)
+func (cmd selectorOnceCmd) Run(ctx context.Context) error {
+	return selectorRun(ctx, false)
 }
 
-func selectorRun(ctx context.Context, _ *kong.Context, continuous bool) error {
+func selectorRun(ctx context.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
 
 	log.Info("selector starting")

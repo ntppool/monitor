@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/alecthomas/kong"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -18,7 +17,7 @@ type dbMonitorCmd struct {
 	Name string `arg:"" help:"monitor name"`
 }
 
-func (cmd *dbMonitorCmd) Run(ctx context.Context, kctx *kong.Context) error {
+func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
 	name := cmd.Name
 	if name == "" {
 		return fmt.Errorf("db mon [monitername]")

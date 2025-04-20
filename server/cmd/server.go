@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/alecthomas/kong"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
@@ -57,7 +56,7 @@ func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *checkconfig.MQTTConfi
 	}
 }
 
-func (cfg *serverCmd) Run(ctx context.Context, kctx *kong.Context, root *ApiCmd) error {
+func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	log := logger.FromContext(ctx)
 
 	deploymentMode := root.DeploymentMode

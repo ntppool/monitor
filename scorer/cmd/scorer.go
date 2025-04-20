@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/alecthomas/kong"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -15,15 +14,15 @@ import (
 	"go.ntppool.org/monitor/scorer"
 )
 
-func (cmd *scorerOnceCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	return scorerRun(ctx, kctx, false)
+func (cmd *scorerOnceCmd) Run(ctx context.Context) error {
+	return scorerRun(ctx, false)
 }
 
-func (cmd *scorerServerCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	return scorerRun(ctx, kctx, true)
+func (cmd *scorerServerCmd) Run(ctx context.Context) error {
+	return scorerRun(ctx, true)
 }
 
-func scorerRun(ctx context.Context, _ *kong.Context, continuous bool) error {
+func scorerRun(ctx context.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
 	log.Info("starting", "continuous", continuous)
 
@@ -77,7 +76,7 @@ func scorerRun(ctx context.Context, _ *kong.Context, continuous bool) error {
 	return nil
 }
 
-func (cmd *scorerSetupCmd) Run(ctx context.Context, kctx *kong.Context) error {
+func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
 	dbconn, err := ntpdb.OpenDB()
