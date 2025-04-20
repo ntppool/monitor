@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/monitor/client/config/checkconfig"
@@ -30,7 +31,7 @@ type MonitorSettings struct {
 }
 
 func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
-	log := srv.log
+	log := logger.FromContext(ctx)
 
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
 		if mon == nil {
@@ -83,9 +84,8 @@ func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor)
 }
 
 func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) {
+	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
-
-	log := srv.log
 
 	ua := ctx.Value(sctx.ClientVersionKey).(string)
 	log.DebugContext(ctx, "GetConfig", "user-agent", ua)
@@ -175,9 +175,8 @@ type ServerListResponse struct {
 }
 
 func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) {
+	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
-
-	log := srv.log
 
 	monitor, ctx, err := srv.getMonitor(ctx)
 	if err != nil {

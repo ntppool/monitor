@@ -13,14 +13,6 @@ import (
 
 type conServer struct {
 	srv *Server
-	// ctx context.Context
-	// cfg         *Config
-	// tokens      *vtm.TokenManager
-	// m           *metrics.Metrics
-	// db          *ntpdb.Queries
-	// dbconn      *sql.DB
-	// log         *slog.Logger
-	// shutdownFns []func(ctx context.Context) error
 }
 
 func NewConnectServer(srv *Server) *conServer {
@@ -98,7 +90,6 @@ func (cs *conServer) GetServers(ctx context.Context, req *connect.Request[apiv2.
 }
 
 func (cs *conServer) SubmitResults(ctx context.Context, req *connect.Request[apiv2.SubmitResultsRequest]) (*connect.Response[apiv2.SubmitResultsResponse], error) {
-
 	msg := req.Msg
 	if msg == nil {
 		return nil, fmt.Errorf("missing message")

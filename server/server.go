@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -40,7 +39,6 @@ type Server struct {
 	m           *metrics.Metrics
 	db          ntpdb.QuerierTx
 	dbconn      *sql.DB
-	log         *slog.Logger
 	shutdownFns []func(ctx context.Context) error
 }
 
@@ -51,8 +49,9 @@ type Config struct {
 	CertProvider  apitls.CertificateProvider
 }
 
-func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {
+func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {
 	db := ntpdb.NewWrappedQuerier(ntpdb.New(dbconn))
+	log := logger.FromContext(ctx)
 
 	vaultClient, err := vaultClient()
 	if err != nil {
@@ -73,7 +72,6 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 	srv := &Server{
 		ctx:    ctx,
 		cfg:    &cfg,
-		log:    log,
 		db:     db,
 		dbconn: dbconn,
 		tokens: tm,
@@ -108,7 +106,6 @@ func NewServer(ctx context.Context, log *slog.Logger, cfg Config, dbconn *sql.DB
 }
 
 func (srv *Server) Run() error {
-
 	twSrv := NewTwServer(srv)
 
 	log := logger.FromContext(srv.ctx)
@@ -208,7 +205,7 @@ func (srv *Server) Run() error {
 
 	listen := srv.cfg.Listen
 
-	srv.log.Info("starting server", "port", listen)
+	log.Info("starting server", "port", listen)
 
 	g, _ := errgroup.WithContext(ctx)
 
@@ -224,7 +221,7 @@ func (srv *Server) Run() error {
 		IdleTimeout:       240 * time.Second,
 	}
 
-	srv.log.Info("Starting gRPC server", "port", listen)
+	log.Info("Starting gRPC server", "port", listen)
 
 	g.Go(func() error {
 		err := server.ListenAndServeTLS("", "")
@@ -257,7 +254,6 @@ func (srv *Server) Run() error {
 }
 
 func NewLoggingServerHooks() *twirp.ServerHooks {
-
 	type logData struct {
 		CN         string
 		MethodName string
@@ -306,7 +302,6 @@ func NewLoggingServerHooks() *twirp.ServerHooks {
 var hasOutputVaultEnvMessage bool
 
 func vaultClient() (*vaultapi.Client, error) {
-
 	c := vaultapi.DefaultConfig()
 
 	if c.Address == "https://127.0.0.1:8200" {

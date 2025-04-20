@@ -175,7 +175,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	go health.HealthCheckListener(ctx, 8080, log)
 
 	g.Go(func() error {
-		srv, err := server.NewServer(ctx, log, scfg, dbconn, metricssrv.Registry())
+		srv, err := server.NewServer(ctx, scfg, dbconn, metricssrv.Registry())
 		if err != nil {
 			log.Error("NewServer() error", "err", err)
 			return fmt.Errorf("srv setup: %s", err)
