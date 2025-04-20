@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package monitor.v2;
 
-import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 // import "ip.proto";
 
 service MonitorService {
@@ -14,8 +14,6 @@ service MonitorService {
 
   // SubmitResults returns the specified list ServerStatus to the monitoring server
   rpc SubmitResults(SubmitResultsRequest) returns (SubmitResultsResponse) {}
-
-
 }
 
 message GetConfigRequest {}
@@ -23,30 +21,30 @@ message GetServersRequest {}
 
 // GetConfigResponse is the server set configuration for the monitoring agent
 message GetConfigResponse {
-  int32  samples = 1;
-  bytes  ip_bytes = 2;
-  bytes  ip_nat_bytes = 3;
+  int32 samples = 1;
+  bytes ip_bytes = 2;
+  bytes ip_nat_bytes = 3;
   repeated bytes base_checks = 4;
   MQTTConfig mqtt_config = 5;
 }
 
 message MQTTConfig {
-  bytes host   = 1;
-  int32 port   = 2;
-  bytes jwt    = 3;
+  bytes host = 1;
+  int32 port = 2;
+  bytes jwt = 3;
   bytes prefix = 4; // base prefix for topic ("/devel/monitors/" for example)
 }
 
 message Server {
-  bytes  test_id = 1;
-  bytes  ticket = 2;
-  bytes  ip_bytes = 3;
-  bool   trace = 4;
+  bytes test_id = 1;
+  bytes ticket = 2;
+  bytes ip_bytes = 3;
+  bool trace = 4;
 }
 
 message GetServersResponse {
   bytes batch_id = 1;
-  GetConfigResponse config  = 2;
+  GetConfigResponse config = 2;
   repeated Server servers = 3;
 }
 
@@ -63,24 +61,24 @@ message SubmitResultsResponse {
 message NTPPacket {
   bytes source_ip_bytes = 1;
   bytes destination_ip_bytes = 2;
-  google.protobuf.Timestamp  t1 = 3;
-  google.protobuf.Timestamp  t4 = 4;
+  google.protobuf.Timestamp t1 = 3;
+  google.protobuf.Timestamp t4 = 4;
   bytes data = 5;
 }
 
 message ServerStatus {
-  bytes  test_id = 1;
-  bytes  ticket = 2;
-  bytes  ip_bytes = 3;
+  bytes test_id = 1;
+  bytes ticket = 2;
+  bytes ip_bytes = 3;
 
   string error = 4;
-  bool   no_response = 5;
+  bool no_response = 5;
 
-  google.protobuf.Timestamp  ts = 6;
-  google.protobuf.Duration   offset = 7;
-  google.protobuf.Duration   rtt = 8;
+  google.protobuf.Timestamp ts = 6;
+  google.protobuf.Duration offset = 7;
+  google.protobuf.Duration rtt = 8;
 
-  int32  stratum = 9;
+  int32 stratum = 9;
   int32 leap = 10;
   // repeated NTPPacket responses = 11;
   // int32 selected_response = 12;

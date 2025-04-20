@@ -669,7 +669,7 @@ var File_monitor_v2_monitor_manager_proto protoreflect.FileDescriptor
 const file_monitor_v2_monitor_manager_proto_rawDesc = "" +
 	"\n" +
 	" monitor/v2/monitor_manager.proto\x12\n" +
-	"monitor.v2\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/duration.proto\"\x12\n" +
+	"monitor.v2\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x12\n" +
 	"\x10GetConfigRequest\"\x13\n" +
 	"\x11GetServersRequest\"\xc4\x01\n" +
 	"\x11GetConfigResponse\x12\x18\n" +
