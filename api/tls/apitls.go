@@ -13,6 +13,8 @@ import (
 //go:embed ca.pem
 var caBytes []byte
 
+var ErrNoCertificateProvider = errors.New("no certificate provider configured")
+
 type CertificateProvider interface {
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 	GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error)
@@ -30,7 +32,6 @@ func CAPool() (*x509.CertPool, error) {
 // GetCertman sets up certman for the specified cert / key pair. It is
 // used in the monitor-api and (for now) in the client
 func GetCertman(certFile, keyFile string) (*certman.CertMan, error) {
-
 	cm, err := certman.New(certFile, keyFile)
 	if err != nil {
 		return nil, err

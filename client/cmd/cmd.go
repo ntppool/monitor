@@ -42,7 +42,7 @@ func (c *ClientCmd) BeforeResolve() error {
 	}
 	defaultsFile := "/etc/default/ntpmon"
 	if _, err := os.Stat(defaultsFile); err == nil {
-		log.Printf("Loading defaults from %s", defaultsFile)
+		logger.Setup().Debug("Loading defaults", "file", defaultsFile)
 		file, err := os.Open(defaultsFile)
 		if err != nil {
 			return fmt.Errorf("could not open defaults file: %s", err)

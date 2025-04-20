@@ -77,7 +77,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	// have been taken care of earlier in the config setup.
 	// (previously we waited for the vault cert here)
 
-	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, nil)
+	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
@@ -172,7 +172,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				ctx, cli.Config.TLSName(), statusChannel,
 				[]string{
 					topics.RequestSubscription(cli.Config.TLSName()),
-				}, router, conf, nil, // todo: add app config
+				}, router, conf, cli.Config,
 			)
 			if err != nil {
 				return fmt.Errorf("mqtt: %w", err)

@@ -30,6 +30,10 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		return nil, err
 	}
 
+	if cp == nil {
+		return nil, apitls.ErrNoCertificateProvider
+	}
+
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify:   false,
 		GetClientCertificate: cp.GetClientCertificate,

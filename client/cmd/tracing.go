@@ -11,10 +11,14 @@ import (
 	apitls "go.ntppool.org/monitor/api/tls"
 )
 
-func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth any) (tracing.TpShutdownFunc, error) {
+func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth apitls.CertificateProvider) (tracing.TpShutdownFunc, error) {
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
+	}
+
+	if tlsAuth == nil {
+		return nil, apitls.ErrNoCertificateProvider
 	}
 
 	endpoint := "https://api-buzz.mon.ntppool.dev/"
@@ -25,12 +29,11 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
-			ServiceName: "monitor",
-			Environment: deployEnv.String(),
-			RootCAs:     capool,
-			// todo: get certificates from configuration
-			// CertificateProvider: cauth.GetClientCertificate,
-			EndpointURL: endpoint,
+			ServiceName:         "monitor",
+			Environment:         deployEnv.String(),
+			RootCAs:             capool,
+			CertificateProvider: tlsAuth.GetClientCertificate,
+			EndpointURL:         endpoint,
 		},
 	)
 	if err != nil {

@@ -2,6 +2,8 @@
 Description=NTP Pool Monitor (%i)
 After=chronyd.service
 Wants=network-online.target
+StartLimitInterval=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
