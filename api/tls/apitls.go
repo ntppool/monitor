@@ -13,7 +13,10 @@ import (
 //go:embed ca.pem
 var caBytes []byte
 
-var ErrNoCertificateProvider = errors.New("no certificate provider configured")
+var (
+	ErrNoCertificateProvider = errors.New("no certificate provider configured")
+	ErrNoCertificate         = errors.New("no certificate")
+)
 
 type CertificateProvider interface {
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)

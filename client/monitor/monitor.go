@@ -17,7 +17,6 @@ import (
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api/pb"
 	"go.ntppool.org/monitor/client/config/checkconfig"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
@@ -33,10 +32,18 @@ type response struct {
 func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, traceAttributes ...attribute.KeyValue) (*apiv2.ServerStatus, *ntp.Response, error) {
 	log := logger.Setup()
 
-	traceAttributes = append(traceAttributes, attribute.String("ip", ip.String()))
+	ipVersion := "ipv4"
+	if ip.Is6() {
+		ipVersion = "ipv6"
+	}
+
+	traceAttributes = append(traceAttributes,
+		attribute.String("ip", ip.String()),
+		attribute.String("ip_version", ipVersion),
+	)
 
 	ctx, span := tracing.Start(ctx,
-		"CheckHost",
+		"monitor.CheckHost",
 		trace.WithAttributes(traceAttributes...),
 	)
 	defer span.End()
@@ -205,25 +212,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 	// log.Printf("best result for %s - offset: %s rtt: %s%s",
 	// 	ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
 
-	if best.Error != nil {
-		return best.Status, best.Response, fmt.Errorf("%s", best.Error)
-	}
-
-	return best.Status, best.Response, nil
-}
-
-func ntpResponseToPbStatus(ip *netip.Addr, resp *ntp.Response) *pb.ServerStatus {
-	// log.Printf("Leap: %d", resp.Leap)
-	status := &pb.ServerStatus{
-		Ts:         timestamppb.Now(),
-		Offset:     durationpb.New(resp.ClockOffset),
-		Stratum:    int32(resp.Stratum),
-		Leap:       int32(resp.Leap),
-		Rtt:        durationpb.New(resp.RTT),
-		NoResponse: false,
-	}
-	status.SetIP(ip)
-	return status
+	return best.Status, best.Response, best.Error
 }
 
 func ntpResponseToApiStatus(ip *netip.Addr, resp *ntp.Response) *apiv2.ServerStatus {

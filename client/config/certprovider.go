@@ -7,6 +7,25 @@ import (
 	"errors"
 )
 
+func (ac *appConfig) HaveCertificate() bool {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
+
+	if ac.tlsCert == nil {
+		return false
+	}
+
+	if len(ac.tlsCert.Certificate) == 0 {
+		return false
+	}
+
+	// if ac.tlsCert.Leaf == nil {
+	// 	return false
+	// }
+
+	return true
+}
+
 func (ac *appConfig) GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 	ac.lock.RLock()
 	defer ac.lock.RUnlock()

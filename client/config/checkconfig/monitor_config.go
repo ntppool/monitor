@@ -4,7 +4,6 @@
 package checkconfig
 
 import (
-	"context"
 	"net/netip"
 	"sync"
 	"time"
@@ -14,7 +13,7 @@ import (
 )
 
 type MQConfigger interface {
-	GetMQTTConfig(ctx context.Context) *MQTTConfig
+	GetMQTTConfig() *MQTTConfig
 }
 
 type MQTTConfig struct {
@@ -31,10 +30,18 @@ type Config struct {
 	MQTTConfig *MQTTConfig
 }
 
+type ConfigGetter interface {
+	GetConfig() *Config
+	MQConfigger
+}
+
 type ConfigUpdater interface {
 	SetConfigFromPb(cfg *pb.Config)
 	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
-	GetConfig() *Config
+}
+type ConfigProvider interface {
+	ConfigUpdater
+	ConfigGetter
 }
 
 type Configger struct {
@@ -53,7 +60,7 @@ func (c *Configger) GetConfig() *Config {
 	return c.cfg
 }
 
-func (c *Configger) GetMQTTConfig(ctx context.Context) *MQTTConfig {
+func (c *Configger) GetMQTTConfig() *MQTTConfig {
 	cfg := c.GetConfig()
 	if cfg == nil {
 		return nil

@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
@@ -52,7 +52,6 @@ func selectorRun(ctx context.Context, continuous bool) error {
 	expback := backoff.NewExponentialBackOff()
 	expback.InitialInterval = time.Second * 3
 	expback.MaxInterval = time.Second * 60
-	expback.MaxElapsedTime = 0
 
 	for {
 
@@ -71,7 +70,6 @@ func selectorRun(ctx context.Context, continuous bool) error {
 			sl := expback.NextBackOff()
 			time.Sleep(sl)
 		} else {
-			expback.Reset()
 			expback.Reset()
 		}
 

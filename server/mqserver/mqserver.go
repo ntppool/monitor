@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,7 +60,7 @@ type client struct {
 	Version   version.Info
 	UpdatedMQ time.Time
 	LastSeen  time.Time
-	Data      *ntpdb.Monitor
+	Data      []ntpdb.Monitor
 }
 
 type promTargetGroup struct {
@@ -93,7 +94,6 @@ func (mqs *server) SetConnectionManager(cm *autopaho.ConnectionManager) {
 }
 
 func (mqs *server) Run(ctx context.Context) error {
-
 	var r *echo.Echo
 	var err error
 	log := logger.FromContext(ctx)
@@ -105,8 +105,6 @@ func (mqs *server) Run(ctx context.Context) error {
 			os.Exit(2)
 		}
 	}()
-
-	log.Info("echo server waiting for context to be done")
 
 	<-ctx.Done()
 
@@ -180,13 +178,13 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		ctx := context.Background()
 
 		if mqs.db != nil { // for running tests without the DB
-			mon, err := mqs.db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
+			mons, err := mqs.db.GetMonitorsTLSName(ctx, sql.NullString{String: name, Valid: true})
 			if err != nil {
 				mqs.log.Error("fetching monitor details", "err", err)
 			}
-			if mon.ID != 0 {
-				cs.Data = &mon
-				cs.Name = mon.TlsName.String
+			if len(mons) > 0 {
+				cs.Data = mons
+				cs.Name = mons[0].TlsName.String
 			}
 		}
 
@@ -200,17 +198,17 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	mqs.promGauge.Reset()
 	for _, c := range mqs.clients {
 		if c.Online {
+			for _, m := range c.Data {
+				if !m.IpVersion.Valid {
+					continue
+				}
 
-			var ipVersion string
-			if c.Data != nil {
-				ipVersion = c.Data.IpVersion.MonitorsIpVersion.String()
+				mqs.promGauge.WithLabelValues(
+					m.Name,
+					c.Version.Version,
+					m.IpVersion.MonitorsIpVersion.String(),
+				).Add(1.0)
 			}
-
-			mqs.promGauge.WithLabelValues(
-				c.Name,
-				c.Version.Version,
-				ipVersion,
-			).Add(1.0)
 		}
 	}
 }
@@ -231,11 +229,9 @@ func (mqs *server) seenClients() []client {
 }
 
 func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) error {
-
 	minimumVersion := "v3.6.0-rc3"
 
 	return func(c echo.Context) error {
-
 		sd := []promTargetGroup{}
 
 		for _, cl := range mqs.seenClients() {
@@ -254,13 +250,15 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 				}
 			}
 
-			sd = append(sd, promTargetGroup{
-				Targets: []string{cl.Name},
-				Labels: map[string]string{
-					"account":    accountID,
-					"ip_version": cl.Data.IpVersion.MonitorsIpVersion.String(),
-				},
-			})
+			for _, m := range cl.Data {
+				sd = append(sd, promTargetGroup{
+					Targets: []string{cl.Name},
+					Labels: map[string]string{
+						"account":    accountID,
+						"ip_version": m.IpVersion.MonitorsIpVersion.String(),
+					},
+				})
+			}
 		}
 
 		return c.JSON(200, sd)
@@ -268,7 +266,6 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 }
 
 func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
-
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 
@@ -372,13 +369,11 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 }
 
 func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
-
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 	minimumVersion := "v3.5.0-rc0"
 
 	return func(c echo.Context) error {
-
 		id, err := ulid.MakeULID(time.Now())
 		if err != nil {
 			return err
@@ -421,7 +416,6 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 		counter.Add(1) // count one for the goroutine running
 
 		wg.Go(func() error {
-
 			i := 0
 
 			for _, cl := range mqs.seenClients() {
@@ -434,8 +428,14 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				if (cl.Data.IpVersion.MonitorsIpVersion.String() == "v6" && ip.Is4()) ||
-					(cl.Data.IpVersion.MonitorsIpVersion.String() == "v4" && ip.Is6()) {
+				ipVersion := "v4"
+				if ip.Is6() {
+					ipVersion = "v6"
+				}
+
+				if !slices.ContainsFunc(cl.Data, func(m ntpdb.Monitor) bool {
+					return m.IpVersion.MonitorsIpVersion.String() == ipVersion
+				}) {
 					continue
 				}
 
@@ -644,8 +644,10 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 		for _, o := range mqs.seenClients() {
 			if o.Data != nil {
 				r = append(r, onlineJSON{
-					Name:      o.Data.TlsName.String,
-					IpVersion: o.Data.IpVersion.MonitorsIpVersion.String(),
+					Name: o.Name,
+					// todo: put this back if it's useful
+					// Name:      o.Data.TlsName.String,
+					// IpVersion: o.Data.IpVersion.MonitorsIpVersion.String(),
 					Version:   o.Version,
 					Online:    o.Online,
 					LastSeen:  o.LastSeen,

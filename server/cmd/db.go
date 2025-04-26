@@ -29,7 +29,7 @@ func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
 	}
 	db := ntpdb.New(dbconn)
 
-	mon, err := db.GetMonitorTLSName(ctx, sql.NullString{String: name, Valid: true})
+	mons, err := db.GetMonitorsTLSName(ctx, sql.NullString{String: name, Valid: true})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			fmt.Println("No monitor found")
@@ -38,13 +38,16 @@ func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	smon, err := ntpdb.GetSystemMonitor(ctx, db, "settings", mon.IpVersion)
-	if err == nil {
-		mconf, err := mon.GetConfigWithDefaults([]byte(smon.Config))
-		if err != nil {
-			return err
+	for _, mon := range mons {
+		fmt.Printf("Monitor: %+v\n", mon)
+		smon, err := ntpdb.GetSystemMonitor(ctx, db, "settings", mon.IpVersion)
+		if err == nil {
+			mconf, err := mon.GetConfigWithDefaults([]byte(smon.Config))
+			if err != nil {
+				return err
+			}
+			fmt.Printf("mconf: %+v", mconf)
 		}
-		fmt.Printf("mconf: %+v", mconf)
 	}
 
 	return nil

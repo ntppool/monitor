@@ -1,7 +1,6 @@
 package jwt
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -28,7 +27,7 @@ type MosquittoClaims struct {
 	gjwt.RegisteredClaims
 }
 
-func GetToken(ctx context.Context, key, subject string, keyType KeyType) (string, error) {
+func GetToken(key, subject string, keyType KeyType) (string, error) {
 	log := logger.Setup()
 
 	mySigningKey := []byte(key)
@@ -114,7 +113,7 @@ func GetToken(ctx context.Context, key, subject string, keyType KeyType) (string
 		},
 	}
 
-	log.DebugContext(ctx, "jwt claims", "claims", claims)
+	log.Debug("jwt claims", "claims", claims)
 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
 	ss, err := token.SignedString(mySigningKey)

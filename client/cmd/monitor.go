@@ -2,20 +2,20 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/netip"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.ntppool.org/pingtrace/traceroute"
@@ -23,8 +23,9 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/tracing"
+
 	"go.ntppool.org/monitor/api"
-	"go.ntppool.org/monitor/api/pb"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/localok"
 	"go.ntppool.org/monitor/client/monitor"
@@ -37,24 +38,22 @@ import (
 // Todo:
 //   - Check status.Leap != ntp.LeapNotInSync
 
-var (
-	onceFlag       = flag.Bool("once", false, "Only run once instead of forever")
-	sanityOnlyFlag = flag.Bool("sanity-only", false, "Only run the local sanity check")
-)
-
 const MaxInterval = time.Minute * 2
 
-type SetConfig interface {
-	SetConfigFromPb(cfg *pb.Config)
-	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
-}
+// type SetConfig interface {
+// 	SetConfigFromPb(cfg *pb.Config)
+// 	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
+// }
 
-type ConfigStore interface {
-	SetConfig
-	GetConfig() *checkconfig.Config
-}
+// type ConfigStore interface {
+// 	SetConfig
+// 	GetConfig() *checkconfig.Config
+// }
 
-type monitorCmd struct{}
+type monitorCmd struct {
+	Once       bool `name:"once" help:"Only run once instead of forever"`
+	SanityOnly bool `name:"sanity-only" help:"Only run the local sanity check"`
+}
 
 func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	ctx, stopMonitor := context.WithCancel(ctx)
@@ -62,11 +61,19 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	log := logger.FromContext(ctx)
 
-	err := cli.Config.WaitUntilReady(ctx)
+	err := cli.Config.WaitUntilLive(ctx)
 	if err != nil {
 		return fmt.Errorf("waiting for config: %w", err)
 	}
 
+	if checkDone(ctx) {
+		log.DebugContext(ctx, "skipping monitor, context done")
+		return nil
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// todo: switch to pushing metrics over oltp
 	metricssrv := metricsserver.New()
 	promreg := metricssrv.Registry()
 
@@ -81,7 +88,13 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	if err != nil {
 		log.Error("tracing error", "err", err)
 	}
-	defer tracingShutdown(context.Background())
+	defer func() {
+		if cli.Config.HaveCertificate() {
+			// if we don't have a certificate, don't try
+			// to flush the buffered tracing data
+			tracingShutdown(context.Background())
+		}
+	}()
 
 	ctx, api, err := api.Client(ctx, cli.Config.TLSName(), cli.Config)
 	if err != nil {
@@ -89,12 +102,127 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	}
 
 	go func() {
-		// this goroutine is just for logging
+		// this goroutine is just for logging; it's not in
+		// the errgroup, so it won't block shutdown
 		<-ctx.Done()
-		log.Info("Shutting down monitor", "name", cli.Config.TLSName())
+		log.Info("shutting down monitor", "name", cli.Config.TLSName())
 	}()
 
-	conf := checkconfig.NewConfigger(nil)
+	mqconfigger := checkconfig.NewConfigger(nil)
+
+	for ix, ipc := range []config.IPConfig{cli.Config.IPv4(), cli.Config.IPv6()} {
+		var ip_version string
+		switch ix {
+		case 0:
+			ip_version = "v4"
+			if !cli.IPv4 {
+				log.DebugContext(ctx, "skipping IPv4 monitor")
+				continue
+			}
+		case 1:
+			ip_version = "v6"
+			if !cli.IPv6 {
+				log.DebugContext(ctx, "skipping IPv6 monitor")
+				continue
+			}
+		}
+
+		g.Go(func() error {
+			log = log.With("ip_version", ip_version)
+			ctx := logger.NewContext(ctx, log)
+
+			if ipc.IP == nil {
+				log.ErrorContext(ctx, "not configured")
+				return nil
+			}
+			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg)
+			log.DebugContext(ctx, "monitor done", "err", err)
+			return err
+		})
+	}
+
+	g.Go(func() error {
+		if cmd.SanityOnly || cmd.Once {
+			log.DebugContext(ctx, "skipping mqtt client for once/sanity-only")
+			return nil
+		}
+		// wait for the config to be loaded
+		for {
+			if mqconfigger.GetMQTTConfig() != nil {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(3 * time.Second):
+			}
+		}
+		log.InfoContext(ctx, "starting mqtt client", "name", cli.Config.TLSName())
+		return runMQTTClient(ctx, cli, mqconfigger, promreg)
+	})
+
+	err = g.Wait()
+	if err != nil {
+		log.Error("monitor error", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.ConfigGetter, promreg prometheus.Gatherer) error {
+	log := logger.FromContext(ctx)
+
+	var mq *autopaho.ConnectionManager
+	topics := mqttcm.NewTopics(cli.Config.Env())
+	statusChannel := topics.Status(cli.Config.TLSName())
+
+	{
+		if mqcfg := mqconfigger.GetMQTTConfig(); mqcfg != nil && len(mqcfg.Host) > 0 {
+			log := log.WithGroup("mqtt")
+
+			mqc := monitor.NewMQClient(log, topics, mqconfigger, promreg)
+			router := paho.NewSingleHandlerRouter(mqc.Handler)
+
+			var err error
+			mq, err = mqttcm.Setup(
+				ctx, cli.Config.TLSName(), statusChannel,
+				[]string{
+					topics.RequestSubscription(cli.Config.TLSName()),
+				}, router, mqconfigger, cli.Config,
+			)
+			if err != nil {
+				return fmt.Errorf("mqtt: %w", err)
+			}
+
+			err = mq.AwaitConnection(ctx)
+			if err != nil {
+				return fmt.Errorf("mqtt connection error: %w", err)
+			}
+
+			mqc.SetMQ(mq)
+		}
+	}
+
+	mq.Disconnect(ctx)
+
+	if mq != nil {
+		// wait until the mqtt connection is done; or two seconds
+		select {
+		case <-mq.Done():
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	return nil
+}
+
+func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, promreg prometheus.Registerer) error {
+	log := logger.FromContext(ctx).With("monitor_ip", ipc.IP.String())
+
+	log.InfoContext(ctx, "starting monitor")
+
+	monconf := checkconfig.NewConfigger(nil)
 
 	initialConfig := sync.WaitGroup{}
 	initialConfig.Add(1)
@@ -113,12 +241,11 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				log.InfoContext(ctx, "getting client configuration", "errors", errors)
 			}
 
-			cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
+			log.WarnContext(ctx, "ipc", "ip", ipc.IP.String())
 
-			cfgresp, err := api.GetConfig(cfgctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
-			if err != nil || cfgresp.Msg == nil {
+			cfgresp, err := fetchConfig(ctx, ipc, api)
+			if err != nil {
 				errors++
-				log.ErrorContext(ctx, "could not get config, http error", "err", err)
 				if firstRun {
 					wait = time.Second * 10 * time.Duration(errors)
 					if wait > errorFetchInterval {
@@ -128,14 +255,15 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 					wait = errorFetchInterval
 				}
 			} else {
-				log.DebugContext(ctx, "client config", "cfg", cfgresp.Msg)
-				conf.SetConfigFromApi(cfgresp.Msg)
+				log.DebugContext(ctx, "client config", "cfg", cfgresp)
+				mqconfigger.SetConfigFromApi(cfgresp)
+				monconf.SetConfigFromApi(cfgresp)
 				if firstRun {
 					initialConfig.Done()
 					firstRun = false
 				}
 			}
-			cfgcancel()
+
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
@@ -149,104 +277,84 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	initialConfig.Wait()
 
-	if conf.GetConfig() == nil {
-		// we were aborted before getting this far
-		log.WarnContext(ctx, "did not load remote configuration")
-		os.Exit(2)
+	if checkDone(ctx) {
+		// config loading was cancelled, so we don't have a config
+		// yet which everything below needs
+		return nil
 	}
 
-	var mq *autopaho.ConnectionManager
-	topics := mqttcm.NewTopics(cli.Config.Env())
-	statusChannel := topics.Status(cli.Config.TLSName())
+	// todo: update mqtt status with current health from localok?
+	localOK := localok.NewLocalOK(monconf, promreg)
 
-	{
-		cfg := conf.GetConfig()
-
-		if mqcfg := cfg.MQTTConfig; mqcfg != nil && len(mqcfg.Host) > 0 {
-			log := log.WithGroup("mqtt")
-
-			mqc := monitor.NewMQClient(log, topics, conf, promreg)
-			router := paho.NewSingleHandlerRouter(mqc.Handler)
-
-			mq, err = mqttcm.Setup(
-				ctx, cli.Config.TLSName(), statusChannel,
-				[]string{
-					topics.RequestSubscription(cli.Config.TLSName()),
-				}, router, conf, cli.Config,
-			)
-			if err != nil {
-				return fmt.Errorf("mqtt: %w", err)
-			}
-
-			err := mq.AwaitConnection(ctx)
-			if err != nil {
-				return fmt.Errorf("mqtt connection error: %w", err)
-			}
-
-			mqc.SetMQ(mq)
-		}
-	}
-
-	localOK := localok.NewLocalOK(conf, promreg)
-
-	if *sanityOnlyFlag {
+	if cmd.SanityOnly {
 		ok := localOK.Check(ctx)
 		if ok {
-			log.Info("Local clock ok")
+			log.InfoContext(ctx, "local clock ok")
 			return nil
 		}
-		log.Info("Local clock not ok")
+		log.WarnContext(ctx, "local clock not ok")
 		return fmt.Errorf("health check failed")
 	}
 
-	// todo: update mqtt status with current health
-
-	i := 0
-
 runLoop:
-	for {
+	for i := 1; true; i++ {
+
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
 		boff.InitialInterval = 3 * time.Second
 		boff.MaxInterval = MaxInterval
-		boff.MaxElapsedTime = 0
 
-		err := backoff.Retry(func() error {
+		doBatch := func() (int, error) {
 			if checkDone(ctx) {
-				return nil
+				return 0, nil
 			}
 
 			if !localOK.Check(ctx) {
 				wait := localOK.NextCheckIn()
-				log.Info("local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
+				log.InfoContext(ctx, "local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
 				select {
 				case <-ctx.Done():
-					log.Info("localOK context done")
-					return nil
+					log.DebugContext(ctx, "localOK context done")
+					return 0, nil
 				case <-time.After(wait):
-					return fmt.Errorf("local clock")
+					return 0, nil
 				}
 			}
 
-			if ok, err := run(ctx, api, conf); !ok || err != nil {
+			// todo: proxy monconf so we also set mqconfigger
+
+			if count, err := cmd.doMonitorBatch(ctx, ipc, api, monconf); count == 0 || err != nil {
 				if err != nil {
-					log.Error("batch processing", "err", err)
-					boff.MaxInterval = 10 * time.Minute
-					boff.Multiplier = 5
+					log.ErrorContext(ctx, "batch processing", "err", err)
+					return 0, err
 				}
-				return fmt.Errorf("no work")
+				if cmd.Once {
+					// just once, don't retry
+					return 0, nil
+				}
+				return 0, fmt.Errorf("no work")
+			} else {
+				return count, nil
 			}
-			boff.Reset()
-			return nil
-		}, boff)
+		}
+
+		count, err := backoff.Retry(ctx,
+			doBatch,
+			backoff.WithBackOff(boff),
+		)
 		if err != nil {
 			log.Error("backoff error", "err", err)
 		}
 
-		i++
-		if i > 0 && *onceFlag {
-			log.Info("Asked to only run once")
+		if count > 0 {
+			log.InfoContext(ctx, "batch processing", "count", count)
+		}
+
+		if i > 0 && cmd.Once {
+			log.InfoContext(ctx, "asked to only run once")
 			break
+		} else {
+			log.InfoContext(ctx, "not once?", "once", cmd.Once, "i", i)
 		}
 
 		if checkDone(ctx) {
@@ -254,31 +362,45 @@ runLoop:
 		}
 	}
 
-	mq.Disconnect(ctx)
-	stopMonitor()
-
-	if mq != nil {
-		// wait until the mqtt connection is done; or two seconds
-		select {
-		case <-mq.Done():
-		case <-time.After(2 * time.Second):
-		}
-	}
-
 	return nil
 }
 
-func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore ConfigStore) (bool, error) {
+func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient) (*apiv2.GetConfigResponse, error) {
+	cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cfgcancel()
+	log := logger.FromContext(ctx)
+
+	if ipc.IP == nil {
+		log.ErrorContext(ctx, "not configured")
+		return nil, fmt.Errorf("not configured")
+	}
+
+	cfgresp, err := api.GetConfig(cfgctx,
+		connect.NewRequest(
+			&apiv2.GetConfigRequest{MonId: ipc.IP.String()},
+		))
+	if err != nil || cfgresp.Msg == nil {
+		log.ErrorContext(ctx, "could not get config, http error", "err", err)
+		return nil, err
+	}
+	return cfgresp.Msg, nil
+}
+
+func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, cfgStore checkconfig.ConfigProvider) (int, error) {
 	log := logger.FromContext(ctx)
 
 	ctx, span := tracing.Start(ctx, "monitor-run")
 	defer span.End()
 
-	log.InfoContext(ctx, "monitor-run execution")
-
-	serverresp, err := api.GetServers(ctx, connect.NewRequest(&apiv2.GetServersRequest{}))
+	serverresp, err := api.GetServers(ctx,
+		connect.NewRequest(
+			&apiv2.GetServersRequest{
+				MonId: ipc.IP.String(),
+			},
+		),
+	)
 	if err != nil {
-		return false, fmt.Errorf("getting server list: %s", err)
+		return 0, fmt.Errorf("getting server list: %s", err)
 	}
 
 	serverlist := serverresp.Msg
@@ -289,7 +411,7 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 
 	if len(serverlist.Servers) == 0 {
 		// no error, just no servers
-		return false, nil
+		return 0, nil
 	}
 
 	batchID := ulid.ULID{}
@@ -302,7 +424,7 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 	log.DebugContext(ctx, "processing", "server_count", len(serverlist.Servers))
 
 	// we're testing, so limit how much work ...
-	if *onceFlag {
+	if cmd.Once {
 		if len(serverlist.Servers) > 10 {
 			serverlist.Servers = serverlist.Servers[0:9]
 		}
@@ -367,6 +489,7 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 	log.InfoContext(ctx, "submitting")
 
 	list := &apiv2.SubmitResultsRequest{
+		MonId:   ipc.IP.String(),
 		Version: 4,
 		List:    statuses,
 		BatchId: serverlist.BatchId,
@@ -374,13 +497,13 @@ func run(ctx context.Context, api apiv2connect.MonitorServiceClient, cfgStore Co
 
 	r, err := api.SubmitResults(ctx, connect.NewRequest(list))
 	if err != nil {
-		return false, fmt.Errorf("SubmitResults: %s", err)
+		return 0, fmt.Errorf("SubmitResults: %s", err)
 	}
 	if !r.Msg.Ok {
-		return false, fmt.Errorf("SubmitResults not okay")
+		return 0, fmt.Errorf("SubmitResults not okay")
 	}
 
-	return true, nil
+	return len(statuses), nil
 }
 
 func checkDone(ctx context.Context) bool {

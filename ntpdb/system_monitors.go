@@ -3,6 +3,7 @@ package ntpdb
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 // we store "fake" monitors in the monitors table for default
@@ -23,16 +24,18 @@ func (mipv MonitorsIpVersion) String() string {
 }
 
 func GetSystemMonitor(ctx context.Context, q QuerierTx, name string, ipVersion NullMonitorsIpVersion) (*SystemMonitor, error) {
-
 	name = name + "-" + ipVersion.MonitorsIpVersion.String()
 
-	monitor, err := q.GetMonitorTLSName(ctx, sql.NullString{String: name + ".system", Valid: true})
+	monitors, err := q.GetMonitorsTLSName(ctx, sql.NullString{String: name + ".system", Valid: true})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, &notFoundError{}
 		}
 		return nil, err
 	}
+	if len(monitors) != 1 {
+		return nil, fmt.Errorf("expected 1 system monitor, got %d", len(monitors))
+	}
 
-	return &SystemMonitor{monitor}, nil
+	return &SystemMonitor{monitors[0]}, nil
 }

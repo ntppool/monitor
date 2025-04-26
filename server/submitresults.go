@@ -41,12 +41,12 @@ type SubmitResultsParam struct {
 	BatchId []byte
 }
 
-func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bool, error) {
+func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, monIP string) (bool, error) {
 	span := otrace.SpanFromContext(ctx)
 	now := time.Now()
 	log := logger.FromContext(ctx)
 
-	monitor, ctx, err := srv.getMonitor(ctx)
+	monitor, ctx, err := srv.getMonitor(ctx, monIP)
 	if err != nil {
 		log.Error("get monitor error", "err", err)
 		return false, err
@@ -103,9 +103,9 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 
 	lastSubmit := monitor.LastSubmit
 	if lastSubmit.Valid {
-		log.Debug("previous batch timestamp", "last_submit", lastSubmit.Time.String())
+		log.DebugContext(ctx, "previous batch timestamp", "last_submit", lastSubmit.Time.String())
 	} else {
-		log.Info("monitor had no last seen!")
+		log.InfoContext(ctx, "monitor had no last submit!")
 	}
 
 	if batchTime.Before(lastSubmit.Time) {
@@ -181,7 +181,6 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam) (bo
 }
 
 func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
-
 	db := srv.db
 
 	tx, err := srv.dbconn.BeginTx(ctx, nil)
@@ -276,5 +275,4 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 	}
 
 	return nil
-
 }

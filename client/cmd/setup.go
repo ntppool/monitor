@@ -63,8 +63,8 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		APIToken string `json:"APIToken"`
 	}
 
-	tryIPv4 := true
-	tryIPv6 := true
+	tryIPv4 := cli.IPv4
+	tryIPv6 := cli.IPv6
 	i := 0
 
 	// todo: maybe take parameters for which IPs to use?
@@ -73,12 +73,12 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr := connInfo.Conn.RemoteAddr().String()
-			log.DebugContext(ctx, "conninfo",
-				"reused", connInfo.Reused,
-				"wasIdle", connInfo.WasIdle,
-				"idleTime", connInfo.IdleTime,
-				"remoteAddr", remoteAddr,
-			)
+			// log.DebugContext(ctx, "conninfo",
+			// 	"reused", connInfo.Reused,
+			// 	"wasIdle", connInfo.WasIdle,
+			// 	"idleTime", connInfo.IdleTime,
+			// 	"remoteAddr", remoteAddr,
+			// )
 			addrport, err := netip.ParseAddrPort(remoteAddr)
 			if err != nil {
 				log.WarnContext(ctx, "could not parse remote address", "addr", remoteAddr, "err", err)

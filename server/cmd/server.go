@@ -41,8 +41,8 @@ type mqconfig struct {
 	port            int
 }
 
-func (mqcfg *mqconfig) GetMQTTConfig(ctx context.Context) *checkconfig.MQTTConfig {
-	jwttoken, err := jwt.GetToken(ctx, mqcfg.jwtKey, mqcfg.tlsName, jwt.KeyTypeServer)
+func (mqcfg *mqconfig) GetMQTTConfig() *checkconfig.MQTTConfig {
+	jwttoken, err := jwt.GetToken(mqcfg.jwtKey, mqcfg.tlsName, jwt.KeyTypeServer)
 	if err != nil {
 		logger.Setup().Error("jwt token", "err", err)
 		os.Exit(2)

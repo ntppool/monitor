@@ -2,8 +2,11 @@ package config
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,6 +19,7 @@ import (
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
+	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -37,9 +41,12 @@ type AppConfig interface {
 	// Certificate providers
 	GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error)
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
+
+	HaveCertificate() bool
 	CertificateDates() (notBefore time.Time, notAfter time.Time, remaining time.Duration, err error)
 
-	WaitUntilReady(ctx context.Context) error
+	WaitUntilConfigured(ctx context.Context) error
+	WaitUntilLive(ctx context.Context) error
 }
 
 type IPConfig struct {
@@ -62,6 +69,7 @@ type appConfig struct {
 		IPv4    IPConfig
 		IPv6    IPConfig
 	}
+	DataSha string
 
 	tlsCert *tls.Certificate
 }
@@ -110,7 +118,48 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 	return ac, nil
 }
 
-func (ac *appConfig) WaitUntilReady(ctx context.Context) error {
+func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
+	ctx, span := tracing.Start(ctx, "monitor.WaitUntilLive")
+	defer span.End()
+
+	err := ac.WaitUntilConfigured(ctx)
+	if err != nil {
+		return err
+	}
+
+	log := logger.FromContext(ctx)
+
+	for i := 0; true; i++ {
+
+		if ac.Data.IPv4.IsLive() || ac.Data.IPv6.IsLive() {
+			break
+		}
+
+		if i == 0 {
+			log.InfoContext(ctx, "waiting for monitor status to be testing or active")
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(60 * time.Second):
+		}
+
+		// do this last in the loop because WaitUntilConfigured just
+		// loaded the configuration anyway
+		err := ac.load(ctx)
+		if err != nil {
+			log.InfoContext(ctx, "load failed", "err", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
+	ctx, span := tracing.Start(ctx, "monitor.WaitUntilConfigured")
+	defer span.End()
 	log := logger.FromContext(ctx)
 
 	if ac.API.APIKey != "" {
@@ -180,16 +229,18 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 
 	log.DebugContext(ctx, "loading config from api", "configURL", configURL)
 
-	valid, remainingTime, err := ac.checkCertificateValidity(ctx)
+	valid, nextCheck, err := ac.checkCertificateValidity(ctx)
 	if err != nil {
-		log.WarnContext(ctx, "check certificate validity", "err", err)
 		renewCert = true
+		if !errors.Is(err, apitls.ErrNoCertificate) {
+			log.WarnContext(ctx, "check certificate validity", "err", err)
+		}
 	}
 
-	// log.DebugContext(ctx, "got cert validity", "valid", valid, "remainingTime", remainingTime)
+	// log.DebugContext(ctx, "got cert validity", "valid", valid, "nextCheck", nextCheck)
 
-	if !valid {
-		log.InfoContext(ctx, "certificate expiring, request renewal", "remaining", remainingTime)
+	if !valid && !renewCert {
+		log.InfoContext(ctx, "certificate expiring, request renewal", "nextCheck", nextCheck)
 		renewCert = true
 	}
 
@@ -282,6 +333,36 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 	ac.Data.Name = monStatus.Name
 	ac.Data.TLSName = monStatus.TLSName
 
+	js, err := json.Marshal(ac.Data)
+	if err != nil {
+		log.WarnContext(ctx, "error marshalling config", "err", err)
+	} else {
+		sum := sha256.Sum256(js)
+		sha := hex.EncodeToString(sum[:])
+		if sha != ac.DataSha {
+			fields := []any{
+				"name", ac.Data.Name,
+				"tls_name", ac.Data.TLSName,
+			}
+			if ac.Data.IPv4.IP != nil {
+				fields = append(fields,
+					"ipv4.ip", ac.Data.IPv4.IP.String(),
+					"ipv4.status", ac.Data.IPv4.Status,
+				)
+			}
+
+			if ac.Data.IPv6.IP != nil {
+				fields = append(fields,
+					"ipv6.ip", ac.Data.IPv6.IP.String(),
+					"ipv6.status", ac.Data.IPv6.Status,
+				)
+			}
+
+			log.InfoContext(ctx, "config changed", fields...)
+			ac.DataSha = sha
+		}
+	}
+
 	return nil
 }
 
@@ -314,7 +395,7 @@ func (ac *appConfig) IPv6() IPConfig {
 	return ac.Data.IPv6
 }
 
-func (ipconfig IPConfig) InUse() bool {
+func (ipconfig IPConfig) IsLive() bool {
 	if ipconfig.IP == nil || !ipconfig.IP.IsValid() {
 		return false
 	}

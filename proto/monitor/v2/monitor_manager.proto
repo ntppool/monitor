@@ -16,8 +16,12 @@ service MonitorService {
   rpc SubmitResults(SubmitResultsRequest) returns (SubmitResultsResponse) {}
 }
 
-message GetConfigRequest {}
-message GetServersRequest {}
+message GetConfigRequest {
+  string mon_id = 1;
+}
+message GetServersRequest {
+  string mon_id = 1;
+}
 
 // GetConfigResponse is the server set configuration for the monitoring agent
 message GetConfigResponse {
@@ -50,8 +54,9 @@ message GetServersResponse {
 
 message SubmitResultsRequest {
   int32 version = 1;
-  repeated ServerStatus list = 2;
-  bytes batch_id = 3;
+  string mon_id = 2;
+  repeated ServerStatus list = 3;
+  bytes batch_id = 4;
 }
 
 message SubmitResultsResponse {

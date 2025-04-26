@@ -124,14 +124,14 @@ func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID 
 	return _d.QuerierTx.GetMonitorPriority(ctx, serverID)
 }
 
-// GetMonitorTLSName implements QuerierTx
-func (_d QuerierTxWithTracing) GetMonitorTLSName(ctx context.Context, tlsName sql.NullString) (m1 Monitor, err error) {
-	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorTLSName")
+// GetMonitorTLSNameIP implements QuerierTx
+func (_d QuerierTxWithTracing) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (m1 Monitor, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorTLSNameIP")
 	defer func() {
 		if _d._spanDecorator != nil {
 			_d._spanDecorator(_span, map[string]interface{}{
-				"ctx":     ctx,
-				"tlsName": tlsName}, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
 				"m1":  m1,
 				"err": err})
 		} else if err != nil {
@@ -144,7 +144,30 @@ func (_d QuerierTxWithTracing) GetMonitorTLSName(ctx context.Context, tlsName sq
 
 		_span.End()
 	}()
-	return _d.QuerierTx.GetMonitorTLSName(ctx, tlsName)
+	return _d.QuerierTx.GetMonitorTLSNameIP(ctx, arg)
+}
+
+// GetMonitorsTLSName implements QuerierTx
+func (_d QuerierTxWithTracing) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString) (ma1 []Monitor, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorsTLSName")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx":     ctx,
+				"tlsName": tlsName}, map[string]interface{}{
+				"ma1": ma1,
+				"err": err})
+		} else if err != nil {
+			_span.RecordError(err)
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetMonitorsTLSName(ctx, tlsName)
 }
 
 // GetScorerLogScores implements QuerierTx
@@ -485,28 +508,6 @@ func (_d QuerierTxWithTracing) InsertServerScore(ctx context.Context, arg Insert
 		_span.End()
 	}()
 	return _d.QuerierTx.InsertServerScore(ctx, arg)
-}
-
-// ListMonitors implements QuerierTx
-func (_d QuerierTxWithTracing) ListMonitors(ctx context.Context) (ma1 []Monitor, err error) {
-	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.ListMonitors")
-	defer func() {
-		if _d._spanDecorator != nil {
-			_d._spanDecorator(_span, map[string]interface{}{
-				"ctx": ctx}, map[string]interface{}{
-				"ma1": ma1,
-				"err": err})
-		} else if err != nil {
-			_span.RecordError(err)
-			_span.SetAttributes(
-				attribute.String("event", "error"),
-				attribute.String("message", err.Error()),
-			)
-		}
-
-		_span.End()
-	}()
-	return _d.QuerierTx.ListMonitors(ctx)
 }
 
 // Rollback implements QuerierTx

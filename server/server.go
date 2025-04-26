@@ -134,7 +134,7 @@ func (srv *Server) Run() error {
 			twirptrace.WithTags(twirptrace.TraceTag{Key: "ottwirp", Value: true}),
 			twirptrace.IncludeClientErrors(true),
 			twirptrace.WithContextTags(func(ctx context.Context) (context.Context, []twirptrace.TraceTag) {
-				mon, ctx, err := srv.getMonitor(ctx)
+				mon, ctx, err := srv.getMonitor(ctx, "")
 				if err != nil {
 					return ctx, nil
 				}

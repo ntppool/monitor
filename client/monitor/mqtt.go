@@ -26,12 +26,12 @@ import (
 type mqclient struct {
 	mq     *autopaho.ConnectionManager
 	topics *mqttcm.MQTTTopics
-	conf   checkconfig.ConfigUpdater
+	conf   checkconfig.ConfigGetter
 	log    *slog.Logger
 	prom   prometheus.Gatherer
 }
 
-func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf checkconfig.ConfigUpdater, promreg prometheus.Gatherer) *mqclient {
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf checkconfig.ConfigGetter, promreg prometheus.Gatherer) *mqclient {
 	return &mqclient{topics: topics, conf: conf, log: log, prom: promreg}
 }
 

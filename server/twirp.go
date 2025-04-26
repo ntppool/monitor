@@ -25,7 +25,7 @@ func NewTwServer(srv *Server) *TwServer {
 }
 
 func (s *TwServer) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
-	cfg, err := s.srv.GetConfig(ctx)
+	cfg, err := s.srv.GetConfig(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (s *TwServer) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 }
 
 func (s *TwServer) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
-	serverList, err := s.srv.GetServers(ctx)
+	serverList, err := s.srv.GetServers(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,6 @@ func (s *TwServer) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb
 }
 
 func (s *TwServer) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (*pb.ServerStatusResult, error) {
-
 	p := SubmitResultsParam{
 		Version: in.Version,
 		BatchId: in.BatchId,
@@ -89,7 +88,7 @@ func (s *TwServer) SubmitResults(ctx context.Context, in *pb.ServerStatusList) (
 			NoResponse: e.NoResponse,
 		})
 	}
-	ok, err := s.srv.SubmitResults(ctx, p)
+	ok, err := s.srv.SubmitResults(ctx, p, "")
 	resp := pb.ServerStatusResult{Ok: ok}
 	return &resp, err
 }

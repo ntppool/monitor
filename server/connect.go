@@ -20,7 +20,7 @@ func NewConnectServer(srv *Server) *conServer {
 }
 
 func (cs *conServer) GetConfig(ctx context.Context, req *connect.Request[apiv2.GetConfigRequest]) (*connect.Response[apiv2.GetConfigResponse], error) {
-	cfg, err := cs.srv.GetConfig(ctx)
+	cfg, err := cs.srv.GetConfig(ctx, req.Msg.MonId)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,8 @@ func (cs *conServer) GetConfig(ctx context.Context, req *connect.Request[apiv2.G
 
 func (cs *conServer) GetServers(ctx context.Context, req *connect.Request[apiv2.GetServersRequest]) (*connect.Response[apiv2.GetServersResponse], error) {
 	log := logger.FromContext(ctx)
-	serverList, err := cs.srv.GetServers(ctx)
+
+	serverList, err := cs.srv.GetServers(ctx, req.Msg.MonId)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func (cs *conServer) SubmitResults(ctx context.Context, req *connect.Request[api
 		BatchId: msg.BatchId,
 	}
 
-	ok, err := cs.srv.SubmitResults(ctx, p)
+	ok, err := cs.srv.SubmitResults(ctx, p, req.Msg.MonId)
 
 	return connect.NewResponse(&apiv2.SubmitResultsResponse{Ok: ok}), err
 }

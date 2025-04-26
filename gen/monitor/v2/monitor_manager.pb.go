@@ -25,6 +25,7 @@ const (
 
 type GetConfigRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	MonId         string                 `protobuf:"bytes,1,opt,name=mon_id,json=monId,proto3" json:"mon_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,8 +60,16 @@ func (*GetConfigRequest) Descriptor() ([]byte, []int) {
 	return file_monitor_v2_monitor_manager_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *GetConfigRequest) GetMonId() string {
+	if x != nil {
+		return x.MonId
+	}
+	return ""
+}
+
 type GetServersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	MonId         string                 `protobuf:"bytes,1,opt,name=mon_id,json=monId,proto3" json:"mon_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -93,6 +102,13 @@ func (x *GetServersRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GetServersRequest.ProtoReflect.Descriptor instead.
 func (*GetServersRequest) Descriptor() ([]byte, []int) {
 	return file_monitor_v2_monitor_manager_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetServersRequest) GetMonId() string {
+	if x != nil {
+		return x.MonId
+	}
+	return ""
 }
 
 // GetConfigResponse is the server set configuration for the monitoring agent
@@ -371,8 +387,9 @@ func (x *GetServersResponse) GetServers() []*Server {
 type SubmitResultsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       int32                  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	List          []*ServerStatus        `protobuf:"bytes,2,rep,name=list,proto3" json:"list,omitempty"`
-	BatchId       []byte                 `protobuf:"bytes,3,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	MonId         string                 `protobuf:"bytes,2,opt,name=mon_id,json=monId,proto3" json:"mon_id,omitempty"`
+	List          []*ServerStatus        `protobuf:"bytes,3,rep,name=list,proto3" json:"list,omitempty"`
+	BatchId       []byte                 `protobuf:"bytes,4,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -412,6 +429,13 @@ func (x *SubmitResultsRequest) GetVersion() int32 {
 		return x.Version
 	}
 	return 0
+}
+
+func (x *SubmitResultsRequest) GetMonId() string {
+	if x != nil {
+		return x.MonId
+	}
+	return ""
 }
 
 func (x *SubmitResultsRequest) GetList() []*ServerStatus {
@@ -669,9 +693,11 @@ var File_monitor_v2_monitor_manager_proto protoreflect.FileDescriptor
 const file_monitor_v2_monitor_manager_proto_rawDesc = "" +
 	"\n" +
 	" monitor/v2/monitor_manager.proto\x12\n" +
-	"monitor.v2\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x12\n" +
-	"\x10GetConfigRequest\"\x13\n" +
-	"\x11GetServersRequest\"\xc4\x01\n" +
+	"monitor.v2\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\")\n" +
+	"\x10GetConfigRequest\x12\x15\n" +
+	"\x06mon_id\x18\x01 \x01(\tR\x05monId\"*\n" +
+	"\x11GetServersRequest\x12\x15\n" +
+	"\x06mon_id\x18\x01 \x01(\tR\x05monId\"\xc4\x01\n" +
 	"\x11GetConfigResponse\x12\x18\n" +
 	"\asamples\x18\x01 \x01(\x05R\asamples\x12\x19\n" +
 	"\bip_bytes\x18\x02 \x01(\fR\aipBytes\x12 \n" +
@@ -695,11 +721,12 @@ const file_monitor_v2_monitor_manager_proto_rawDesc = "" +
 	"\x12GetServersResponse\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\fR\abatchId\x125\n" +
 	"\x06config\x18\x02 \x01(\v2\x1d.monitor.v2.GetConfigResponseR\x06config\x12,\n" +
-	"\aservers\x18\x03 \x03(\v2\x12.monitor.v2.ServerR\aservers\"y\n" +
+	"\aservers\x18\x03 \x03(\v2\x12.monitor.v2.ServerR\aservers\"\x90\x01\n" +
 	"\x14SubmitResultsRequest\x12\x18\n" +
-	"\aversion\x18\x01 \x01(\x05R\aversion\x12,\n" +
-	"\x04list\x18\x02 \x03(\v2\x18.monitor.v2.ServerStatusR\x04list\x12\x19\n" +
-	"\bbatch_id\x18\x03 \x01(\fR\abatchId\"'\n" +
+	"\aversion\x18\x01 \x01(\x05R\aversion\x12\x15\n" +
+	"\x06mon_id\x18\x02 \x01(\tR\x05monId\x12,\n" +
+	"\x04list\x18\x03 \x03(\v2\x18.monitor.v2.ServerStatusR\x04list\x12\x19\n" +
+	"\bbatch_id\x18\x04 \x01(\fR\abatchId\"'\n" +
 	"\x15SubmitResultsResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\"\xd1\x01\n" +
 	"\tNTPPacket\x12&\n" +

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/logger"
@@ -47,7 +47,6 @@ func scorerRun(ctx context.Context, continuous bool) error {
 	expback := backoff.NewExponentialBackOff()
 	expback.InitialInterval = time.Second * 3
 	expback.MaxInterval = time.Second * 60
-	expback.MaxElapsedTime = 0
 
 	for {
 		count, err := sc.Run(ctx)

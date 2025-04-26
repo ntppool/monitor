@@ -1,10 +1,17 @@
--- name: GetMonitorTLSName :one
+-- name: GetMonitorsTLSName :many
 SELECT * FROM monitors
-WHERE tls_name = ? LIMIT 1;
+WHERE tls_name = ?
+  AND is_current = 1
+  AND deleted_on is null;
 
--- name: ListMonitors :many
+-- name: GetMonitorTLSNameIP :one
 SELECT * FROM monitors
-ORDER BY name;
+WHERE tls_name = ?
+  -- todo: remove this when v3 monitors are gone
+  and (ip = sqlc.arg('ip') OR "" = sqlc.arg('ip'))
+  AND is_current = 1
+  AND deleted_on is null
+LIMIT 1;
 
 -- name: GetServer :one
 SELECT * FROM servers WHERE id=?;

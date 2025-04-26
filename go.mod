@@ -18,8 +18,7 @@ require (
 	github.com/abh/certman v0.4.0
 	github.com/alecthomas/kong v1.10.0
 	github.com/beevik/ntp v1.4.3
-	github.com/cenkalti/backoff v2.2.1+incompatible
-	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/cenkalti/backoff/v5 v5.0.2
 	github.com/eclipse/paho.golang v0.22.0
 	github.com/evanphx/json-patch v0.5.2
 	github.com/go-sql-driver/mysql v1.9.2
@@ -52,6 +51,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dmarkham/enumer v1.5.11 // indirect

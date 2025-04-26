@@ -33,10 +33,13 @@ type ClientCmd struct {
 	Check   checkCmd   `cmd:"" help:"run a single check"`
 	Setup   setupCmd   `cmd:"" help:"initial authentication and configuration"`
 
+	IPv4 bool `name:"ipv4" help:"IPv4 monitor (default)" default:"true" negatable:""`
+	IPv6 bool `name:"ipv6" help:"IPv6 monitor (default)" default:"true" negatable:""`
+
 	Version version.KongVersionCmd `cmd:"" help:"show version"`
 }
 
-func (c *ClientCmd) BeforeResolve() error {
+func (c *ClientCmd) BeforeReset() error {
 	c.Version = version.KongVersionCmd{
 		Name: "ntpmon",
 	}

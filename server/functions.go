@@ -30,7 +30,7 @@ type MonitorSettings struct {
 	BatchSize       int32             `json:"batch_size"`
 }
 
-func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Context, error) {
+func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor, context.Context, error) {
 	log := logger.FromContext(ctx)
 
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
@@ -42,7 +42,12 @@ func (srv *Server) getMonitor(ctx context.Context) (*ntpdb.Monitor, context.Cont
 
 	cn := getCertificateName(ctx)
 
-	monitor, err := srv.db.GetMonitorTLSName(ctx, sql.NullString{String: cn, Valid: true})
+	log.DebugContext(ctx, "getMonitor", "cn", cn, "monIP", monIP)
+
+	monitor, err := srv.db.GetMonitorTLSNameIP(ctx, ntpdb.GetMonitorTLSNameIPParams{
+		TlsName: sql.NullString{String: cn, Valid: true},
+		Ip:      sql.NullString{String: monIP, Valid: true},
+	})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			err = twirp.NotFoundError("no such monitor")
@@ -83,14 +88,14 @@ func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor)
 	return cfg, nil
 }
 
-func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) {
+func (srv *Server) GetConfig(ctx context.Context, monIP string) (*ntpdb.MonitorConfig, error) {
 	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
 
 	ua := ctx.Value(sctx.ClientVersionKey).(string)
 	log.DebugContext(ctx, "GetConfig", "user-agent", ua)
 
-	monitor, ctx, err := srv.getMonitor(ctx)
+	monitor, ctx, err := srv.getMonitor(ctx, monIP)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +121,7 @@ func (srv *Server) GetConfig(ctx context.Context) (*ntpdb.MonitorConfig, error) 
 	}
 
 	if key := srv.cfg.JWTKey; len(key) > 0 {
-		jwtToken, err := jwt.GetToken(ctx, key, monitor.TlsName.String, jwt.KeyTypeStandard)
+		jwtToken, err := jwt.GetToken(key, monitor.TlsName.String, jwt.KeyTypeStandard)
 		if err != nil {
 			log.Error("error generating jwtToken", "err", err)
 		}
@@ -174,11 +179,11 @@ type ServerListResponse struct {
 	monitor *ntpdb.Monitor
 }
 
-func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) {
+func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListResponse, error) {
 	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
 
-	monitor, ctx, err := srv.getMonitor(ctx)
+	monitor, ctx, err := srv.getMonitor(ctx, monID)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +222,7 @@ func (srv *Server) GetServers(ctx context.Context) (*ServerListResponse, error) 
 		settings.BatchSize = 10
 	}
 
-	log.Debug("interval settings", "intervals", settings)
+	// log.Debug("interval settings", "intervals", settings)
 
 	interval := settings.IntervalActive
 	if monitor.Status != ntpdb.MonitorsStatusActive {

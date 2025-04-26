@@ -34,12 +34,12 @@ func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	log.InfoContext(ctx, "ok command", "env", cli.DeployEnv)
 
-	err := cli.Config.WaitUntilReady(ctx)
+	err := cli.Config.WaitUntilConfigured(ctx)
 	if err != nil {
 		log.ErrorContext(ctx, "config not ready", "err", err)
 	}
 
-	if !(cli.Config.IPv4().InUse() || cli.Config.IPv6().InUse()) {
+	if !(cli.Config.IPv4().IsLive() || cli.Config.IPv6().IsLive()) {
 		args := []any{}
 		if cli.Config.IPv4().IP != nil {
 			args = append(args, "ipv4", string(cli.Config.IPv4().Status))

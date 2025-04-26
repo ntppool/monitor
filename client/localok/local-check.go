@@ -41,10 +41,14 @@ const (
 	maxOffset     = 10 * time.Millisecond
 )
 
-func NewLocalOK(conf checkconfig.ConfigUpdater, promreg prometheus.Registerer) *LocalOK {
+func NewLocalOK(conf checkconfig.ConfigGetter, promreg prometheus.Registerer) *LocalOK {
 	var isv4 bool
 
 	cfg := conf.GetConfig()
+
+	if cfg == nil || cfg.IP == nil {
+		return nil
+	}
 
 	if cfg.IP.Is4() {
 		isv4 = true

@@ -3,11 +3,11 @@ package config
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
+	apitls "go.ntppool.org/monitor/api/tls"
 )
 
 // todo: change to have a function that returns the metrics separately
@@ -45,7 +45,7 @@ func (ac *appConfig) CertificateDates() (time.Time, time.Time, time.Duration, er
 	defer ac.lock.RUnlock()
 
 	if ac.tlsCert == nil || ac.tlsCert.Leaf == nil {
-		return time.Time{}, time.Time{}, 0, fmt.Errorf("no certificate")
+		return time.Time{}, time.Time{}, 0, apitls.ErrNoCertificate
 	}
 
 	c := ac.tlsCert.Leaf
@@ -65,10 +65,12 @@ func (ac *appConfig) checkCertificateValidity(ctx context.Context) (bool, time.D
 	duration := notAfter.Sub(notBefore)
 	renewAfter := notAfter.Add(-duration / 3)
 
-	log.DebugContext(ctx, "certificate validity", "notBefore", notBefore, "notAfter", notAfter, "renewAfter", renewAfter)
+	log.DebugContext(ctx, "certificate validity", "notBefore", notBefore, "notAfter", notAfter, "renewAfter", renewAfter, "duration", duration)
 
 	if time.Now().After(notAfter.Add(-duration / 3)) {
-		maxTime := time.Second * 30
+		// check again in 2 hours if the certificate is not valid
+		// todo: revisit why this is being returned at all
+		maxTime := time.Hour * 2
 		delay := duration / 3
 		if delay > maxTime {
 			delay = maxTime
