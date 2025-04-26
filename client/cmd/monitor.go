@@ -103,7 +103,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	go func() {
 		// this goroutine is just for logging; it's not in
-		// the errgroup, so it won't block shutdown
+		// the errgroup, so it won't block shutdown when the
+		// other goroutines are done
 		<-ctx.Done()
 		log.Info("shutting down monitor", "name", cli.Config.TLSName())
 	}()

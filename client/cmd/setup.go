@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptrace"
 	"net/netip"
@@ -122,6 +123,7 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		resp.Body.Close()
 
 		serverTraceID := resp.Header.Get("TraceID")
+		log := log.With("trace_id", serverTraceID)
 		log.DebugContext(ctx, "registration response", "server_ip", serverIP, "serverTraceID", serverTraceID, "status_code", resp.StatusCode, "body", string(b))
 		if resp.StatusCode >= http.StatusInternalServerError {
 			log.ErrorContext(ctx, "server error", "status_code", resp.StatusCode, "body", string(b))
@@ -145,6 +147,23 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			// if we're deliberate about which IP version
 			// to use, don't reuse connections
 			cl.CloseIdleConnections()
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			log.WarnContext(ctx, "could not parse content type", "content_type", contentType, "err", err)
+			// Fallback or decide how to handle unparseable content types
+			mediaType = contentType // Use the raw value if parsing fails
+		}
+
+		if mediaType == "text/plain" {
+			log.DebugContext(ctx, "unexpected response", "body", string(b))
+			fmt.Println(string(b))
+			return nil
+		} else if mediaType != "application/json" {
+			log.ErrorContext(ctx, "unexpected content type", "content_type", contentType, "media_type", mediaType)
+			return fmt.Errorf("unexpected content type: %s", contentType)
 		}
 
 		var data registrationResponse
