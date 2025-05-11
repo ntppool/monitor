@@ -28,13 +28,22 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	ctx, span := tracing.Start(ctx, "monitor.setup")
 	defer span.End()
 
+	wantIPv4 := cli.IPv4
+	wantIPv6 := cli.IPv6
+
 	apiKey := cli.Config.APIKey()
 	if apiKey != "" {
-		log.InfoContext(ctx, "API key already set, skipping setup")
-		return nil
+		// todo: require --reset to overwrite if one exists?
+		_, _, err := cmd.checkCurrentConfig(ctx, cli)
+		if err != nil {
+			log.ErrorContext(ctx, "could not check config", "err", err)
+		}
 	}
 
-	// todo: load config, require --reset to overwrite if one exists?
+	if !wantIPv4 && !wantIPv6 {
+		log.InfoContext(ctx, "registration for both IP versions disabled")
+		return nil
+	}
 
 	registrationID, err := ulid.MakeULID(time.Now())
 	if err != nil {
@@ -57,6 +66,11 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	req.Header.Set("User-Agent", "ntpmon/"+version.Version())
 	req.Header.Set("Registration-ID", registrationID.String())
+	req.Header.Set("Accept", "application/json, text/plain")
+
+	if apiKey != "" {
+		req.Header.Add("Authorization", "Bearer "+apiKey)
+	}
 
 	type registrationResponse struct {
 		URL      string `json:"URL"`
@@ -64,8 +78,6 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		APIToken string `json:"APIToken"`
 	}
 
-	tryIPv4 := cli.IPv4
-	tryIPv6 := cli.IPv6
 	i := 0
 
 	// todo: maybe take parameters for which IPs to use?
@@ -91,20 +103,39 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	ctx = httptrace.WithClientTrace(ctx, trace)
 
+	tryIPv4 := wantIPv4
+	tryIPv6 := wantIPv6
+
 	for {
 		i++
 
 		// log.InfoContext(ctx, "IP version attempts status", "tryIPv4", tryIPv4, "tryIPv6", tryIPv6)
 
-		if i > 1 {
-			if i%2 == 0 {
-				if tryIPv4 {
-					ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
-				} else if tryIPv6 {
-					ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
-				} else {
-					ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
-				}
+		// wantIPv4 and wantIPv6 are the IP versions we want to
+		// register for. tryIPv4 and tryIPv6 are the IP versions
+		// we are trying to register for (disabled as the required
+		// IP version has had a succesful request).
+
+		switch {
+		case tryIPv4 && tryIPv6:
+			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
+
+		case tryIPv4:
+			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
+
+		case tryIPv6:
+			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
+
+		default:
+			// we have gotten what we need, so constrain the default
+			// to what we need.
+			switch {
+			case wantIPv4 && wantIPv6:
+				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
+			case wantIPv4:
+				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
+			case wantIPv6:
+				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
 			}
 		}
 
@@ -118,6 +149,7 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		}
 		b, err := io.ReadAll(resp.Body)
 		if err != nil {
+			resp.Body.Close()
 			return err
 		}
 		resp.Body.Close()
@@ -214,4 +246,34 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	}
 
 	return nil
+}
+
+func (cmd *setupCmd) checkCurrentConfig(ctx context.Context, cli *ClientCmd) (bool, bool, error) {
+	log := logger.FromContext(ctx)
+	checkLivenessCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err := cli.Config.WaitUntilConfigured(checkLivenessCtx)
+	if err != nil {
+		log.ErrorContext(checkLivenessCtx, "could not check config (reset keys to create a new monitor)", "err", err)
+		return false, false, err
+	} else {
+		log.InfoContext(checkLivenessCtx, "API key already set")
+	}
+
+	var hasIPv4 bool
+	var hasIPv6 bool
+
+	if cli.Config.IPv4().IP != nil && cli.Config.IPv4().IP.IsValid() {
+		log.InfoContext(checkLivenessCtx, "IPv4 address already set", "addr", cli.Config.IPv4().IP.String())
+		hasIPv4 = true
+	} else {
+		log.InfoContext(checkLivenessCtx, "IPv4 address not set")
+	}
+	if cli.Config.IPv6().IP != nil && cli.Config.IPv6().IP.IsValid() {
+		log.InfoContext(checkLivenessCtx, "IPv6 address already set", "addr", cli.Config.IPv6().IP.String())
+		hasIPv6 = true
+	} else {
+		log.InfoContext(checkLivenessCtx, "IPv6 address not set")
+	}
+	return hasIPv4, hasIPv6, nil
 }
