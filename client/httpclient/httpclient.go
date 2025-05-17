@@ -30,8 +30,8 @@ func NewIPVersionContext(ctx context.Context, version IPVersion) context.Context
 	return context.WithValue(ctx, ipVersionContextKey{}, version)
 }
 
-// getIPVersionFromContext extracts the IP version from context
-func getIPVersionFromContext(ctx context.Context) IPVersion {
+// GetIPVersionFromContext extracts the IP version from context
+func GetIPVersionFromContext(ctx context.Context) IPVersion {
 	if value := ctx.Value(ipVersionContextKey{}); value != nil {
 		if version, ok := value.(IPVersion); ok {
 			return version
@@ -53,7 +53,7 @@ func CreateIPVersionAwareClient() *http.Client {
 
 	// Override the default dial function to check context for IP version preference
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		ipVersion := getIPVersionFromContext(ctx)
+		ipVersion := GetIPVersionFromContext(ctx)
 
 		// Determine which network type to use based on context value
 		switch ipVersion {

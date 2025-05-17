@@ -70,26 +70,10 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		req.Header.Add("Authorization", "Bearer "+apiKey)
 	}
 
-	type registrationResponse struct {
-		URL      string `json:"URL"`
-		Status   string `json:"Status"`
-		APIToken string `json:"APIToken"`
-	}
-
-	i := 0
-
-	// todo: maybe take parameters for which IPs to use?
-
 	var serverIP netip.Addr
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr := connInfo.Conn.RemoteAddr().String()
-			// log.DebugContext(ctx, "conninfo",
-			// 	"reused", connInfo.Reused,
-			// 	"wasIdle", connInfo.WasIdle,
-			// 	"idleTime", connInfo.IdleTime,
-			// 	"remoteAddr", remoteAddr,
-			// )
 			addrport, err := netip.ParseAddrPort(remoteAddr)
 			if err != nil {
 				log.WarnContext(ctx, "could not parse remote address", "addr", remoteAddr, "err", err)
@@ -104,146 +88,169 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	tryIPv4 := wantIPv4
 	tryIPv6 := wantIPv6
 
+	rs := &registrationState{
+		cl:       cl,
+		req:      req,
+		serverIP: serverIP,
+		tryIPv4:  tryIPv4,
+		tryIPv6:  tryIPv6,
+		wantIPv4: wantIPv4,
+		wantIPv6: wantIPv6,
+		cli:      cli,
+	}
+
 	for {
-		i++
+		done, err := rs.registrationStep(ctx)
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+	}
 
-		// log.InfoContext(ctx, "IP version attempts status", "tryIPv4", tryIPv4, "tryIPv6", tryIPv6)
+	return nil
+}
 
-		// wantIPv4 and wantIPv6 are the IP versions we want to
-		// register for. tryIPv4 and tryIPv6 are the IP versions
-		// we are trying to register for (disabled as the required
-		// IP version has had a succesful request).
+type registrationState struct {
+	cl       *http.Client
+	req      *http.Request
+	serverIP netip.Addr
+	cli      *ClientCmd
 
+	// wantIPv4 and wantIPv6 are the IP versions we want to
+	// register for. tryIPv4 and tryIPv6 are the IP versions
+	// we are trying to register for (disabled as the required
+	// IP version has had a succesful request).
+	tryIPv4  bool
+	tryIPv6  bool
+	wantIPv4 bool
+	wantIPv6 bool
+}
+
+func (rs *registrationState) registrationStep(ctx context.Context) (done bool, err error) {
+	log := logger.FromContext(ctx)
+
+	switch {
+	case rs.tryIPv4 && rs.tryIPv6:
+		ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
+	case rs.tryIPv4:
+		ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
+	case rs.tryIPv6:
+		ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
+	default:
 		switch {
-		case tryIPv4 && tryIPv6:
+		case rs.wantIPv4 && rs.wantIPv6:
 			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
-
-		case tryIPv4:
+		case rs.wantIPv4:
 			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
-
-		case tryIPv6:
+		case rs.wantIPv6:
 			ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
-
-		default:
-			// we have gotten what we need, so constrain the default
-			// to what we need.
-			switch {
-			case wantIPv4 && wantIPv6:
-				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPAny)
-			case wantIPv4:
-				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv4Only)
-			case wantIPv6:
-				ctx = httpclient.NewIPVersionContext(ctx, httpclient.IPv6Only)
-			}
 		}
+	}
 
-		req = req.WithContext(ctx)
+	rs.req = rs.req.WithContext(ctx)
 
-		log.DebugContext(ctx, "registration request", "server_ip", serverIP, "tryIPv4", tryIPv4, "tryIPv6", tryIPv6, "url", req.URL.String())
+	log.DebugContext(ctx, "registration request", "server_ip", rs.serverIP, "tryIPv4", rs.tryIPv4, "tryIPv6", rs.tryIPv6, "url", rs.req.URL.String())
 
-		resp, err := cl.Do(req)
-		if err != nil {
-			return err
-		}
-		b, err := io.ReadAll(resp.Body)
-		if err != nil {
-			resp.Body.Close()
-			return err
-		}
+	resp, err := rs.cl.Do(rs.req)
+	if err != nil {
+		return false, err
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
 		resp.Body.Close()
+		return false, err
+	}
+	resp.Body.Close()
 
-		serverTraceID := resp.Header.Get("TraceID")
-		log := log.With("trace_id", serverTraceID)
-		log.DebugContext(ctx, "registration response", "server_ip", serverIP, "serverTraceID", serverTraceID, "status_code", resp.StatusCode, "body", string(b))
-		if resp.StatusCode >= http.StatusInternalServerError {
-			log.ErrorContext(ctx, "server error", "status_code", resp.StatusCode, "body", string(b))
-			select {
-			// todo: merge with same code in the loop below
-			case <-ctx.Done():
-				// todo: send deletion request for the registration
-				return fmt.Errorf("setup aborted")
-			case <-time.After(10 * time.Second):
-				continue
-			}
-		}
+	serverTraceID := resp.Header.Get("TraceID")
+	log = log.With("trace_id", serverTraceID)
 
-		if serverIP.Is4() {
-			tryIPv4 = false
-		} else if serverIP.Is6() {
-			tryIPv6 = false
+	log.DebugContext(ctx, "registration response", "server_ip", rs.serverIP, "serverTraceID", serverTraceID, "status_code", resp.StatusCode, "body", string(b))
+	if resp.StatusCode >= http.StatusInternalServerError {
+		log.ErrorContext(ctx, "server error", "status_code", resp.StatusCode, "body", string(b))
+		select {
+		case <-ctx.Done():
+			return true, fmt.Errorf("setup aborted")
+		case <-time.After(10 * time.Second):
+			return false, nil
 		}
+	}
 
-		if tryIPv4 || tryIPv6 {
-			// if we're deliberate about which IP version
-			// to use, don't reuse connections
-			cl.CloseIdleConnections()
-		}
+	if rs.serverIP.Is4() {
+		rs.tryIPv4 = false
+	} else if rs.serverIP.Is6() {
+		rs.tryIPv6 = false
+	}
 
-		contentType := resp.Header.Get("Content-Type")
-		mediaType, _, err := mime.ParseMediaType(contentType)
-		if err != nil {
-			log.WarnContext(ctx, "could not parse content type", "content_type", contentType, "err", err)
-			// Fallback or decide how to handle unparseable content types
-			mediaType = contentType // Use the raw value if parsing fails
-		}
+	if rs.tryIPv4 || rs.tryIPv6 {
+		rs.cl.CloseIdleConnections()
+	}
 
-		if mediaType == "text/plain" {
-			log.DebugContext(ctx, "unexpected response", "body", string(b))
-			fmt.Println(string(b))
-			return nil
-		} else if mediaType != "application/json" {
-			log.ErrorContext(ctx, "unexpected content type", "content_type", contentType, "media_type", mediaType)
-			return fmt.Errorf("unexpected content type: %s", contentType)
-		}
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		log.WarnContext(ctx, "could not parse content type", "content_type", contentType, "err", err)
+		mediaType = contentType // Use the raw value if parsing fails
+	}
 
-		var data registrationResponse
-		err = json.Unmarshal(b, &data)
-		if err != nil {
-			return err
-		}
-		if data.URL != "" {
-			fmt.Print(heredoc.Docf(`
+	if mediaType == "text/plain" {
+		log.DebugContext(ctx, "unexpected response", "body", string(b))
+		fmt.Println(string(b))
+		return true, nil
+	} else if mediaType != "application/json" {
+		log.ErrorContext(ctx, "unexpected content type", "content_type", contentType, "media_type", mediaType)
+		return true, fmt.Errorf("unexpected content type: %s", contentType)
+	}
+
+	var data struct {
+		URL      string `json:"URL"`
+		Status   string `json:"Status"`
+		APIToken string `json:"APIToken"`
+	}
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		return true, err
+	}
+	if data.URL != "" {
+		fmt.Print(heredoc.Docf(`
 
 				Please visit the following URL to complete the monitor registration:
 
 					%s
 
 				`, data.URL))
-		}
-
-		log.DebugContext(ctx, "status", "status", data.Status)
-
-		if data.Status == "accepted" {
-			log.InfoContext(ctx, "monitor registration was accepted")
-			if data.APIToken == "" {
-				log.ErrorContext(ctx, "no API token provided")
-				break
-			}
-
-			err = cli.Config.SetAPIKey(data.APIToken)
-			if err != nil {
-				return fmt.Errorf("could not store API key: %w", err)
-			}
-
-			break
-		}
-
-		if data.Status == "completed" {
-			log.InfoContext(ctx, "registration was marked as completed")
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			// todo: send deletion request for the registration
-			return fmt.Errorf("setup aborted")
-		case <-time.After(5 * time.Second):
-			continue
-		}
-
 	}
 
-	return nil
+	log.DebugContext(ctx, "status", "status", data.Status)
+
+	if data.Status == "accepted" {
+		log.InfoContext(ctx, "monitor registration was accepted")
+		if data.APIToken == "" {
+			log.ErrorContext(ctx, "no API token provided")
+			return true, nil
+		}
+
+		err = rs.cli.Config.SetAPIKey(data.APIToken)
+		if err != nil {
+			return true, fmt.Errorf("could not store API key: %w", err)
+		}
+
+		return true, nil
+	}
+
+	if data.Status == "completed" {
+		log.InfoContext(ctx, "registration was marked as completed")
+		return true, nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return true, fmt.Errorf("setup aborted")
+	case <-time.After(5 * time.Second):
+		return false, nil
+	}
 }
 
 func (cmd *setupCmd) checkCurrentConfig(ctx context.Context, cli *ClientCmd) (bool, bool, error) {
