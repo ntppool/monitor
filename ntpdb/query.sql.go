@@ -90,8 +90,9 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 }
 
 const getMonitorTLSNameIP = `-- name: GetMonitorTLSNameIP :one
-SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, api_key_id, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
+SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
 WHERE tls_name = ?
+  -- todo: remove this when v3 monitors are gone
   and (ip = ? OR "" = ?)
   AND is_current = 1
   AND deleted_on is null
@@ -118,7 +119,6 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 		&i.IpVersion,
 		&i.TlsName,
 		&i.ApiKey,
-		&i.ApiKeyID,
 		&i.Status,
 		&i.Config,
 		&i.ClientVersion,
@@ -132,7 +132,7 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 }
 
 const getMonitorsTLSName = `-- name: GetMonitorsTLSName :many
-SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, api_key_id, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
+SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
 WHERE tls_name = ?
   AND is_current = 1
   AND deleted_on is null
@@ -159,7 +159,6 @@ func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString
 			&i.IpVersion,
 			&i.TlsName,
 			&i.ApiKey,
-			&i.ApiKeyID,
 			&i.Status,
 			&i.Config,
 			&i.ClientVersion,
