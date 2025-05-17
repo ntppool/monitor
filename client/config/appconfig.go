@@ -188,11 +188,11 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 
 		if i == 1 || i%60 == 0 {
 			cmdName := fmt.Sprintf(
-				"ntpmon setup --env %s --state-dir '%s'",
+				"ntppool-agent setup --env %s --state-dir '%s'",
 				ac.e.String(),
 				ac.dir,
 			)
-			log.WarnContext(ctx, "no API key, please run ntpmon setup", "cmd", cmdName)
+			log.WarnContext(ctx, "no API key, please run ntppool-agent setup", "cmd", cmdName)
 			if i == 1 {
 				// Check if stdin is a terminal
 				fileInfo, err := os.Stdin.Stat()

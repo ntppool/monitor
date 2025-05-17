@@ -15,12 +15,12 @@ instructions see https://builds.ntppool.dev/repo/
 
 ## Setup
 
-Run `ntpmon --env test setup` (or `prod` for production environment)
-to setup an API key, and then `ntpmon --env test monitor` to
+Run `ntppool-agent --env test setup` (or `prod` for production environment)
+to setup an API key, and then `ntppool-agent --env test monitor` to
 run the monitor. See the README file at the root of the git
 repository for further instructions.
 
 If you installed from the .deb or .rpm package, you can start
 the test monitor with
 
-   sudo systemctl systemctl enable --now ntpmon@test
+   sudo systemctl systemctl enable --now ntppool-agent@test

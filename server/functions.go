@@ -321,6 +321,7 @@ func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) erro
 
 	ua = strings.TrimPrefix(ua, "ntppool-monitor/")
 	ua = strings.TrimPrefix(ua, "ntpmon/")
+	ua = strings.TrimPrefix(ua, "ntppool-agent/")
 
 	if ua != mon.ClientVersion {
 		srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{

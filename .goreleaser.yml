@@ -2,9 +2,9 @@
 version: 2
 
 builds:
-  - main: ./cmd/ntpmon/
-    id: ntpmon
-    binary: ntpmon
+  - main: ./cmd/ntppool-agent/
+    id: ntppool-agent
+    binary: ntppool-agent
     env:
       - CGO_ENABLED=0
     goos:
@@ -58,12 +58,12 @@ changelog:
       - "^test:"
 
 nfpms:
-  - id: ntpmon
+  - id: ntppool-agent
 
-    package_name: ntpmon
+    package_name: ntppool-agent
 
     builds:
-      - ntpmon
+      - ntppool-agent
 
     #file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     file_name_template: "{{ .ConventionalFileName }}"
@@ -93,18 +93,18 @@ nfpms:
         #  - (ntp or chrony)
 
     contents:
-      - src: "scripts/ntpmon@.service"
-        dst: "/etc/systemd/system/ntpmon@.service"
+      - src: "scripts/ntppool-agent@.service"
+        dst: "/etc/systemd/system/ntppool-agent@.service"
 
       #- src: "scripts/enable-ntppool-monitors"
       #  dst: "/usr/bin/enable-ntppool-monitors"
 
       - src: "scripts/defaults"
-        dst: "/etc/default/ntpmon.sample"
+        dst: "/etc/default/ntppool-agent.sample"
         type: config
 
       - src: "scripts/defaults"
-        dst: "/etc/default/ntpmon"
+        dst: "/etc/default/ntppool-agent"
         type: config|noreplace
 
     scripts:

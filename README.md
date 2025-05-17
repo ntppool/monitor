@@ -5,24 +5,23 @@
 Configure the appropriate repository (test or production)
 from [builds.ntppool.dev/repo/](https://builds.ntppool.dev/repo/).
 
-Install the `ntpmon` package, and start the systemd units for
+Install the `ntppool-agent` package, and start the systemd units for
 test and/or production (example below starts both).
 
 ```
 sudo apt update
-sudo apt install -y ntpmon
+sudo apt install -y ntppool-agent
 
-cd /etc/ntpmon;
 for f in test prod; do
-  sudo systemctl enable --now ntpmon@$n;
+  sudo systemctl enable --now ntppool-agent@$n;
 done
 
-sudo journalctl -u ntpmon@\* -f
+sudo journalctl -u ntppool-agent@\* -f
 ```
 
 Installed from the rpm or deb package, state will by default
-be stored in `/var/run/ntpmon`. You can change the default in
-`/var/default/ntpmon`, or with the `--state-dir` parameter
+be stored in `/var/run/ntppool-agent`. You can change the default in
+`/var/default/ntppool-agent`, or with the `--state-dir` parameter
 or by setting `$MONITOR_STATE_DIR` in the environment.
 
 The `--env` parameter specifies which server to use (prod, test or devel).

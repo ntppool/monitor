@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	basecmd.Run(&cmd.ClientCmd{}, "ntpmon", "Monitoring daemon for the NTP Pool system")
+	basecmd.Run(&cmd.ClientCmd{}, "ntppool-agent", "Monitoring daemon for the NTP Pool system")
 }

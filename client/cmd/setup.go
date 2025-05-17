@@ -62,7 +62,7 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return err
 	}
 
-	req.Header.Set("User-Agent", "ntpmon/"+version.Version())
+	req.Header.Set("User-Agent", "ntppool-agent/"+version.Version())
 	req.Header.Set("Registration-ID", registrationID.String())
 	req.Header.Set("Accept", "application/json, text/plain")
 

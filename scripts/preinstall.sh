@@ -3,9 +3,11 @@
 # this is created by systemd in the systemd unit file now
 # but keeping it here for now since the user is still
 # setup this way.
-NTPMONDIR=/var/run/ntpmon
+NTPMONDIR=/var/run/ntppool-agent
 
-mkdir -p /etc/ntpmon
+# the configuration files are managed in /var/run
+# by the setup command
+# mkdir -p /etc/ntppool-agent
 
 getent group ntpmon >/dev/null || groupadd -r ntpmon
 getent passwd ntpmon >/dev/null || \

@@ -64,7 +64,7 @@ func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
 			req connect.AnyRequest,
 		) (connect.AnyResponse, error) {
 			if req.Spec().IsClient {
-				req.Header().Set("User-Agent", "ntpmon/"+version.Version())
+				req.Header().Set("User-Agent", "ntppool-agent/"+version.Version())
 			}
 			return next(ctx, req)
 		})

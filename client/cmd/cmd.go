@@ -41,9 +41,9 @@ type ClientCmd struct {
 
 func (c *ClientCmd) BeforeReset() error {
 	c.Version = version.KongVersionCmd{
-		Name: "ntpmon",
+		Name: "ntppool-agent",
 	}
-	defaultsFile := "/etc/default/ntpmon"
+	defaultsFile := "/etc/default/ntppool-agent"
 	if _, err := os.Stat(defaultsFile); err == nil {
 		logger.Setup().Debug("Loading defaults", "file", defaultsFile)
 		file, err := os.Open(defaultsFile)
@@ -85,7 +85,7 @@ func (c *ClientCmd) BeforeApply() error {
 			return fmt.Errorf("could not find config dir: %s", err)
 		}
 		if len(configDir) > 0 {
-			c.StateDir = filepath.Join(configDir, "ntpmon")
+			c.StateDir = filepath.Join(configDir, "ntppool-agent")
 		}
 	}
 	return nil
