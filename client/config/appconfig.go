@@ -23,6 +23,8 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
+var ErrAuthorization = errors.New("api key unauthorized")
+
 // AppConfig is the configured runtime information that's stored
 // on disk and used to find and authenticate with the API.
 type AppConfig interface {
@@ -111,6 +113,10 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 
 	err := ac.load(ctx)
 	if err != nil {
+		if errors.Is(err, ErrAuthorization) {
+			ac.API.APIKey = ""
+			return ac, nil
+		}
 		log.InfoContext(ctx, "load failed", "err", err)
 		return nil, err
 	}
@@ -261,8 +267,11 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		traceID := resp.Header.Get("Traceid")
+	traceID := resp.Header.Get("Traceid")
+	if resp.StatusCode == http.StatusUnauthorized {
+		log.InfoContext(ctx, "unauthorized, please run setup", "trace", traceID)
+		return ErrAuthorization
+	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("unexpected response code: %d (trace %s)", resp.StatusCode, traceID)
 	}
 

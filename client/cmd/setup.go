@@ -24,7 +24,6 @@ type setupCmd struct{}
 
 func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log := logger.FromContext(ctx)
-
 	ctx, span := tracing.Start(ctx, "monitor.setup")
 	defer span.End()
 
@@ -53,7 +52,6 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log.DebugContext(ctx, "registration ID", "id", registrationID)
 
 	cl := httpclient.CreateIPVersionAwareClient()
-
 	apiHost := cli.Config.Env().APIHost()
 
 	req, err := http.NewRequestWithContext(ctx, "POST",
