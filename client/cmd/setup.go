@@ -70,7 +70,17 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		req.Header.Add("Authorization", "Bearer "+apiKey)
 	}
 
-	var serverIP netip.Addr
+	rs := &registrationState{
+		cl:       cl,
+		req:      req,
+		serverIP: netip.Addr{},
+		tryIPv4:  wantIPv4,
+		tryIPv6:  wantIPv6,
+		wantIPv4: wantIPv4,
+		wantIPv6: wantIPv6,
+		cli:      cli,
+	}
+
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr := connInfo.Conn.RemoteAddr().String()
@@ -79,25 +89,11 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				log.WarnContext(ctx, "could not parse remote address", "addr", remoteAddr, "err", err)
 				return
 			}
-			serverIP = addrport.Addr()
+			rs.serverIP = addrport.Addr()
 		},
 	}
 
 	ctx = httptrace.WithClientTrace(ctx, trace)
-
-	tryIPv4 := wantIPv4
-	tryIPv6 := wantIPv6
-
-	rs := &registrationState{
-		cl:       cl,
-		req:      req,
-		serverIP: serverIP,
-		tryIPv4:  tryIPv4,
-		tryIPv6:  tryIPv6,
-		wantIPv4: wantIPv4,
-		wantIPv6: wantIPv6,
-		cli:      cli,
-	}
 
 	for {
 		done, err := rs.registrationStep(ctx)
