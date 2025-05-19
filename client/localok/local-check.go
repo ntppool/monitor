@@ -22,23 +22,27 @@ import (
 )
 
 type metrics struct {
-	hosts     map[string]bool
 	Ok        *prometheus.GaugeVec
 	LastCheck *prometheus.GaugeVec
 }
 
 type LocalOK struct {
 	cfg        *checkconfig.Config
-	metrics    metrics
 	isv4       bool
 	lastCheck  time.Time
 	lastStatus bool
+	seenHosts  map[string]bool
 	mu         sync.RWMutex
 }
 
 const (
 	localCacheTTL = 180 * time.Second
 	maxOffset     = 10 * time.Millisecond
+)
+
+var (
+	localMetrics         = metrics{}
+	syncLocalMetricsOnce sync.Once
 )
 
 func NewLocalOK(conf checkconfig.ConfigGetter, promreg prometheus.Registerer) *LocalOK {
@@ -56,21 +60,23 @@ func NewLocalOK(conf checkconfig.ConfigGetter, promreg prometheus.Registerer) *L
 		isv4 = false
 	}
 
-	m := metrics{}
+	syncLocalMetricsOnce.Do(func() {
+		localMetrics.Ok = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "local_check_up",
+		}, []string{"host", "ip_version"})
+		promreg.MustRegister(localMetrics.Ok)
 
-	m.Ok = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "local_check_up",
-	}, []string{"host", "ip_version"})
-	promreg.MustRegister(m.Ok)
+		localMetrics.LastCheck = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "local_check_time",
+		}, []string{"host", "ip_version"})
+		promreg.MustRegister(localMetrics.LastCheck)
+	})
 
-	m.LastCheck = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "local_check_time",
-	}, []string{"host", "ip_version"})
-	promreg.MustRegister(m.LastCheck)
-
-	m.hosts = make(map[string]bool)
-
-	return &LocalOK{cfg: cfg, isv4: isv4, metrics: m}
+	return &LocalOK{
+		cfg:       cfg,
+		isv4:      isv4,
+		seenHosts: make(map[string]bool),
+	}
 }
 
 func (l *LocalOK) NextCheckIn() time.Duration {
@@ -160,9 +166,9 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 	// log.Printf("Looking for ipv4: %t", l.isv4)
 
-	for h := range l.metrics.hosts {
+	for h := range l.seenHosts {
 		// mark not seen
-		l.metrics.hosts[h] = false
+		l.seenHosts[h] = false
 	}
 
 	for _, h := range allHosts {
@@ -220,7 +226,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			wg.Add(1)
 
 			// seen
-			l.metrics.hosts[h.Name] = true
+			l.seenHosts[h.Name] = true
 
 			if i > 0 {
 				time.Sleep(20 * time.Millisecond)
@@ -233,8 +239,8 @@ func (l *LocalOK) update(ctx context.Context) bool {
 					span.RecordError(err)
 				}
 
-				l.metrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
-				m := l.metrics.Ok.WithLabelValues(h.Name, ipVersion)
+				localMetrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
+				m := localMetrics.Ok.WithLabelValues(h.Name, ipVersion)
 				if ok {
 					m.Set(1)
 				} else {
@@ -249,10 +255,10 @@ func (l *LocalOK) update(ctx context.Context) bool {
 		wg.Wait()
 		close(results)
 
-		for h, seen := range l.metrics.hosts {
+		for h, seen := range l.seenHosts {
 			if !seen {
-				l.metrics.Ok.DeleteLabelValues(h, ipVersion)
-				l.metrics.LastCheck.DeleteLabelValues(h, ipVersion)
+				localMetrics.Ok.DeleteLabelValues(h, ipVersion)
+				localMetrics.LastCheck.DeleteLabelValues(h, ipVersion)
 			}
 		}
 
