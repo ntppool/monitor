@@ -34,19 +34,28 @@ func (ac *appConfig) SaveCertificates(ctx context.Context, certPem, keyPem []byt
 }
 
 func (ac *appConfig) LoadCertificates(ctx context.Context) error {
+	log := logger.FromContext(ctx)
 	certPem, err := os.ReadFile(ac.stateFilePrefix("cert.pem"))
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.ErrorContext(ctx, "Failed to read cert.pem", "err", err)
+		}
 		return err
 	}
+	log.DebugContext(ctx, "Loaded cert.pem", "length", len(certPem))
 	keyPem, err := os.ReadFile(ac.stateFilePrefix("key.pem"))
 	if err != nil {
+		log.ErrorContext(ctx, "Failed to read key.pem", "err", err)
 		return err
 	}
+	log.DebugContext(ctx, "Loaded key.pem", "length", len(keyPem))
 
 	tlsCert, err := tls.X509KeyPair(certPem, keyPem)
 	if err != nil {
+		log.ErrorContext(ctx, "Failed to parse X509KeyPair", "err", err)
 		return err
 	}
+	log.DebugContext(ctx, "Parsed X509KeyPair successfully")
 
 	return ac.setCertificate(ctx, &tlsCert)
 }
