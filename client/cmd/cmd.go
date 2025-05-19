@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,7 +65,8 @@ func (c *ClientCmd) BeforeReset() error {
 
 			// Only set if environment variable is not already set
 			if _, exists := os.LookupEnv(key); !exists {
-				log.Printf("Setting environment variable %s=%s", key, value)
+				log := logger.Setup()
+				log.Debug("Setting environment variable", "name", key, "value", value)
 				os.Setenv(key, value)
 			}
 		}

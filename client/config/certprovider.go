@@ -29,12 +29,18 @@ func (ac *appConfig) HaveCertificate() bool {
 func (ac *appConfig) GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 	ac.lock.RLock()
 	defer ac.lock.RUnlock()
+	if ac.tlsCert == nil || len(ac.tlsCert.Certificate) == 0 {
+		return nil, errors.New("no client certificate available (pending approval or not issued)")
+	}
 	return ac.tlsCert, nil
 }
 
 func (ac *appConfig) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	ac.lock.RLock()
 	defer ac.lock.RUnlock()
+	if ac.tlsCert == nil || len(ac.tlsCert.Certificate) == 0 {
+		return nil, errors.New("no certificate available (pending approval or not issued)")
+	}
 	return ac.tlsCert, nil
 }
 

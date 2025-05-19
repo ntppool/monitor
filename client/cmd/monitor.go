@@ -354,8 +354,6 @@ runLoop:
 		if i > 0 && cmd.Once {
 			log.InfoContext(ctx, "asked to only run once")
 			break
-		} else {
-			log.InfoContext(ctx, "not once?", "once", cmd.Once, "i", i)
 		}
 
 		if checkDone(ctx) {

@@ -284,7 +284,7 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 
 	// spew.Dump(monStatus)
 	if len(monStatus.TLS.Cert) > 0 {
-		err = ac.SaveCertificates([]byte(monStatus.TLS.Cert), []byte(monStatus.TLS.Key))
+		err = ac.SaveCertificates(ctx, []byte(monStatus.TLS.Cert), []byte(monStatus.TLS.Key))
 		if err != nil {
 			return fmt.Errorf("error saving certificates: %w", err)
 		}

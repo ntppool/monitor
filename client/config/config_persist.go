@@ -14,16 +14,21 @@ import (
 
 const stateFile = "state.json"
 
-func (ac *appConfig) SaveCertificates(certPem, keyPem []byte) error {
+func (ac *appConfig) SaveCertificates(ctx context.Context, certPem, keyPem []byte) error {
+	log := logger.FromContext(ctx)
 	err := replaceFile(ac.stateFilePrefix("cert.pem"), certPem)
 	if err != nil {
+		log.Error("Failed to save cert.pem", "err", err)
 		return err
 	}
+	log.DebugContext(ctx, "Saved cert.pem", "length", len(certPem))
 
 	err = replaceFile(ac.stateFilePrefix("key.pem"), keyPem)
 	if err != nil {
+		log.Error("Failed to save key.pem", "err", err)
 		return err
 	}
+	log.DebugContext(ctx, "Saved key.pem", "length", len(keyPem))
 
 	return nil
 }
