@@ -132,27 +132,14 @@ func (l *LocalOK) update(ctx context.Context) bool {
 		ipVersion = "v4"
 	}
 
-	// overridden by server config
-	allHosts := []string{
-		"time.apple.com",
-		// "ntp1.net.berkeley.edu",
-		"uslax1-ntp-001.aaplimg.com",
-		"defra1-ntp-002.aaplimg.com",
-		"uklon5-ntp-001.aaplimg.com",
-		// "ntp.stupi.se",
-		// "ntp.nict.jp",
-		// "ntp.ripe.net",
-		"time.fu-berlin.de",
-		"ntp.se",
+	if len(cfg.BaseChecks) == 0 {
+		log.WarnContext(ctx, "did not get NTP BaseChecks from API; no localok configuration available")
+		return false
 	}
 
-	if len(cfg.BaseChecks) > 0 {
-		allHosts = []string{}
-		for _, s := range cfg.BaseChecks {
-			allHosts = append(allHosts, string(s))
-		}
-	} else {
-		log.InfoContext(ctx, "did not get NTP BaseChecks from API, using built-in defaults")
+	var allHosts []string
+	for _, s := range cfg.BaseChecks {
+		allHosts = append(allHosts, string(s))
 	}
 
 	type namedIP struct {
@@ -163,8 +150,6 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	hosts := []namedIP{}
 
 	fails := 0
-
-	// log.Printf("Looking for ipv4: %t", l.isv4)
 
 	for h := range l.seenHosts {
 		// mark not seen
