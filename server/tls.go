@@ -12,7 +12,6 @@ import (
 
 func (srv *Server) certificateMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		_, name := srv.getVerifiedCert(r.TLS.VerifiedChains)
 
 		ctx := context.WithValue(r.Context(), sctx.CertificateKey, name)

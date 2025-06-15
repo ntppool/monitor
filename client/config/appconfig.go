@@ -47,6 +47,10 @@ type AppConfig interface {
 	HaveCertificate() bool
 	CertificateDates() (notBefore time.Time, notAfter time.Time, remaining time.Duration, err error)
 
+	// Certificate renewal methods
+	LoadAPIAppConfigForceCerts(ctx context.Context) error
+	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
+
 	WaitUntilConfigured(ctx context.Context) error
 	WaitUntilLive(ctx context.Context) error
 }
@@ -147,8 +151,10 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
+			log.InfoContext(ctx, "WaitUntilLive context done, exiting")
 			return nil
 		case <-time.After(60 * time.Second):
+			// check again every minute
 		}
 
 		// do this last in the loop because WaitUntilConfigured just
@@ -205,7 +211,7 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(3 * time.Second):
+		case <-time.After(4 * time.Second):
 		}
 	}
 	return nil

@@ -80,3 +80,8 @@ func (ac *appConfig) checkCertificateValidity(ctx context.Context) (bool, time.D
 
 	return true, time.Until(renewAfter) + time.Second*1, nil
 }
+
+// CheckCertificateValidity is the public wrapper for checkCertificateValidity
+func (ac *appConfig) CheckCertificateValidity(ctx context.Context) (bool, time.Duration, error) {
+	return ac.checkCertificateValidity(ctx)
+}

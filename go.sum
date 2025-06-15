@@ -195,6 +195,8 @@ github.com/valyala/fasttemplate v1.2.2/go.mod h1:KHLXt3tVN2HBp8eijSv/kGJopbvo7S+
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.ntppool.org/common v0.4.0 h1:vZIrK1UapJAIm6YLDg2NqWbfL711hHPq0Uag6rEpO8U=
 go.ntppool.org/common v0.4.0/go.mod h1:8ILmR3KxpUSNofcw9EBG42HNf81Z9iu9Fg1Cj0f/WP0=
+go.ntppool.org/common v0.4.2 h1:sbq8I5JS8biH0Mb0mdZ/3RPrFbfDlOGokb1FiuUiXPA=
+go.ntppool.org/common v0.4.2/go.mod h1:8ILmR3KxpUSNofcw9EBG42HNf81Z9iu9Fg1Cj0f/WP0=
 go.ntppool.org/pingtrace v0.0.4 h1:SqylIe1LrpWn0ugBMQfDbBUUQ+fApRnUKwBWLmtud0c=
 go.ntppool.org/pingtrace v0.0.4/go.mod h1:QylPGn2cg7VqKummEA0uEGKz8u/oGV0ecnT+r8aaWv4=
 go.ntppool.org/vault-token-manager v0.0.1 h1:5FTE1sM7H/0LOSgTGe5aBkGOFGCWrfQPTsZS14nD3jU=

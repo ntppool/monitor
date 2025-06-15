@@ -66,6 +66,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return fmt.Errorf("waiting for config: %w", err)
 	}
 
+	log.DebugContext(ctx, "WaitUntilLive done. continuing work", "haveCertificate", cli.Config.HaveCertificate())
+
 	if checkDone(ctx) {
 		log.DebugContext(ctx, "skipping monitor, context done")
 		return nil
@@ -162,6 +164,15 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return runMQTTClient(ctx, cli, mqconfigger, promreg)
 	})
 
+	g.Go(func() error {
+		if cmd.SanityOnly || cmd.Once {
+			log.DebugContext(ctx, "skipping certificate renewal for once/sanity-only")
+			return nil
+		}
+		log.InfoContext(ctx, "starting certificate renewal monitor", "name", cli.Config.TLSName())
+		return cmd.runCertificateRenewal(ctx, cli)
+	})
+
 	err = g.Wait()
 	if err != nil {
 		log.Error("monitor error", "err", err)
@@ -223,6 +234,8 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 	log.InfoContext(ctx, "starting monitor")
 
+	// todo: only run if the appconfig says this monitor is configured
+
 	monconf := checkconfig.NewConfigger(nil)
 
 	initialConfig := sync.WaitGroup{}
@@ -246,6 +259,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 			cfgresp, err := fetchConfig(ctx, ipc, api)
 			if err != nil {
+				log.WarnContext(ctx, "fetching config", "err", err, "monitor_ip", ipc.IP.String())
 				errors++
 				if firstRun {
 					wait = time.Second * 10 * time.Duration(errors)
@@ -285,6 +299,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 	}
 
 	// todo: update mqtt status with current health from localok?
+	log.DebugContext(ctx, "setting up localok.NewLocalOK")
 	localOK := localok.NewLocalOK(monconf, promreg)
 
 	if cmd.SanityOnly {
@@ -379,7 +394,11 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 			&apiv2.GetConfigRequest{MonId: ipc.IP.String()},
 		))
 	if err != nil || cfgresp.Msg == nil {
-		log.ErrorContext(ctx, "could not get config, http error", "err", err)
+		if strings.Contains(err.Error(), "tls: expired certificate") {
+			log.ErrorContext(ctx, "TLS certificate error - check server certificate validity", "err", err, "monitor_ip", ipc.IP.String())
+		} else {
+			log.ErrorContext(ctx, "could not get config, http error", "err", err, "monitor_ip", ipc.IP.String())
+		}
 		return nil, err
 	}
 	return cfgresp.Msg, nil
@@ -503,6 +522,54 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	}
 
 	return len(statuses), nil
+}
+
+// todo: move this to be on appconfig.AppConfig?
+func (cmd *monitorCmd) runCertificateRenewal(ctx context.Context, cli *ClientCmd) error {
+	log := logger.FromContext(ctx).WithGroup("cert-renewal")
+
+	log.InfoContext(ctx, "certificate renewal monitor started")
+
+	for {
+		// Check certificate validity and get next check time
+		valid, nextCheck, err := cli.Config.CheckCertificateValidity(ctx)
+		if err != nil {
+			log.WarnContext(ctx, "failed to check certificate validity", "err", err)
+			// Retry after 1 hour if we can't check validity
+			nextCheck = time.Hour
+		} else if !valid {
+			log.InfoContext(ctx, "certificate needs renewal, requesting new certificate")
+			err = cli.Config.LoadAPIAppConfigForceCerts(ctx)
+			if err != nil {
+				log.ErrorContext(ctx, "failed to renew certificate", "err", err)
+				// Retry after 30 minutes if renewal fails
+				nextCheck = 30 * time.Minute
+			} else {
+				log.InfoContext(ctx, "certificate renewed successfully")
+				// Check again in a reasonable time after successful renewal
+				nextCheck = 6 * time.Hour
+			}
+		} else {
+			log.DebugContext(ctx, "certificate is valid", "nextCheck", nextCheck)
+		}
+
+		// Ensure we don't check too frequently (minimum 10 minutes) or too infrequently (maximum 24 hours)
+		if nextCheck < 10*time.Minute {
+			nextCheck = 10 * time.Minute
+		} else if nextCheck > 24*time.Hour {
+			nextCheck = 24 * time.Hour
+		}
+
+		log.DebugContext(ctx, "scheduling next certificate check", "duration", nextCheck)
+
+		select {
+		case <-time.After(nextCheck):
+			// Continue to next iteration
+		case <-ctx.Done():
+			log.InfoContext(ctx, "certificate renewal monitor shutting down")
+			return nil
+		}
+	}
 }
 
 func checkDone(ctx context.Context) bool {
