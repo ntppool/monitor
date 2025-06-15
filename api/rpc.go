@@ -27,6 +27,21 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 		InsecureSkipVerify:   false,
 		GetClientCertificate: cm.GetClientCertificate,
 		RootCAs:              capool,
+		// Add debug logging for certificate issues
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			log := logger.Setup()
+			for _, cert := range cs.PeerCertificates {
+				log.Debug("server certificate verification",
+					"subject", cert.Subject.String(),
+					"issuer", cert.Issuer.String(),
+					"notBefore", cert.NotBefore,
+					"notAfter", cert.NotAfter,
+					"expired", time.Now().After(cert.NotAfter),
+					"serverName", cs.ServerName,
+				)
+			}
+			return nil
+		},
 	}
 
 	// tlsConfig.BuildNameToCertificate()
