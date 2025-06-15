@@ -175,3 +175,9 @@ The ntppool-agent determines the monitor-api server endpoint as follows:
   - devel: `https://api.devel.mon.ntppool.dev`
 
 To change the default, set the appropriate environment variable or update the logic in the `depenv` package. See also the `README.md` for user-facing configuration options.
+
+## Pre-Commit Best Practices
+
+- **Before committing code:**
+  - Run `go test ./...` to ensure all tests pass
+  - Run `gofumpt -w` on changed `.go` files to ensure consistent formatting

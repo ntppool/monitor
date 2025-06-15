@@ -14,6 +14,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/version"
 	apitls "go.ntppool.org/monitor/api/tls"
+	"go.ntppool.org/monitor/client/httpclient"
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 )
 
@@ -52,8 +53,12 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 40 * time.Second,
 	}
+
+	// Wrap transport with pool flusher to handle certificate errors
+	poolFlusherTransport := httpclient.NewPoolFlusherTransport(transport)
+
 	client := &http.Client{
-		Transport: transport,
+		Transport: poolFlusherTransport,
 	}
 
 	return client, nil
