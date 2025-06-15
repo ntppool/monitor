@@ -10,6 +10,7 @@ import (
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
+	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
 )
@@ -24,7 +25,7 @@ func (cmd *scorerServerCmd) Run(ctx context.Context) error {
 
 func scorerRun(ctx context.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
-	log.Info("starting", "continuous", continuous)
+	log.InfoContext(ctx, "starting monitor-scorer", "version", version.Version(), "continuous", continuous)
 
 	metricssrv := metricsserver.New()
 	go func() {

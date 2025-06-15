@@ -12,6 +12,7 @@ import (
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
+	"go.ntppool.org/common/version"
 
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/client/config/checkconfig"
@@ -58,6 +59,8 @@ func (mqcfg *mqconfig) GetMQTTConfig() *checkconfig.MQTTConfig {
 
 func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	log := logger.FromContext(ctx)
+
+	log.InfoContext(ctx, "starting monitor-api", "version", version.Version())
 
 	deploymentMode := root.DeploymentMode
 

@@ -23,6 +23,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/tracing"
+	"go.ntppool.org/common/version"
 
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/client/config"
@@ -67,6 +68,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	defer stopMonitor()
 
 	log := logger.FromContext(ctx)
+
+	log.InfoContext(ctx, "starting ntppool-agent", "version", version.Version())
 
 	err := cli.Config.WaitUntilLive(ctx)
 	if err != nil {
