@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strings"
 	"sync"
@@ -148,7 +149,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				log.ErrorContext(ctx, "not configured")
 				return nil
 			}
-			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg)
+
+			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg, cli.Config)
 			log.DebugContext(ctx, "monitor done", "err", err)
 			return err
 		})
@@ -176,11 +178,11 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	g.Go(func() error {
 		if cmd.SanityOnly || cmd.Once {
-			log.DebugContext(ctx, "skipping certificate renewal for once/sanity-only")
+			log.DebugContext(ctx, "skipping AppConfig manager for once/sanity-only")
 			return nil
 		}
-		log.InfoContext(ctx, "starting certificate renewal monitor", "name", cli.Config.TLSName())
-		return cmd.runCertificateRenewal(ctx, cli)
+		log.InfoContext(ctx, "starting AppConfig manager", "name", cli.Config.TLSName())
+		return cli.Config.Manager(ctx, promreg)
 	})
 
 	err = g.Wait()
@@ -241,12 +243,15 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 	return nil
 }
 
-func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, promreg prometheus.Registerer) error {
+func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, promreg prometheus.Registerer, appConfig config.AppConfig) error {
 	log := logger.FromContext(ctx).With("monitor_ip", ipc.IP.String())
 
 	log.InfoContext(ctx, "starting monitor")
 
-	// todo: only run if the appconfig says this monitor is configured
+	// Wait for protocol to become active if it's not already live
+	if !cmd.waitForProtocolActivation(ctx, ipc, appConfig, log) {
+		return nil // Context was cancelled
+	}
 
 	monconf := checkconfig.NewConfigger(nil)
 
@@ -536,50 +541,40 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	return len(statuses), nil
 }
 
-// todo: move this to be on appconfig.AppConfig?
-func (cmd *monitorCmd) runCertificateRenewal(ctx context.Context, cli *ClientCmd) error {
-	log := logger.FromContext(ctx).WithGroup("cert-renewal")
+func (cmd *monitorCmd) waitForProtocolActivation(ctx context.Context, ipc config.IPConfig, appConfig config.AppConfig, log *slog.Logger) bool {
+	// Check if we need to wait for activation
+	checkLive := func() bool {
+		if ipc.IP.Is4() {
+			return appConfig.IPv4().IsLive()
+		} else {
+			return appConfig.IPv6().IsLive()
+		}
+	}
 
-	log.InfoContext(ctx, "certificate renewal monitor started")
+	// If already live, no need to wait
+	if checkLive() {
+		log.DebugContext(ctx, "protocol is already active")
+		return true
+	}
+
+	log.InfoContext(ctx, "protocol is inactive, waiting for activation")
+
+	// Poll every 30 seconds to check if protocol becomes active
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
 	for {
-		// Check certificate validity and get next check time
-		valid, nextCheck, err := cli.Config.CheckCertificateValidity(ctx)
-		if err != nil {
-			log.WarnContext(ctx, "failed to check certificate validity", "err", err)
-			// Retry after 1 hour if we can't check validity
-			nextCheck = time.Hour
-		} else if !valid {
-			log.InfoContext(ctx, "certificate needs renewal, requesting new certificate")
-			err = cli.Config.LoadAPIAppConfigForceCerts(ctx)
-			if err != nil {
-				log.ErrorContext(ctx, "failed to renew certificate", "err", err)
-				// Retry after 30 minutes if renewal fails
-				nextCheck = 30 * time.Minute
-			} else {
-				log.InfoContext(ctx, "certificate renewed successfully")
-				// Check again in a reasonable time after successful renewal
-				nextCheck = 6 * time.Hour
-			}
-		} else {
-			log.DebugContext(ctx, "certificate is valid", "nextCheck", nextCheck)
-		}
-
-		// Ensure we don't check too frequently (minimum 10 minutes) or too infrequently (maximum 24 hours)
-		if nextCheck < 10*time.Minute {
-			nextCheck = 10 * time.Minute
-		} else if nextCheck > 24*time.Hour {
-			nextCheck = 24 * time.Hour
-		}
-
-		log.DebugContext(ctx, "scheduling next certificate check", "duration", nextCheck)
-
 		select {
-		case <-time.After(nextCheck):
-			// Continue to next iteration
+		case <-ticker.C:
+			log.DebugContext(ctx, "checking protocol activation status")
+			if checkLive() {
+				log.InfoContext(ctx, "protocol is now active, starting monitoring")
+				return true
+			}
+			log.DebugContext(ctx, "protocol still inactive, continuing to wait")
 		case <-ctx.Done():
-			log.InfoContext(ctx, "certificate renewal monitor shutting down")
-			return nil
+			log.DebugContext(ctx, "context cancelled while waiting for activation")
+			return false
 		}
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
@@ -49,11 +50,15 @@ type AppConfig interface {
 	CertificateDates() (notBefore time.Time, notAfter time.Time, remaining time.Duration, err error)
 
 	// Certificate renewal methods
+	LoadAPIAppConfig(ctx context.Context) error
 	LoadAPIAppConfigForceCerts(ctx context.Context) error
 	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
 
 	WaitUntilConfigured(ctx context.Context) error
 	WaitUntilLive(ctx context.Context) error
+
+	// AppConfig manager for hot reloading
+	Manager(ctx context.Context, promreg prometheus.Registerer) error
 }
 
 type IPConfig struct {
