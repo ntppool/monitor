@@ -91,7 +91,7 @@ func (c *ClientCmd) BeforeApply() error {
 	return nil
 }
 
-func (c *ClientCmd) AfterApply(ctx context.Context) error {
+func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
 	if c.Debug {
 		os.Setenv("MONITOR_DEBUG", "true")
 	}
@@ -103,6 +103,11 @@ func (c *ClientCmd) AfterApply(ctx context.Context) error {
 		return fmt.Errorf("state directory not set")
 	} else {
 		c.StateDir = kong.ExpandPath(c.StateDir)
+	}
+
+	// Skip configuration loading for version command
+	if kctx.Command() == "version" {
+		return nil
 	}
 
 	var err error
