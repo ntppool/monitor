@@ -90,7 +90,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 }
 
 const getMonitorTLSNameIP = `-- name: GetMonitorTLSNameIP :one
-SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
+SELECT id, id_token, type, user_id, account_id, hostname, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
 WHERE tls_name = ?
   -- todo: remove this when v3 monitors are gone
   and (ip = ? OR "" = ?)
@@ -113,7 +113,7 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 		&i.Type,
 		&i.UserID,
 		&i.AccountID,
-		&i.Name,
+		&i.Hostname,
 		&i.Location,
 		&i.Ip,
 		&i.IpVersion,
@@ -132,7 +132,7 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 }
 
 const getMonitorsTLSName = `-- name: GetMonitorsTLSName :many
-SELECT id, id_token, type, user_id, account_id, name, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
+SELECT id, id_token, type, user_id, account_id, hostname, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
 WHERE tls_name = ?
   AND is_current = 1
   AND deleted_on is null
@@ -153,7 +153,7 @@ func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString
 			&i.Type,
 			&i.UserID,
 			&i.AccountID,
-			&i.Name,
+			&i.Hostname,
 			&i.Location,
 			&i.Ip,
 			&i.IpVersion,
@@ -329,7 +329,7 @@ func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecent
 }
 
 const getScorerStatus = `-- name: GetScorerStatus :many
-select s.id, s.scorer_id, s.log_score_id, s.modified_on,m.name from scorer_status s, monitors m
+select s.id, s.scorer_id, s.log_score_id, s.modified_on,m.hostname from scorer_status s, monitors m
 WHERE m.type = 'score' and (m.id=s.scorer_id)
 `
 
@@ -338,7 +338,7 @@ type GetScorerStatusRow struct {
 	ScorerID   uint32    `json:"scorer_id"`
 	LogScoreID uint64    `json:"log_score_id"`
 	ModifiedOn time.Time `json:"modified_on"`
-	Name       string    `json:"name"`
+	Hostname   string    `json:"hostname"`
 }
 
 func (q *Queries) GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, error) {
@@ -355,7 +355,7 @@ func (q *Queries) GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, er
 			&i.ScorerID,
 			&i.LogScoreID,
 			&i.ModifiedOn,
-			&i.Name,
+			&i.Hostname,
 		); err != nil {
 			return nil, err
 		}
@@ -372,7 +372,7 @@ func (q *Queries) GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, er
 
 const getScorers = `-- name: GetScorers :many
 SELECT m.id as ID, s.id as status_id,
-  m.status, s.log_score_id, m.name
+  m.status, s.log_score_id, m.hostname
 FROM monitors m, scorer_status s
 WHERE
   m.type = 'score'
@@ -385,7 +385,7 @@ type GetScorersRow struct {
 	StatusID   uint32         `json:"status_id"`
 	Status     MonitorsStatus `json:"status"`
 	LogScoreID uint64         `json:"log_score_id"`
-	Name       string         `json:"name"`
+	Hostname   string         `json:"hostname"`
 }
 
 func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
@@ -402,7 +402,7 @@ func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
 			&i.StatusID,
 			&i.Status,
 			&i.LogScoreID,
-			&i.Name,
+			&i.Hostname,
 		); err != nil {
 			return nil, err
 		}
@@ -659,7 +659,7 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 const insertScorer = `-- name: InsertScorer :execresult
 insert into monitors
    (type, user_id, account_id,
-    name, location, ip, ip_version,
+    hostname, location, ip, ip_version,
     tls_name, api_key, status, config, client_version, created_on)
     VALUES ('score', NULL, NULL,
             ?, '', NULL, NULL,
@@ -668,12 +668,12 @@ insert into monitors
 `
 
 type InsertScorerParams struct {
-	Name    string         `json:"name"`
-	TlsName sql.NullString `json:"tls_name"`
+	Hostname string         `json:"hostname"`
+	TlsName  sql.NullString `json:"tls_name"`
 }
 
 func (q *Queries) InsertScorer(ctx context.Context, arg InsertScorerParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, insertScorer, arg.Name, arg.TlsName)
+	return q.db.ExecContext(ctx, insertScorer, arg.Hostname, arg.TlsName)
 }
 
 const insertScorerStatus = `-- name: InsertScorerStatus :exec

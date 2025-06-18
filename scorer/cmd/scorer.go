@@ -104,7 +104,7 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 	existingScorers := map[string]bool{}
 
 	for _, dbS := range dbScorers {
-		existingScorers[dbS.Name] = true
+		existingScorers[dbS.Hostname] = true
 	}
 
 	log.Debug("dbScorers", "scorers", dbScorers)
@@ -124,8 +124,8 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 		log.Info("setting up scorer, scorerSetup", "name", name)
 
 		insert, err := db.InsertScorer(ctx, ntpdb.InsertScorerParams{
-			Name:    name,
-			TlsName: sql.NullString{String: name + ".scores.ntp.dev", Valid: true},
+			Hostname: name,
+			TlsName:  sql.NullString{String: name + ".scores.ntp.dev", Valid: true},
 		})
 		if err != nil {
 			return err

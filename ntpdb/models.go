@@ -243,7 +243,7 @@ type Monitor struct {
 	Type          MonitorsType          `json:"type"`
 	UserID        sql.NullInt32         `json:"user_id"`
 	AccountID     sql.NullInt32         `json:"account_id"`
-	Name          string                `json:"name"`
+	Hostname      string                `json:"hostname"`
 	Location      string                `json:"location"`
 	Ip            sql.NullString        `json:"ip"`
 	IpVersion     NullMonitorsIpVersion `json:"ip_version"`

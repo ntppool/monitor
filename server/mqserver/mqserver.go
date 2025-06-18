@@ -204,7 +204,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 				}
 
 				mqs.promGauge.WithLabelValues(
-					m.Name,
+					m.Hostname,
 					c.Version.Version,
 					m.IpVersion.MonitorsIpVersion.String(),
 				).Add(1.0)

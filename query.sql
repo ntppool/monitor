@@ -72,7 +72,7 @@ UPDATE servers
 
 -- name: GetScorers :many
 SELECT m.id as ID, s.id as status_id,
-  m.status, s.log_score_id, m.name
+  m.status, s.log_score_id, m.hostname
 FROM monitors m, scorer_status s
 WHERE
   m.type = 'score'
@@ -80,7 +80,7 @@ WHERE
   and (m.id=s.scorer_id);
 
 -- name: GetScorerStatus :many
-select s.*,m.name from scorer_status s, monitors m
+select s.*,m.hostname from scorer_status s, monitors m
 WHERE m.type = 'score' and (m.id=s.scorer_id);
 
 -- name: UpdateScorerStatus :exec
@@ -96,7 +96,7 @@ insert into scorer_status
 -- name: InsertScorer :execresult
 insert into monitors
    (type, user_id, account_id,
-    name, location, ip, ip_version,
+    hostname, location, ip, ip_version,
     tls_name, api_key, status, config, client_version, created_on)
     VALUES ('score', NULL, NULL,
             ?, '', NULL, NULL,

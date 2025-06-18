@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/netip"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
@@ -20,7 +23,9 @@ import (
 	"go.ntppool.org/monitor/client/httpclient"
 )
 
-type setupCmd struct{}
+type setupCmd struct {
+	Hostname string `name:"hostname" help:"Hostname to register (defaults to system hostname)"`
+}
 
 func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log := logger.FromContext(ctx)
@@ -51,12 +56,39 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	log.DebugContext(ctx, "registration ID", "id", registrationID)
 
+	// Get hostname for registration
+	hostname := cmd.Hostname
+	if hostname == "" {
+		hostname, err = os.Hostname()
+		if err != nil {
+			log.WarnContext(ctx, "could not get system hostname", "err", err)
+			hostname = "" // Use empty hostname as fallback
+		}
+	}
+
+	if hostname != "" {
+		log.InfoContext(ctx, "using hostname for registration", "hostname", hostname)
+	} else {
+		log.InfoContext(ctx, "registering without hostname")
+	}
+
 	cl := httpclient.CreateIPVersionAwareClient()
 	apiHost := cli.Config.Env().APIHost()
 
+	// Prepare form data for hostname
+	formData := url.Values{}
+	if hostname != "" {
+		formData.Set("hostname", hostname)
+	}
+
+	var reqBody io.Reader
+	if len(formData) > 0 {
+		reqBody = strings.NewReader(formData.Encode())
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		fmt.Sprintf("%s/monitor/api/registration", apiHost),
-		nil,
+		reqBody,
 	)
 	if err != nil {
 		return err
@@ -66,6 +98,10 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	req.Header.Set("Registration-ID", registrationID.String())
 	req.Header.Set("Accept", "application/json, text/plain")
 
+	if len(formData) > 0 {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
 	if apiKey != "" {
 		req.Header.Add("Authorization", "Bearer "+apiKey)
 	}
@@ -74,6 +110,7 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		cl:       cl,
 		req:      req,
 		serverIP: netip.Addr{},
+		hostname: hostname,
 		tryIPv4:  wantIPv4,
 		tryIPv6:  wantIPv6,
 		wantIPv4: wantIPv4,
@@ -113,6 +150,7 @@ type registrationState struct {
 	req      *http.Request
 	serverIP netip.Addr
 	cli      *ClientCmd
+	hostname string
 
 	// wantIPv4 and wantIPv6 are the IP versions we want to
 	// register for. tryIPv4 and tryIPv6 are the IP versions
@@ -145,9 +183,19 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 		}
 	}
 
+	// Update request with hostname form data for this iteration
+	if rs.hostname != "" {
+		formData := url.Values{}
+		formData.Set("hostname", rs.hostname)
+		reqBody := strings.NewReader(formData.Encode())
+		rs.req.Body = io.NopCloser(reqBody)
+		rs.req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rs.req.ContentLength = int64(len(formData.Encode()))
+	}
+
 	rs.req = rs.req.WithContext(ctx)
 
-	log.DebugContext(ctx, "registration request", "server_ip", rs.serverIP, "tryIPv4", rs.tryIPv4, "tryIPv6", rs.tryIPv6, "url", rs.req.URL.String())
+	log.DebugContext(ctx, "registration request", "server_ip", rs.serverIP, "tryIPv4", rs.tryIPv4, "tryIPv6", rs.tryIPv6, "hostname", rs.hostname, "url", rs.req.URL.String())
 
 	resp, err := rs.cl.Do(rs.req)
 	if err != nil {

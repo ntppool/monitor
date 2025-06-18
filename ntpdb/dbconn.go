@@ -1,6 +1,6 @@
 package ntpdb
 
-//go:generate go tool github.com/hexdigest/gowrap/cmd/gowrap gen -t opentelemetry -i QuerierTx -p . -o otel.go
+//go:generate go tool github.com/hexdigest/gowrap/cmd/gowrap gen -t ./opentelemetry.gowrap -g -i QuerierTx -p . -o otel.go
 
 import (
 	"database/sql"

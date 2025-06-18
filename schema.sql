@@ -153,7 +153,7 @@ CREATE TABLE `api_keys_monitors` (
   `monitor_id` int unsigned NOT NULL,
   PRIMARY KEY (`api_key_id`,`monitor_id`),
   KEY `api_keys_monitors_monitors_fk` (`monitor_id`),
-  CONSTRAINT `api_keys_monitors_api_keys_fk` FOREIGN KEY (`api_key_id`) REFERENCES `api_keys` (`id`),
+  CONSTRAINT `api_keys_monitors_api_keys_fk` FOREIGN KEY (`api_key_id`) REFERENCES `api_keys` (`id`) ON DELETE CASCADE,
   CONSTRAINT `api_keys_monitors_monitors_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -304,7 +304,7 @@ CREATE TABLE `monitor_registrations` (
   `ip4` varchar(15) NOT NULL DEFAULT '',
   `ip6` varchar(39) NOT NULL DEFAULT '',
   `tls_name` varchar(255) DEFAULT '',
-  `name` varchar(256) NOT NULL DEFAULT '',
+  `hostname` varchar(256) NOT NULL DEFAULT '',
   `location_code` varchar(5) NOT NULL DEFAULT '',
   `account_id` int unsigned DEFAULT NULL,
   `client` varchar(256) NOT NULL DEFAULT '',
@@ -334,7 +334,7 @@ CREATE TABLE `monitors` (
   `type` enum('monitor','score') NOT NULL DEFAULT 'monitor',
   `user_id` int unsigned DEFAULT NULL,
   `account_id` int unsigned DEFAULT NULL,
-  `name` varchar(30) NOT NULL,
+  `hostname` varchar(255) NOT NULL DEFAULT '',
   `location` varchar(255) NOT NULL DEFAULT '',
   `ip` varchar(40) DEFAULT NULL,
   `ip_version` enum('v4','v6') DEFAULT NULL,
@@ -854,12 +854,12 @@ CREATE TABLE `zones` (
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8mb3 */;
-/*!50001 SET character_set_results     = utf8mb3 */;
-/*!50001 SET collation_connection      = utf8mb3_general_ci */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`v-kubernetes-ntp-askntp-arIcaYIj`@`10.%` SQL SECURITY DEFINER */
-/*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`name`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
+/*!50013 DEFINER=`v-root-ntp-askntp-nfR6QZ8cGeVn4o`@`10.%` SQL SECURITY DEFINER */
+/*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`hostname`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -873,4 +873,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-05-11 21:00:39
+-- Dump completed on 2025-06-18  8:33:37

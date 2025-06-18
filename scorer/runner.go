@@ -15,8 +15,10 @@ import (
 	"go.ntppool.org/monitor/scorer/recentmedian"
 )
 
-const defaultBatchSize = 500
-const mainScorer = "recentmedian"
+const (
+	defaultBatchSize = 500
+	mainScorer       = "recentmedian"
+)
 
 type ScorerSettings struct {
 	BatchSize int32 `json:"batch_size"`
@@ -42,7 +44,6 @@ type lastUpdate struct {
 }
 
 func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner, error) {
-
 	reg := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
@@ -91,7 +92,6 @@ func (r *runner) Scorers() map[string]*ScorerMap {
 }
 
 func (r *runner) Settings(db *ntpdb.Queries) ScorerSettings {
-
 	settingsStr, err := db.GetSystemSetting(r.ctx, "scorer")
 	if err != nil {
 		r.log.Warn("could not fetch scorer settings", "err", err)
@@ -112,7 +112,6 @@ func (r *runner) Settings(db *ntpdb.Queries) ScorerSettings {
 }
 
 func (r *runner) Run(ctx context.Context) (int, error) {
-
 	r.m.runs.Add(1)
 	log := r.log
 
@@ -132,13 +131,13 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 	}
 
 	for _, sc := range scorers {
-		log.Debug("setting up scorer", "name", sc.Name, "last_id", sc.LogScoreID)
-		if s, ok := registry[sc.Name]; ok {
+		log.Debug("setting up scorer", "name", sc.Hostname, "last_id", sc.LogScoreID)
+		if s, ok := registry[sc.Hostname]; ok {
 			s.Scorer.Setup(sc.ID)
 			s.ScorerID = sc.ID
 			s.LastID = sc.LogScoreID
 		} else {
-			log.Warn("scorer not implemented", "name", sc.Name)
+			log.Warn("scorer not implemented", "name", sc.Hostname)
 		}
 	}
 
@@ -198,11 +197,9 @@ func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.
 	}
 
 	return logscores, nil
-
 }
 
 func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchSize int32) (int, error) {
-
 	log := r.log.With("name", name)
 
 	tx, err := r.dbconn.BeginTx(r.ctx, nil)
@@ -313,7 +310,6 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 // getServerScore returns the current server score for the serverID and monitorID.
 // If none currently exists, a new score with default values is inserted and returned.
 func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
-
 	ctx := r.ctx
 
 	p := ntpdb.GetServerScoreParams{
