@@ -151,6 +151,30 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				return nil
 			}
 
+			// Check if protocol is live according to AppConfig before starting monitor
+			if !ipc.IsLive() {
+				ipLog.InfoContext(ctx, "protocol not active, waiting for activation")
+				// Wait for config change
+				for {
+					configChangeCtx := cli.Config.WaitForConfigChange(ctx)
+					select {
+					case <-configChangeCtx.Done():
+						// Get fresh status
+						if ipc.IP.Is4() {
+							ipc = cli.Config.IPv4()
+						} else {
+							ipc = cli.Config.IPv6()
+						}
+						if ipc.IsLive() {
+							ipLog.InfoContext(ctx, "protocol is now active, starting monitor")
+							break
+						}
+					case <-ctx.Done():
+						return nil
+					}
+				}
+			}
+
 			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg, cli.Config)
 			ipLog.DebugContext(ctx, "monitor done", "err", err)
 			return err
@@ -327,25 +351,6 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 runLoop:
 	for i := 1; true; i++ {
-		// Update ipc with current status from appConfig
-		if ipc.IP.Is4() {
-			ipc = appConfig.IPv4()
-		} else {
-			ipc = appConfig.IPv6()
-		}
-
-		// Skip if protocol is not live
-		if !ipc.IsLive() {
-			// Wait for config change
-			configChangeCtx := appConfig.WaitForConfigChange(ctx)
-			select {
-			case <-configChangeCtx.Done():
-				continue runLoop // Config changed, check again
-			case <-ctx.Done():
-				break runLoop // Main context cancelled
-			}
-		}
-
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
 		boff.InitialInterval = DefaultConfigWait
