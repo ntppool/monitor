@@ -56,9 +56,13 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 		// Default reload interval
 		const defaultReloadInterval = 5 * time.Minute
 		const errorRetryInterval = 2 * time.Minute
+		const debounceInterval = 100 * time.Millisecond
 
 		// Track previous protocol states for change detection
 		var prevIPv4Live, prevIPv6Live bool
+
+		// Debounce timer for rapid file changes
+		var debounceTimer *time.Timer
 
 		// Create timer for periodic reloads
 		timer := time.NewTimer(defaultReloadInterval)
@@ -69,15 +73,42 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 			var nextCheck time.Duration
 
 			if watcher != nil {
+				// Add debounce timer channel if available
+				var debounceC <-chan time.Time
+				if debounceTimer != nil {
+					debounceC = debounceTimer.C
+				}
+
 				select {
+				case <-debounceC:
+					log.DebugContext(ctx, "debounce timer fired, triggering reload")
+					reloadTriggered = true
+					debounceTimer = nil
+
 				case event, ok := <-watcher.Events:
 					if !ok {
 						log.WarnContext(ctx, "file watcher events channel closed")
 						watcher = nil
 						reloadTriggered = true
-					} else if event.Op&fsnotify.Write == fsnotify.Write && filepath.Base(event.Name) == stateFileName {
-						log.DebugContext(ctx, "state file modified, triggering reload", "event", event)
-						reloadTriggered = true
+					} else {
+						// Check for various file operations that might indicate a change
+						// Some systems use Create for atomic renames, others use Write
+						baseName := filepath.Base(event.Name)
+						if baseName == stateFileName || baseName == stateFileName+".tmp" {
+							if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
+								log.InfoContext(ctx, "state file changed, triggering reload",
+									"event", event.String(),
+									"file", baseName)
+								// Cancel any pending debounce timer
+								if debounceTimer != nil {
+									debounceTimer.Stop()
+								}
+								// Set a short debounce timer to handle rapid successive events
+								debounceTimer = time.NewTimer(debounceInterval)
+								// Continue to wait for debounce timer
+								continue
+							}
+						}
 					}
 
 				case err, ok := <-watcher.Errors:
