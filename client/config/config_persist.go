@@ -74,9 +74,12 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 }
 
 func (ac *appConfig) load(ctx context.Context) error {
+	ac.lock.Lock()
+	defer ac.lock.Unlock()
+
 	log := logger.FromContext(ctx)
 
-	err := ac.loadFromDisk(ctx)
+	err := ac.loadFromDiskUnsafe(ctx)
 	if err != nil {
 		return err
 	}
@@ -99,22 +102,25 @@ func (ac *appConfig) load(ctx context.Context) error {
 	}
 
 	// todo: check if it changed?
-	return ac.save()
+	return ac.saveUnsafe()
 }
 
-func (ac *appConfig) loadFromDisk(_ context.Context) error {
+func (ac *appConfig) loadFromDisk(ctx context.Context) error {
+	ac.lock.Lock()
+	defer ac.lock.Unlock()
+	return ac.loadFromDiskUnsafe(ctx)
+}
+
+func (ac *appConfig) loadFromDiskUnsafe(_ context.Context) error {
 	path := ac.stateFilePrefix(stateFile)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return ac.save()
+			return ac.saveUnsafe()
 		} else {
 			return err
 		}
 	}
-
-	ac.lock.Lock()
-	defer ac.lock.Unlock()
 
 	err = json.Unmarshal(b, &ac)
 	if err != nil {
@@ -125,12 +131,13 @@ func (ac *appConfig) loadFromDisk(_ context.Context) error {
 }
 
 func (ac *appConfig) save() error {
+	ac.lock.Lock()
+	defer ac.lock.Unlock()
+	return ac.saveUnsafe()
+}
+
+func (ac *appConfig) saveUnsafe() error {
 	path := ac.stateFilePrefix(stateFile)
-
-	var err error
-
-	ac.lock.RLock()
-	defer ac.lock.RUnlock()
 
 	b, err := json.MarshalIndent(ac, "", "  ")
 	if err != nil {

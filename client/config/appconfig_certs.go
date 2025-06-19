@@ -38,8 +38,8 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 		var prevIPv4Live, prevIPv6Live bool
 
 		for {
-			// Load current configuration
-			err := ac.LoadAPIAppConfig(ctx)
+			// Reload configuration from disk (including state.json with API key) and API
+			err := ac.load(ctx)
 			var nextCheck time.Duration
 
 			if err != nil {

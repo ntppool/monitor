@@ -57,6 +57,9 @@ type AppConfig interface {
 	WaitUntilConfigured(ctx context.Context) error
 	WaitUntilLive(ctx context.Context) error
 
+	// Hot reloading from disk and API
+	load(ctx context.Context) error
+
 	// AppConfig manager for hot reloading
 	Manager(ctx context.Context, promreg prometheus.Registerer) error
 }
