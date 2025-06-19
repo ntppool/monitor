@@ -407,8 +407,23 @@ func (ac *appConfig) ServerName() string {
 }
 
 func (ac *appConfig) SetAPIKey(apiKey string) error {
+	// Check if API key is actually changing
+	ac.lock.Lock()
+	prevAPIKey := ac.API.APIKey
 	ac.API.APIKey = apiKey
-	return ac.save()
+	ac.lock.Unlock()
+
+	err := ac.save()
+	if err != nil {
+		return err
+	}
+
+	// Immediately notify waiters if API key changed
+	if prevAPIKey != apiKey {
+		ac.notifyConfigChange()
+	}
+
+	return nil
 }
 
 func (ac *appConfig) APIKey() string {
