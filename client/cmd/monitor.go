@@ -142,16 +142,17 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		}
 
 		g.Go(func() error {
-			log = log.With("ip_version", ipVersion)
-			ctx := logger.NewContext(ctx, log)
+			// Create a new logger instance for this goroutine to avoid shared state
+			ipLog := log.With("ip_version", ipVersion)
+			ctx := logger.NewContext(ctx, ipLog)
 
 			if ipc.IP == nil {
-				log.ErrorContext(ctx, "not configured")
+				ipLog.ErrorContext(ctx, "not configured")
 				return nil
 			}
 
 			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg, cli.Config)
-			log.DebugContext(ctx, "monitor done", "err", err)
+			ipLog.DebugContext(ctx, "monitor done", "err", err)
 			return err
 		})
 	}
