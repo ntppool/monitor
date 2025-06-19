@@ -155,11 +155,31 @@ Never mark a task as completed if:
 
 - `client/` - Client-side monitoring agent implementation
 - `client/monitor/` - NTP monitoring logic using beevik/ntp library
-- `client/config/` - Configuration management with TLS certificates
+- `client/config/` - Configuration management with TLS certificates and hot reloading
 - `server/` - API server with JWT auth and Connect RPC endpoints
 - `api/` - Protocol definitions using Protocol Buffers and Connect RPC
 - `scorer/` - Server performance scoring algorithms
 - `ntpdb/` - Database layer using MySQL with sqlc for type-safe queries
+
+### Configuration Management Architecture
+
+**Two separate configuration endpoints with different purposes and frequencies:**
+
+1. **HTTP Config Endpoint** (`/monitor/api/config`)
+   - **Frequency**: Every 5 minutes + immediate fsnotify triggers on state.json changes
+   - **Purpose**: Basic monitor setup, IP assignments, and TLS certificate management
+   - **Location**: `client/config/appconfig.go:LoadAPIAppConfig()`
+
+2. **gRPC Config Endpoint** (`api.GetConfig`)
+   - **Frequency**: Every 60 minutes + immediate triggers when HTTP config changes
+   - **Purpose**: Monitor-specific operational configuration per IP version
+   - **Location**: `client/cmd/monitor.go:fetchConfig()`
+
+**Hot Reloading System:**
+- `fsnotify` watches `state.json` for immediate response to setup command changes
+- HTTP config changes trigger immediate gRPC config refresh for all monitor goroutines
+- Context-based notification system with proper cleanup to prevent memory leaks
+- Broadcast mechanism supports multiple concurrent monitor goroutines (one per IP version)
 
 ### Communication
 

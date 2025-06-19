@@ -156,9 +156,9 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				ipLog.InfoContext(ctx, "protocol not active, waiting for activation")
 				// Wait for config change
 				for {
-					configChangeCtx := cli.Config.WaitForConfigChange(ctx)
+					configChangeWaiter := cli.Config.WaitForConfigChange(ctx)
 					select {
-					case <-configChangeCtx.Done():
+					case <-configChangeWaiter.Done():
 						// Get fresh status
 						if ipc.IP.Is4() {
 							ipc = cli.Config.IPv4()
@@ -170,6 +170,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 							break
 						}
 					case <-ctx.Done():
+						configChangeWaiter.Cancel() // Clean up on exit
 						return nil
 					}
 				}
@@ -287,6 +288,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 		for {
 			wait := fetchInterval
+			configChangeWaiter := appConfig.WaitForConfigChange(ctx)
 
 			if firstRun {
 				log.InfoContext(ctx, "getting client configuration", "errors", errors)
@@ -318,7 +320,12 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 			select {
 			case <-time.After(wait):
+				configChangeWaiter.Cancel() // Clean up when timer triggers
+			case <-configChangeWaiter.Done():
+				log.InfoContext(ctx, "HTTP config changed, triggering immediate gRPC config fetch")
+				// Config changed, fetch immediately (continue loop with no wait)
 			case <-ctx.Done():
+				configChangeWaiter.Cancel() // Clean up on exit
 				if firstRun {
 					initialConfig.Done()
 				}
@@ -351,6 +358,11 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 runLoop:
 	for i := 1; true; i++ {
+		// Check if protocol is still live, wait for reactivation if not
+		if !cmd.waitForProtocolActivation(ctx, ipc, appConfig, log) {
+			return nil // Context was cancelled
+		}
+
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
 		boff.InitialInterval = DefaultConfigWait
@@ -561,33 +573,36 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 }
 
 func (cmd *monitorCmd) waitForProtocolActivation(ctx context.Context, ipc config.IPConfig, appConfig config.AppConfig, log *slog.Logger) bool {
-	// Check if we need to wait for activation
-	checkLive := func() bool {
-		if ipc.IP.Is4() {
-			return appConfig.IPv4().IsLive()
-		} else {
-			return appConfig.IPv6().IsLive()
-		}
+	// Check current status
+	var currentIpc config.IPConfig
+	if ipc.IP.Is4() {
+		currentIpc = appConfig.IPv4()
+	} else {
+		currentIpc = appConfig.IPv6()
 	}
 
 	// If already live, no need to wait
-	if checkLive() {
+	if currentIpc.IsLive() {
 		log.DebugContext(ctx, "protocol is already active")
 		return true
 	}
 
 	log.InfoContext(ctx, "protocol is inactive, waiting for activation")
 
-	// Poll every 30 seconds to check if protocol becomes active
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
+	// Wait for config changes instead of polling
 	for {
+		configChangeCtx := appConfig.WaitForConfigChange(ctx)
 		select {
-		case <-ticker.C:
-			log.DebugContext(ctx, "checking protocol activation status")
-			if checkLive() {
-				log.InfoContext(ctx, "protocol is now active, starting monitoring")
+		case <-configChangeCtx.Done():
+			log.DebugContext(ctx, "config changed, checking protocol status")
+			// Get fresh status
+			if ipc.IP.Is4() {
+				currentIpc = appConfig.IPv4()
+			} else {
+				currentIpc = appConfig.IPv6()
+			}
+			if currentIpc.IsLive() {
+				log.InfoContext(ctx, "protocol is now active")
 				return true
 			}
 			log.DebugContext(ctx, "protocol still inactive, continuing to wait")

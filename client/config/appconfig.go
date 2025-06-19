@@ -51,7 +51,6 @@ type AppConfig interface {
 
 	// Certificate renewal methods
 	LoadAPIAppConfig(ctx context.Context) error
-	LoadAPIAppConfigForceCerts(ctx context.Context) error
 	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
 
 	WaitUntilConfigured(ctx context.Context) error
@@ -64,7 +63,7 @@ type AppConfig interface {
 	Manager(ctx context.Context, promreg prometheus.Registerer) error
 
 	// Configuration change notifications
-	WaitForConfigChange(ctx context.Context) context.Context
+	WaitForConfigChange(ctx context.Context) *ConfigChangeWaiter
 }
 
 type IPConfig struct {
@@ -92,8 +91,9 @@ type appConfig struct {
 	tlsCert *tls.Certificate
 
 	// For configuration change notifications
-	configChangeMu   sync.RWMutex
-	configChangeCtxs []context.CancelFunc
+	configChangeMu      sync.RWMutex
+	configChangeWaiters map[uint64]configChangeWaiter
+	configChangeNextID  uint64
 }
 
 var apiHTTPClient *http.Client
@@ -235,10 +235,6 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 
 func (ac *appConfig) LoadAPIAppConfig(ctx context.Context) error {
 	return ac.loadAPIAppConfig(ctx, false)
-}
-
-func (ac *appConfig) LoadAPIAppConfigForceCerts(ctx context.Context) error {
-	return ac.loadAPIAppConfig(ctx, true)
 }
 
 func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error {
@@ -445,24 +441,75 @@ func (ipconfig IPConfig) IsLive() bool {
 	}
 }
 
-// WaitForConfigChange returns a context that will be cancelled when configuration changes
-func (ac *appConfig) WaitForConfigChange(ctx context.Context) context.Context {
+// configChangeWaiter represents a single waiter for config changes
+type configChangeWaiter struct {
+	id     uint64
+	cancel context.CancelFunc
+}
+
+// ConfigChangeWaiter holds a context and its cleanup function
+type ConfigChangeWaiter struct {
+	ctx context.Context
+	id  uint64
+	ac  *appConfig
+}
+
+// Done returns the context's Done channel
+func (w *ConfigChangeWaiter) Done() <-chan struct{} {
+	return w.ctx.Done()
+}
+
+// Cancel cleans up this waiter and removes it from the notification list
+func (w *ConfigChangeWaiter) Cancel() {
+	w.ac.removeConfigChangeWaiter(w.id)
+}
+
+// WaitForConfigChange returns a waiter that will be cancelled when configuration changes
+func (ac *appConfig) WaitForConfigChange(ctx context.Context) *ConfigChangeWaiter {
 	ac.configChangeMu.Lock()
 	defer ac.configChangeMu.Unlock()
 
 	childCtx, cancel := context.WithCancel(ctx)
-	ac.configChangeCtxs = append(ac.configChangeCtxs, cancel)
 
-	return childCtx
+	// Generate unique ID for this waiter
+	ac.configChangeNextID++
+	id := ac.configChangeNextID
+
+	waiter := configChangeWaiter{
+		id:     id,
+		cancel: cancel,
+	}
+
+	if ac.configChangeWaiters == nil {
+		ac.configChangeWaiters = make(map[uint64]configChangeWaiter)
+	}
+	ac.configChangeWaiters[id] = waiter
+
+	return &ConfigChangeWaiter{
+		ctx: childCtx,
+		id:  id,
+		ac:  ac,
+	}
 }
 
-// notifyConfigChange cancels all waiting contexts and clears the list
+// removeConfigChangeWaiter removes a specific waiter by ID
+func (ac *appConfig) removeConfigChangeWaiter(id uint64) {
+	ac.configChangeMu.Lock()
+	defer ac.configChangeMu.Unlock()
+
+	if waiter, exists := ac.configChangeWaiters[id]; exists {
+		waiter.cancel()
+		delete(ac.configChangeWaiters, id)
+	}
+}
+
+// notifyConfigChange cancels all waiting contexts and clears the map
 func (ac *appConfig) notifyConfigChange() {
 	ac.configChangeMu.Lock()
 	defer ac.configChangeMu.Unlock()
 
-	for _, cancel := range ac.configChangeCtxs {
-		cancel()
+	for _, waiter := range ac.configChangeWaiters {
+		waiter.cancel()
 	}
-	ac.configChangeCtxs = ac.configChangeCtxs[:0] // Clear the slice
+	ac.configChangeWaiters = make(map[uint64]configChangeWaiter) // Clear the map
 }
