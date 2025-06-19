@@ -62,6 +62,9 @@ type AppConfig interface {
 
 	// AppConfig manager for hot reloading
 	Manager(ctx context.Context, promreg prometheus.Registerer) error
+
+	// Configuration change notifications
+	WaitForConfigChange(ctx context.Context) context.Context
 }
 
 type IPConfig struct {
@@ -87,6 +90,10 @@ type appConfig struct {
 	DataSha string
 
 	tlsCert *tls.Certificate
+
+	// For configuration change notifications
+	configChangeMu   sync.RWMutex
+	configChangeCtxs []context.CancelFunc
 }
 
 var apiHTTPClient *http.Client
@@ -384,6 +391,7 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 
 			log.InfoContext(ctx, "config changed", fields...)
 			ac.DataSha = sha
+			ac.notifyConfigChange()
 		}
 	}
 
@@ -412,10 +420,14 @@ func (ac *appConfig) APIKey() string {
 }
 
 func (ac *appConfig) IPv4() IPConfig {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
 	return ac.Data.IPv4
 }
 
 func (ac *appConfig) IPv6() IPConfig {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
 	return ac.Data.IPv6
 }
 
@@ -431,4 +443,26 @@ func (ipconfig IPConfig) IsLive() bool {
 	default:
 		return false
 	}
+}
+
+// WaitForConfigChange returns a context that will be cancelled when configuration changes
+func (ac *appConfig) WaitForConfigChange(ctx context.Context) context.Context {
+	ac.configChangeMu.Lock()
+	defer ac.configChangeMu.Unlock()
+
+	childCtx, cancel := context.WithCancel(ctx)
+	ac.configChangeCtxs = append(ac.configChangeCtxs, cancel)
+
+	return childCtx
+}
+
+// notifyConfigChange cancels all waiting contexts and clears the list
+func (ac *appConfig) notifyConfigChange() {
+	ac.configChangeMu.Lock()
+	defer ac.configChangeMu.Unlock()
+
+	for _, cancel := range ac.configChangeCtxs {
+		cancel()
+	}
+	ac.configChangeCtxs = ac.configChangeCtxs[:0] // Clear the slice
 }

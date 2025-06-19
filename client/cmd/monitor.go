@@ -249,11 +249,6 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 	log.InfoContext(ctx, "starting monitor")
 
-	// Wait for protocol to become active if it's not already live
-	if !cmd.waitForProtocolActivation(ctx, ipc, appConfig, log) {
-		return nil // Context was cancelled
-	}
-
 	monconf := checkconfig.NewConfigger(nil)
 
 	initialConfig := sync.WaitGroup{}
@@ -332,6 +327,24 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 runLoop:
 	for i := 1; true; i++ {
+		// Update ipc with current status from appConfig
+		if ipc.IP.Is4() {
+			ipc = appConfig.IPv4()
+		} else {
+			ipc = appConfig.IPv6()
+		}
+
+		// Skip if protocol is not live
+		if !ipc.IsLive() {
+			// Wait for config change
+			configChangeCtx := appConfig.WaitForConfigChange(ctx)
+			select {
+			case <-configChangeCtx.Done():
+				continue runLoop // Config changed, check again
+			case <-ctx.Done():
+				break runLoop // Main context cancelled
+			}
+		}
 
 		boff := backoff.NewExponentialBackOff()
 		boff.RandomizationFactor = 0.3
