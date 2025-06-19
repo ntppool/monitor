@@ -8,6 +8,9 @@ import (
 	apitls "go.ntppool.org/monitor/api/tls"
 )
 
+// certificateRenewalThreshold defines when to renew certificates as a fraction of their lifetime
+const certificateRenewalThreshold = 1.0 / 3.0
+
 // CertificateDates returns NotBefore, NotAfter and the remaining validity
 func (ac *appConfig) CertificateDates() (time.Time, time.Time, time.Duration, error) {
 	ac.lock.RLock()
@@ -32,15 +35,16 @@ func (ac *appConfig) checkCertificateValidity(ctx context.Context) (bool, time.D
 	}
 
 	duration := notAfter.Sub(notBefore)
-	renewAfter := notAfter.Add(-duration / 3)
+	renewThresholdDuration := time.Duration(float64(duration) * certificateRenewalThreshold)
+	renewAfter := notAfter.Add(-renewThresholdDuration)
 
 	log.DebugContext(ctx, "certificate validity", "notBefore", notBefore, "notAfter", notAfter, "renewAfter", renewAfter, "duration", duration)
 
-	if time.Now().After(notAfter.Add(-duration / 3)) {
+	if time.Now().After(renewAfter) {
 		// check again in 2 hours if the certificate is not valid
 		// todo: revisit why this is being returned at all
 		maxTime := time.Hour * 2
-		delay := duration / 3
+		delay := renewThresholdDuration
 		if delay > maxTime {
 			delay = maxTime
 		}

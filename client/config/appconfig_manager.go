@@ -56,7 +56,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 		// Default reload interval
 		const defaultReloadInterval = 5 * time.Minute
 		const errorRetryInterval = 2 * time.Minute
-		const debounceInterval = 100 * time.Millisecond
+		const debounceInterval = 500 * time.Millisecond
 
 		// Track previous protocol states for change detection
 		var prevIPv4Live, prevIPv6Live bool

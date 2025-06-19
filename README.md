@@ -30,11 +30,11 @@ The `--env` parameter specifies which server to use (prod, test or devel).
 
 The ntppool-agent supports automatic configuration reloading without restart:
 
-- **Immediate response** to `setup` command changes via file system monitoring
+- **Automatic response** to `setup` command changes via file system monitoring
 - **Automatic certificate renewal** when certificates approach expiration
 - **Dynamic protocol activation** when IPv4/IPv6 status changes
 
-When you run the setup command, configuration changes are applied immediately to all running agent processes. No manual restart is required.
+When you run the setup command, configuration changes are applied automatically to all running agent processes. No manual restart is required.
 
 ## Client requirements
 

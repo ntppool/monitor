@@ -499,8 +499,8 @@ func TestReloadIntervals(t *testing.T) {
 			"Should get immediate notification")
 
 		elapsed := time.Since(start)
-		assert.True(t, elapsed < 500*time.Millisecond,
-			"Reload should be immediate (< 500ms), got %v", elapsed)
+		assert.True(t, elapsed < 800*time.Millisecond,
+			"Reload should complete within debounce period + margin (< 800ms), got %v", elapsed)
 	})
 }
 
@@ -530,8 +530,8 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		// Trigger change
 		createTestStateFile(t, env.tmpDir, "multi-waiter-key")
 
-		// All waiters should be notified
-		assert.True(t, waitForEvent(t, waiter1, 500*time.Millisecond),
+		// All waiters should be notified (allow for 500ms debounce + margin)
+		assert.True(t, waitForEvent(t, waiter1, 800*time.Millisecond),
 			"Waiter 1 should be notified")
 		assert.True(t, waitForEvent(t, waiter2, 100*time.Millisecond),
 			"Waiter 2 should be notified")
