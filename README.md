@@ -13,22 +13,22 @@ sudo apt update
 sudo apt install -y ntppool-agent
 
 for f in test prod; do
-  sudo systemctl enable --now ntppool-agent@$n;
+  sudo systemctl enable --now ntppool-agent@$f;
 done
 
 sudo journalctl -u ntppool-agent@\* -f
 ```
 
-Installed from the rpm or deb package, state will by default
+When installed from the rpm or deb package, state will by default
 be stored in `/var/run/ntppool-agent`. You can change the default in
-`/var/default/ntppool-agent`, or with the `--state-dir` parameter
+`/etc/default/ntppool-agent`, or with the `--state-dir` parameter
 or by setting `$MONITOR_STATE_DIR` in the environment.
 
 The `--env` parameter specifies which server to use (prod, test or devel).
 
 ## Client requirements
 
-A well connected Linux or FreeBSD system (x86_64 or arm64).
+A well connected Linux or FreeBSD system (x86_64 or arm64) with good IPv4 and/or IPv6 internet connectivity.
 
 Each instance (for the beta system and/or the production system)
 takes less than 30MB memory currently and approximately no CPU
