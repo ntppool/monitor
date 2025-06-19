@@ -74,12 +74,9 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 }
 
 func (ac *appConfig) load(ctx context.Context) error {
-	ac.lock.Lock()
-	defer ac.lock.Unlock()
-
 	log := logger.FromContext(ctx)
 
-	err := ac.loadFromDiskUnsafe(ctx)
+	err := ac.loadFromDisk(ctx)
 	if err != nil {
 		return err
 	}
@@ -91,8 +88,10 @@ func (ac *appConfig) load(ctx context.Context) error {
 		}
 	}
 
+	// Check API key without holding lock to prevent deadlocks during HTTP calls
+	ac.lock.RLock()
 	haveAPIKey := ac.API.APIKey != ""
-	// log.DebugContext(ctx, "loaded configuration from disk", "name", ac.Name(), "api_key", haveAPIKey)
+	ac.lock.RUnlock()
 
 	if haveAPIKey {
 		err = ac.LoadAPIAppConfig(ctx)
@@ -102,21 +101,19 @@ func (ac *appConfig) load(ctx context.Context) error {
 	}
 
 	// todo: check if it changed?
-	return ac.saveUnsafe()
+	return ac.save()
 }
 
 func (ac *appConfig) loadFromDisk(ctx context.Context) error {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	return ac.loadFromDiskUnsafe(ctx)
-}
 
-func (ac *appConfig) loadFromDiskUnsafe(_ context.Context) error {
 	path := ac.stateFilePrefix(stateFile)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return ac.saveUnsafe()
+			// File doesn't exist, save will be handled by caller
+			return nil
 		} else {
 			return err
 		}
@@ -133,10 +130,7 @@ func (ac *appConfig) loadFromDiskUnsafe(_ context.Context) error {
 func (ac *appConfig) save() error {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	return ac.saveUnsafe()
-}
 
-func (ac *appConfig) saveUnsafe() error {
 	path := ac.stateFilePrefix(stateFile)
 
 	b, err := json.MarshalIndent(ac, "", "  ")
