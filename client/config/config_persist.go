@@ -76,6 +76,12 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 func (ac *appConfig) load(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
+	// Capture previous state for change detection
+	ac.lock.RLock()
+	prevAPIKey := ac.API.APIKey
+	prevHaveCert := ac.tlsCert != nil
+	ac.lock.RUnlock()
+
 	err := ac.loadFromDisk(ctx)
 	if err != nil {
 		return err
@@ -91,7 +97,21 @@ func (ac *appConfig) load(ctx context.Context) error {
 	// Check API key without holding lock to prevent deadlocks during HTTP calls
 	ac.lock.RLock()
 	haveAPIKey := ac.API.APIKey != ""
+	currentAPIKey := ac.API.APIKey
+	currentHaveCert := ac.tlsCert != nil
 	ac.lock.RUnlock()
+
+	// Check if API key or certificate status changed
+	configChanged := prevAPIKey != currentAPIKey || prevHaveCert != currentHaveCert
+
+	// Notify if local changes were detected (API key or certificate changes)
+	// Do this before API calls so notifications happen even if API fails
+	if configChanged {
+		log.InfoContext(ctx, "local config changed",
+			"api_key_changed", prevAPIKey != currentAPIKey,
+			"cert_changed", prevHaveCert != currentHaveCert)
+		ac.notifyConfigChange()
+	}
 
 	if haveAPIKey {
 		err = ac.LoadAPIAppConfig(ctx)
@@ -100,11 +120,15 @@ func (ac *appConfig) load(ctx context.Context) error {
 		}
 	}
 
-	// todo: check if it changed?
-	return ac.save()
+	// Only save if we loaded from API (which might have updated our config)
+	// Don't save after just loading from disk to avoid triggering extra fsnotify events
+	if haveAPIKey {
+		return ac.save()
+	}
+	return nil
 }
 
-func (ac *appConfig) loadFromDisk(ctx context.Context) error {
+func (ac *appConfig) loadFromDisk(_ context.Context) error {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
 
@@ -168,6 +192,14 @@ func replaceFile(path string, b []byte) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// Set restrictive permissions for private key files
+	if len(path) >= 7 && path[len(path)-7:] == "key.pem" {
+		err = os.Chmod(tmpPath, 0o600)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = os.Rename(tmpPath, path)

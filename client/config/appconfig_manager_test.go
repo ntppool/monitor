@@ -347,10 +347,10 @@ func TestWatcherErrorRecovery(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
-
 		// Start and stop manager multiple times
 		for i := 0; i < 3; i++ {
+			// Create a new registry for each iteration to avoid duplicate registration
+			promReg := prometheus.NewRegistry()
 			ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan struct{})
@@ -422,9 +422,9 @@ func TestManagerLifecycle(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
-
 		for i := 0; i < 3; i++ {
+			// Create a new registry for each iteration to avoid duplicate registration
+			promReg := prometheus.NewRegistry()
 			ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan error, 1)
