@@ -10,6 +10,36 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 - `monitor-api` - Central API server for coordination and configuration
 - `monitor-scorer` - Processes monitoring results and calculates server scores
 
+## Task Management with Todo Tools
+
+**Use TodoWrite/TodoRead tools for complex multi-step tasks:**
+
+### When to Use Todo Tools
+- Complex tasks requiring 3+ distinct steps or operations
+- Non-trivial tasks requiring careful planning or multiple operations
+- When user explicitly requests todo list management
+- When user provides multiple tasks (numbered or comma-separated)
+- After receiving new instructions to capture requirements
+
+### Todo Management Best Practices
+- **Break down complex tasks** into specific, actionable items
+- **Update status in real-time**: Mark tasks as `in_progress` BEFORE starting work
+- **Complete tasks immediately** after finishing - don't batch completions
+- **Only have ONE task in_progress** at any time
+- **Use clear, descriptive task names** that indicate exactly what needs to be done
+- **Remove irrelevant tasks** from the list entirely when no longer needed
+
+### Task States
+- `pending`: Task not yet started
+- `in_progress`: Currently working on (limit to ONE task at a time)
+- `completed`: Task finished successfully
+
+### Task Completion Requirements
+- **ONLY mark completed when FULLY accomplished**
+- Keep as `in_progress` if encountering errors, blockers, or partial completion
+- Create new tasks for discovered issues or dependencies
+- Never mark completed if tests fail, implementation is partial, or errors exist
+
 ## Pre-Commit Checklist
 
 **MANDATORY: Before any git commit or task completion:**
@@ -18,6 +48,9 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 2. **Run `go test ./...`** to ensure all tests pass
 3. **Verify compilation** with `go build` for affected packages
 4. **Check for Go lint tools** and run them if available (e.g., `golangci-lint run`, `go vet ./...`)
+5. **Analyze concurrency and thread safety** - Check for race conditions, proper mutex usage, and thread-safe operations
+6. **Verify error handling** - Ensure proper error propagation and structured logging
+7. **Test incremental changes** - Validate each phase of complex changes independently
 
 **Never commit changes unless explicitly asked by the user.**
 
@@ -65,6 +98,32 @@ Never mark a task as completed if:
 - Implementation is partial
 - Unresolved compilation errors exist
 - You couldn't verify the functionality works
+
+## Concurrency and Thread Safety
+
+### Race Condition Detection
+- **Identify shared state**: Look for variables accessed by multiple goroutines
+- **Analyze mutex patterns**: Ensure write operations use `Lock()`, not `RLock()`
+- **Check atomic operations**: Verify proper synchronization for concurrent access
+- **Review channel usage**: Ensure proper buffering and deadlock prevention
+
+### Mutex Best Practices
+- **Use write locks for write operations**: `Lock()` for modifications, `RLock()` for reads
+- **Minimize lock scope**: Hold locks for the shortest time possible
+- **Avoid nested locks**: Prevent deadlocks by consistent lock ordering
+- **Split safe/unsafe methods**: Create `methodUnsafe()` variants that assume lock is held
+
+### Common Concurrency Patterns
+- **Configuration hot reloading**: Use mutex-protected load/save cycles
+- **Background goroutines**: Ensure proper context cancellation and cleanup
+- **Shared resources**: Protect with appropriate synchronization primitives
+- **Channel communication**: Use buffered channels to prevent blocking
+
+### Thread Safety Analysis
+- **Load/save operations**: Ensure atomic file operations with proper locking
+- **API call sequences**: Protect multi-step operations with single mutex
+- **State transitions**: Verify consistent state during concurrent modifications
+- **Error handling**: Ensure error paths don't leave locks held
 
 ## Go Code Standards
 
@@ -131,12 +190,50 @@ mysql:
   pass: password
 ```
 
+## Incremental Development Methodology
+
+### Phase-Based Development
+For complex changes, break work into distinct phases:
+
+**Phase 1: Foundation/Bug Fixes**
+- Fix critical bugs, race conditions, and safety issues first
+- Establish proper synchronization and error handling
+- Ensure existing functionality remains intact
+- Complete testing and validation before proceeding
+
+**Phase 2: Core Implementation**
+- Add new features and functionality
+- Implement hot reloading, configuration changes, or new APIs
+- Maintain backward compatibility throughout
+- Test each increment independently
+
+**Phase 3: Future Considerations**
+- Document potential improvements and optimizations
+- Plan for scalability and maintenance
+- Consider deprecation paths for legacy components
+- Defer non-essential changes to future iterations
+
+### Implementation Best Practices
+- **Test each phase independently**: Don't proceed until current phase is stable
+- **Maintain rollback capability**: Each phase should be independently revertible
+- **Use plan mode for complex changes**: Present architectural decisions for approval
+- **Document assumptions and dependencies**: Make implicit requirements explicit
+- **Prefer targeted fixes over architectural overhauls**: Simple solutions first
+
+### Change Management
+- **Incremental commits**: Each phase gets its own commit with clear description
+- **Interface stability**: Don't break existing APIs without migration paths
+- **Configuration compatibility**: Ensure new config works with existing deployments
+- **Monitoring continuity**: Verify metrics and logging remain functional
+
 ## Development Workflow
 
 1. **After schema changes**: Run `make sqlc` to regenerate database code
 2. **After protobuf changes**: Run `make generate` to regenerate RPC code
 3. **Before commits**: Run `gofumpt -w` on all modified Go files
 4. **Testing**: Run `make test` to validate changes
+5. **Phase validation**: Complete and test each development phase before proceeding
+6. **Incremental commits**: Commit each stable phase independently
 
 ## Monitoring Features
 
