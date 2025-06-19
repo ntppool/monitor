@@ -30,6 +30,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/common v0.64.0
 	github.com/samber/slog-echo v1.16.1
+	github.com/stretchr/testify v1.10.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	go.ntppool.org/common v0.4.2
 	go.ntppool.org/pingtrace v0.0.4
