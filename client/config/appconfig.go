@@ -50,7 +50,7 @@ type AppConfig interface {
 	CertificateDates() (notBefore time.Time, notAfter time.Time, remaining time.Duration, err error)
 
 	// Certificate renewal methods
-	LoadAPIAppConfig(ctx context.Context) error
+	LoadAPIAppConfig(ctx context.Context) (bool, error)
 	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
 
 	WaitUntilConfigured(ctx context.Context) error
@@ -233,11 +233,11 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 	return nil
 }
 
-func (ac *appConfig) LoadAPIAppConfig(ctx context.Context) error {
+func (ac *appConfig) LoadAPIAppConfig(ctx context.Context) (bool, error) {
 	return ac.loadAPIAppConfig(ctx, false)
 }
 
-func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error {
+func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool, error) {
 	ctx, span := tracing.Start(ctx, "LoadAPIAppConfig")
 	defer span.End()
 	log := logger.FromContext(ctx)
@@ -276,35 +276,35 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 
 	req, err := http.NewRequestWithContext(ctx, "GET", configURL, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Add("Authorization", "Bearer "+ac.APIKey())
 
 	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 	traceID := resp.Header.Get("Traceid")
 	if resp.StatusCode == http.StatusUnauthorized {
 		log.InfoContext(ctx, "unauthorized, please run setup", "trace", traceID)
-		return ErrAuthorization
+		return false, ErrAuthorization
 	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("unexpected response code: %d (trace %s)", resp.StatusCode, traceID)
+		return false, fmt.Errorf("unexpected response code: %d (trace %s)", resp.StatusCode, traceID)
 	}
 
 	monStatus := MonitorStatusConfig{}
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(&monStatus)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// spew.Dump(monStatus)
 	if len(monStatus.TLS.Cert) > 0 {
 		err = ac.SaveCertificates(ctx, []byte(monStatus.TLS.Cert), []byte(monStatus.TLS.Key))
 		if err != nil {
-			return fmt.Errorf("error saving certificates: %w", err)
+			return false, fmt.Errorf("error saving certificates: %w", err)
 		}
 	}
 
@@ -326,20 +326,20 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 
 		ip, err := netip.ParseAddr(ipInput.IP)
 		if err != nil {
-			return fmt.Errorf("error parsing %s address %q: %w", ipVersion, monStatus.IPv4.IP, err)
+			return false, fmt.Errorf("error parsing %s address %q: %w", ipVersion, monStatus.IPv4.IP, err)
 		}
 		if !ip.IsValid() {
-			return fmt.Errorf("invalid %s address %q", ipVersion, monStatus.IPv4.IP)
+			return false, fmt.Errorf("invalid %s address %q", ipVersion, monStatus.IPv4.IP)
 		}
 
 		switch ipVersion {
 		case "IPv4":
 			if !ip.Is4() {
-				return fmt.Errorf("expected IPv4 address, got %s", ip.String())
+				return false, fmt.Errorf("expected IPv4 address, got %s", ip.String())
 			}
 		case "IPv6":
 			if !ip.Is6() {
-				return fmt.Errorf("expected IPv6 address, got %s", ip.String())
+				return false, fmt.Errorf("expected IPv6 address, got %s", ip.String())
 			}
 		}
 
@@ -363,35 +363,37 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) error
 	js, err := json.Marshal(ac.Data)
 	if err != nil {
 		log.WarnContext(ctx, "error marshalling config", "err", err)
-	} else {
-		sum := sha256.Sum256(js)
-		sha := hex.EncodeToString(sum[:])
-		if sha != ac.DataSha {
-			fields := []any{
-				"name", ac.Data.Name,
-				"tls_name", ac.Data.TLSName,
-			}
-			if ac.Data.IPv4.IP != nil {
-				fields = append(fields,
-					"ipv4.ip", ac.Data.IPv4.IP.String(),
-					"ipv4.status", ac.Data.IPv4.Status,
-				)
-			}
-
-			if ac.Data.IPv6.IP != nil {
-				fields = append(fields,
-					"ipv6.ip", ac.Data.IPv6.IP.String(),
-					"ipv6.status", ac.Data.IPv6.Status,
-				)
-			}
-
-			log.InfoContext(ctx, "config changed", fields...)
-			ac.DataSha = sha
-			ac.notifyConfigChange()
-		}
+		return false, nil
 	}
 
-	return nil
+	sum := sha256.Sum256(js)
+	sha := hex.EncodeToString(sum[:])
+	dataChanged := sha != ac.DataSha
+	if dataChanged {
+		fields := []any{
+			"name", ac.Data.Name,
+			"tls_name", ac.Data.TLSName,
+		}
+		if ac.Data.IPv4.IP != nil {
+			fields = append(fields,
+				"ipv4.ip", ac.Data.IPv4.IP.String(),
+				"ipv4.status", ac.Data.IPv4.Status,
+			)
+		}
+
+		if ac.Data.IPv6.IP != nil {
+			fields = append(fields,
+				"ipv6.ip", ac.Data.IPv6.IP.String(),
+				"ipv6.status", ac.Data.IPv6.Status,
+			)
+		}
+
+		log.InfoContext(ctx, "config changed", fields...)
+		ac.DataSha = sha
+		ac.notifyConfigChange()
+	}
+
+	return dataChanged, nil
 }
 
 func (ac *appConfig) Env() depenv.DeploymentEnvironment {

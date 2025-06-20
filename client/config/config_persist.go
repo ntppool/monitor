@@ -82,7 +82,12 @@ func (ac *appConfig) load(ctx context.Context) error {
 	prevHaveCert := ac.tlsCert != nil
 	ac.lock.RUnlock()
 
-	err := ac.loadFromDisk(ctx)
+	// Check if state file exists before loading
+	stateFilePath := ac.stateFilePrefix(stateFile)
+	_, err := os.Stat(stateFilePath)
+	stateFileExisted := err == nil
+
+	err = ac.loadFromDisk(ctx)
 	if err != nil {
 		return err
 	}
@@ -113,16 +118,20 @@ func (ac *appConfig) load(ctx context.Context) error {
 		ac.notifyConfigChange()
 	}
 
+	var apiDataChanged bool
 	if haveAPIKey {
-		err = ac.LoadAPIAppConfig(ctx)
+		apiDataChanged, err = ac.LoadAPIAppConfig(ctx)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Only save if we loaded from API (which might have updated our config)
-	// Don't save after just loading from disk to avoid triggering extra fsnotify events
-	if haveAPIKey {
+	// Only save if:
+	// 1. State file didn't exist (first run), OR
+	// 2. API key changed, OR
+	// 3. API data changed
+	shouldSave := !stateFileExisted || configChanged || apiDataChanged
+	if shouldSave {
 		return ac.save()
 	}
 	return nil

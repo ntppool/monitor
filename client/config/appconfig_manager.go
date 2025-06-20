@@ -94,7 +94,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 						// Check for various file operations that might indicate a change
 						// Some systems use Create for atomic renames, others use Write
 						baseName := filepath.Base(event.Name)
-						if baseName == stateFileName || baseName == stateFileName+".tmp" {
+						if baseName == stateFileName || (baseName == stateFileName+".tmp" && event.Op&fsnotify.Rename != 0) {
 							if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
 								log.DebugContext(ctx, "state file changed, triggering reload",
 									"event", event.String(),
