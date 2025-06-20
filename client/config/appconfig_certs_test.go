@@ -134,9 +134,6 @@ func TestCertificateLoadSave(t *testing.T) {
 			t.Skip("Skipping concurrent test in short mode")
 		}
 
-		env, cleanup := setupTestConfig(t)
-		defer cleanup()
-
 		// Generate test certificates
 		notBefore := time.Now().Add(-time.Hour)
 		notAfter := time.Now().Add(24 * time.Hour)
@@ -149,6 +146,10 @@ func TestCertificateLoadSave(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
+
+				// Each goroutine gets its own config instance with separate directory
+				env, cleanup := setupTestConfig(t)
+				defer cleanup()
 
 				for j := 0; j < 3; j++ {
 					// Generate unique certificate for this goroutine
