@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -48,6 +49,8 @@ const (
 	DefaultFetchInterval  = 60 * time.Minute
 	DefaultErrorRetryBase = 10 * time.Second
 )
+
+var ErrNoWork = errors.New("no work")
 
 // type SetConfig interface {
 // 	SetConfigFromPb(cfg *pb.Config)
@@ -396,7 +399,7 @@ runLoop:
 					// just once, don't retry
 					return 0, nil
 				}
-				return 0, fmt.Errorf("no work")
+				return 0, ErrNoWork
 			} else {
 				return count, nil
 			}
@@ -407,7 +410,9 @@ runLoop:
 			backoff.WithBackOff(boff),
 		)
 		if err != nil {
-			log.Error("backoff error", "err", err)
+			if !errors.Is(err, ErrNoWork) {
+				log.ErrorContext(ctx, "backoff error", "err", err)
+			}
 		}
 
 		if count > 0 {
