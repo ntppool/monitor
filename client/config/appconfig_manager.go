@@ -41,7 +41,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 			watcher.Close()
 			watcher = nil
 		} else {
-			log.InfoContext(ctx, "watching state file directory for changes", "dir", stateDir, "file", stateFileName)
+			log.DebugContext(ctx, "watching state file directory for changes", "dir", stateDir, "file", stateFileName)
 		}
 	}
 
@@ -96,7 +96,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 						baseName := filepath.Base(event.Name)
 						if baseName == stateFileName || baseName == stateFileName+".tmp" {
 							if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
-								log.InfoContext(ctx, "state file changed, triggering reload",
+								log.DebugContext(ctx, "state file changed, triggering reload",
 									"event", event.String(),
 									"file", baseName)
 								// Cancel any pending debounce timer
