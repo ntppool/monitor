@@ -321,3 +321,8 @@ func createCorruptedStateFile(t *testing.T, dir string) {
 	stateFile := filepath.Join(stateDir, "state.json")
 	generateFileChange(t, stateFile, content)
 }
+
+// isRunningAsRoot checks if the current process is running as root
+func isRunningAsRoot() bool {
+	return os.Geteuid() == 0
+}

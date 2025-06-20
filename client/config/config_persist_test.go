@@ -248,6 +248,10 @@ func TestStateFilePersistence(t *testing.T) {
 	})
 
 	t.Run("permission denied scenarios", func(t *testing.T) {
+		if isRunningAsRoot() {
+			t.Skip("Permission tests don't work as root - root can write to read-only directories")
+		}
+
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
@@ -478,6 +482,10 @@ func TestReplaceFileErrorHandling(t *testing.T) {
 	})
 
 	t.Run("permission denied on directory", func(t *testing.T) {
+		if isRunningAsRoot() {
+			t.Skip("Permission tests don't work as root - root can write to read-only directories")
+		}
+
 		tmpDir, err := os.MkdirTemp("", "perm-error-test-*")
 		require.NoError(t, err)
 		defer os.RemoveAll(tmpDir)
@@ -543,6 +551,10 @@ func TestLoadFromDiskEdgeCases(t *testing.T) {
 	})
 
 	t.Run("file permissions changed during operation", func(t *testing.T) {
+		if isRunningAsRoot() {
+			t.Skip("Permission tests don't work as root - root can read files even with 0o000 permissions")
+		}
+
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 

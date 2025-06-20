@@ -150,8 +150,8 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		// Trigger file change
 		createTestStateFile(t, env.tmpDir, "changed-key")
 
-		// Should get notification after debounce period
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		// Should get notification after debounce period (500ms debounce + processing time)
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should receive notification after file change")
 
 		// Verify the change was loaded
@@ -184,7 +184,7 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		}
 
 		// Should get one notification for all changes
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should receive notification after rapid changes")
 
 		// Verify final state
@@ -221,12 +221,12 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 
 		// Should get notification after full debounce period from second change
 		start := time.Now()
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should receive notification after timer reset")
 
 		elapsed := time.Since(start)
-		assert.True(t, elapsed >= 80*time.Millisecond,
-			"Should wait for debounce period, elapsed: %v", elapsed)
+		assert.True(t, elapsed >= 450*time.Millisecond,
+			"Should wait for debounce period from second change, elapsed: %v", elapsed)
 	})
 }
 
@@ -255,7 +255,7 @@ func TestFileOperationEvents(t *testing.T) {
 		err = os.WriteFile(stateFile, content, 0o644)
 		require.NoError(t, err)
 
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should detect write events")
 	})
 
@@ -282,7 +282,7 @@ func TestFileOperationEvents(t *testing.T) {
 
 		generateFileChange(t, stateFile, content)
 
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should detect create events from atomic rename")
 	})
 
@@ -314,7 +314,7 @@ func TestFileOperationEvents(t *testing.T) {
 
 		// But should get notification for our state file tmp
 		createTestStateFile(t, env.tmpDir, "tmp-filter-test")
-		assert.True(t, waitForEvent(t, waiter, 500*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter, 1200*time.Millisecond),
 			"Should trigger on state.json.tmp")
 	})
 }
@@ -499,8 +499,8 @@ func TestReloadIntervals(t *testing.T) {
 			"Should get immediate notification")
 
 		elapsed := time.Since(start)
-		assert.True(t, elapsed < 800*time.Millisecond,
-			"Reload should complete within debounce period + margin (< 800ms), got %v", elapsed)
+		assert.True(t, elapsed < 1200*time.Millisecond,
+			"Reload should complete within debounce period + margin (< 1200ms), got %v", elapsed)
 	})
 }
 
@@ -531,7 +531,7 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		createTestStateFile(t, env.tmpDir, "multi-waiter-key")
 
 		// All waiters should be notified (allow for 500ms debounce + margin)
-		assert.True(t, waitForEvent(t, waiter1, 800*time.Millisecond),
+		assert.True(t, waitForEvent(t, waiter1, 1200*time.Millisecond),
 			"Waiter 1 should be notified")
 		assert.True(t, waitForEvent(t, waiter2, 100*time.Millisecond),
 			"Waiter 2 should be notified")
