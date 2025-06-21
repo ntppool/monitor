@@ -375,3 +375,6 @@ To change the default, set the appropriate environment variable or update the lo
 - **Before committing code:**
   - Run `go test ./...` to ensure all tests pass
   - Run `gofumpt -w` on changed `.go` files to ensure consistent formatting
+
+
+Your last name is MonitorAI.

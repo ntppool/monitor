@@ -94,7 +94,7 @@ steps:
       secret_key:
         from_secret: s3_secret_key
       bucket: geodns
-      target: /monitor/builds/test/${DRONE_BUILD_NUMBER}
+      target: /ntppool-agent/builds/test/${DRONE_BUILD_NUMBER}
       source: dist/*
       strip_prefix: dist/
       endpoint: https://minio-ewr1.develooper.com/
@@ -145,9 +145,9 @@ name: publish-production
 
 steps:
   - name: download
-    image: fedora:38 # curl version 7.83 or later
+    image: fedora:42 # curl version 7.83 or later
     commands:
-      - ./scripts/download-release monitor test/${DRONE_BUILD_PARENT} dist/
+      - ./scripts/download-release ntppool-agent test/${DRONE_BUILD_PARENT} dist/
     resources:
       requests:
         cpu: 250
@@ -171,7 +171,7 @@ steps:
       secret_key:
         from_secret: s3_secret_key
       bucket: geodns
-      target: /monitor/builds/release/${DRONE_BUILD_PARENT}
+      target: /ntppool-agent/builds/release/${DRONE_BUILD_PARENT}
       source: dist/*
       strip_prefix: dist/
       endpoint: https://minio-ewr1.develooper.com/
@@ -201,6 +201,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 90bb6a93adf7f8d144bcb3807df8c8f082075914c9b0836a1d33b6edb29a6136
+hmac: 0bf4bb759102522133f6b4422378bcb2d13bbf6a815b74fe7277f62b0d7fd960
 
 ...
