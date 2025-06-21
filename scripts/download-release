@@ -15,7 +15,7 @@ mkdir -p $DIR
 
 BASE=https://geodns.bitnames.com/${BASE}/builds/${BUILD}
 
-files=`curl -sSf ${BASE}/checksums.txt | awk '{print $2}'`
+files=`curl -sSf ${BASE}/checksums.txt | sed 's/^[a-f0-9]*[[:space:]]*//`
 metafiles="checksums.txt metadata.json CHANGELOG.md artifacts.json"
 
 for f in $metafiles; do
