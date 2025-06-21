@@ -25,6 +25,7 @@ import (
 
 type setupCmd struct {
 	Hostname string `name:"hostname" help:"Hostname to register (defaults to system hostname)"`
+	Account  string `name:"account" short:"a" help:"Account identifier for registration"`
 }
 
 func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
@@ -75,10 +76,13 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	cl := httpclient.CreateIPVersionAwareClient()
 	apiHost := cli.Config.Env().APIHost()
 
-	// Prepare form data for hostname
+	// Prepare form data for hostname and account
 	formData := url.Values{}
 	if hostname != "" {
 		formData.Set("hostname", hostname)
+	}
+	if cmd.Account != "" {
+		formData.Set("a", cmd.Account)
 	}
 
 	var reqBody io.Reader
@@ -111,6 +115,7 @@ func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		req:      req,
 		serverIP: netip.Addr{},
 		hostname: hostname,
+		account:  cmd.Account,
 		tryIPv4:  wantIPv4,
 		tryIPv6:  wantIPv6,
 		wantIPv4: wantIPv4,
@@ -151,6 +156,7 @@ type registrationState struct {
 	serverIP netip.Addr
 	cli      *ClientCmd
 	hostname string
+	account  string
 
 	// wantIPv4 and wantIPv6 are the IP versions we want to
 	// register for. tryIPv4 and tryIPv6 are the IP versions
@@ -183,14 +189,20 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 		}
 	}
 
-	// Update request with hostname form data for this iteration
+	// Update request with hostname and account form data for this iteration
+	formData := url.Values{}
 	if rs.hostname != "" {
-		formData := url.Values{}
 		formData.Set("hostname", rs.hostname)
-		reqBody := strings.NewReader(formData.Encode())
+	}
+	if rs.account != "" {
+		formData.Set("a", rs.account)
+	}
+	if len(formData) > 0 {
+		encodedData := formData.Encode()
+		reqBody := strings.NewReader(encodedData)
 		rs.req.Body = io.NopCloser(reqBody)
 		rs.req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		rs.req.ContentLength = int64(len(formData.Encode()))
+		rs.req.ContentLength = int64(len(encodedData))
 	}
 
 	rs.req = rs.req.WithContext(ctx)

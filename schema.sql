@@ -102,7 +102,7 @@ CREATE TABLE `accounts` (
   `organization_url` varchar(150) DEFAULT NULL,
   `public_profile` tinyint(1) NOT NULL DEFAULT '0',
   `url_slug` varchar(150) DEFAULT NULL,
-  `flags` varchar(4096) NOT NULL DEFAULT '{}',
+  `flags` json DEFAULT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `stripe_customer_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin DEFAULT NULL,
@@ -858,7 +858,7 @@ CREATE TABLE `zones` (
 /*!50001 SET character_set_results     = utf8mb4 */;
 /*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
-/*!50013 DEFINER=`v-root-ntp-askntp-nfR6QZ8cGeVn4o`@`10.%` SQL SECURITY DEFINER */
+
 /*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`hostname`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
@@ -873,4 +873,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-06-18  8:33:37
+-- Dump completed on 2025-06-21  2:40:11
