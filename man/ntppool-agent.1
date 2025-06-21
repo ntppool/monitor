@@ -1,0 +1,166 @@
+.TH NTPPOOL-AGENT 1 "2025-06-21" "ntppool-agent dev-snapshot (go1.24.4)" "User Commands"
+.SH NAME
+ntppool-agent \- monitoring daemon for the NTP Pool system
+.SH SYNOPSIS
+.B ntppool-agent
+.RB [ \-\-env=\fIENV\fR ]
+.RB [ \-\-debug ]
+.RB [ \-\-state\-dir=\fIDIR\fR ]
+.RB [ \-\-[no\-]ipv4 ]
+.RB [ \-\-[no\-]ipv6 ]
+.I COMMAND
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B ntppool-agent
+is a distributed monitoring client for the NTP Pool project that runs on monitoring nodes to test NTP server performance and accuracy. It connects to the central monitoring API to receive server assignments and reports timing measurements back to the system.
+
+The agent supports dual-stack IPv4/IPv6 monitoring with automatic IP detection, high-precision NTP accuracy testing with configurable sampling, network traceroute integration for path analysis, and real-time scoring algorithms for server performance evaluation.
+
+Configuration is managed automatically through hot reloading, allowing dynamic updates without service restart when setup changes occur.
+.SH COMMANDS
+.TP
+.B api
+Check API connection and related functionality.
+.RS
+.TP
+.B ok
+Check API connection status.
+.RE
+.TP
+.B monitor
+Run the monitoring daemon to continuously test assigned NTP servers.
+.RS
+.TP
+.B \-\-once
+Only run once instead of running forever.
+.TP
+.B \-\-sanity\-only
+Only run the local sanity check.
+.RE
+.TP
+.B check \fIIP\fR...
+Run a single check against the specified IP addresses.
+.TP
+.B setup
+Perform initial authentication and configuration with the monitoring API.
+.RS
+.TP
+.B \-\-hostname=\fIHOSTNAME\fR
+Hostname to register (defaults to system hostname).
+.TP
+.B \-a, \-\-account=\fIACCOUNT\fR
+Account identifier for registration.
+.RE
+.TP
+.B version
+Show version information.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show context-sensitive help.
+.TP
+.B \-\-debug
+Enable debug logging.
+.TP
+.B \-\-state\-dir=\fIDIR\fR
+Directory for storing state files. Can also be set via the
+.B MONITOR_STATE_DIR
+environment variable. Defaults to user config directory.
+.TP
+.B \-e, \-\-env=\fIENV\fR
+Deployment environment (prod, test, devel). Can also be set via the
+.B DEPLOYMENT_MODE
+environment variable. Required parameter.
+.TP
+.B \-\-[no\-]ipv4
+Enable or disable IPv4 monitoring (default: enabled).
+.TP
+.B \-\-[no\-]ipv6
+Enable or disable IPv6 monitoring (default: enabled).
+.SH ENVIRONMENT
+.TP
+.B DEPLOYMENT_MODE
+Specifies the deployment environment (prod, test, devel). Equivalent to the \-\-env flag.
+.TP
+.B MONITOR_STATE_DIR
+Directory for storing persistent state and configuration files. Equivalent to the \-\-state\-dir flag.
+.TP
+.B MONITOR_DEBUG
+Enable debug logging when set to "true". Equivalent to the \-\-debug flag.
+.TP
+.B DEVEL_API_SERVER
+Override the default API server endpoint (development use only).
+.SH FILES
+.TP
+.B /etc/default/ntppool-agent
+System-wide default configuration file. Contains environment variable assignments that are loaded automatically if no corresponding environment variable is already set.
+.TP
+.B ~/.config/ntppool-agent/
+Default state directory containing:
+.RS
+.TP
+.B state.json
+Main configuration and authentication state.
+.TP
+.B certs/
+Directory containing TLS certificates for mutual authentication.
+.RE
+.TP
+.B /var/run/ntppool-agent/
+Default state directory when installed from system packages.
+.SH EXAMPLES
+.TP
+Initial setup for test environment:
+.nf
+.B ntppool-agent \-\-env=test setup
+.fi
+.TP
+Run monitoring daemon for production:
+.nf
+.B ntppool-agent \-\-env=prod monitor
+.fi
+.TP
+Check specific servers manually:
+.nf
+.B ntppool-agent check 1.2.3.4 2001:db8::1
+.fi
+.TP
+Run IPv4-only monitoring with debug logging:
+.nf
+.B ntppool-agent \-\-debug \-\-no\-ipv6 \-\-env=test monitor
+.fi
+.TP
+Test API connectivity:
+.nf
+.B ntppool-agent \-\-env=test api ok
+.fi
+.SH SYSTEMD INTEGRATION
+When installed from packages, the agent can be managed via systemd:
+.nf
+.B sudo systemctl enable \-\-now ntppool\-agent@test
+.B sudo systemctl enable \-\-now ntppool\-agent@prod
+.fi
+
+View logs:
+.nf
+.B sudo journalctl \-u ntppool\-agent@test \-f
+.fi
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+General error
+.TP
+.B 2
+Configuration error
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1)
+
+NTP Pool Project: https://www.ntppool.org/
+
+Monitor API documentation and registration: See deployment-specific API endpoints.
+.SH AUTHOR
+The NTP Pool Project

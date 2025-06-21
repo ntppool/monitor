@@ -107,6 +107,9 @@ nfpms:
         dst: "/etc/default/ntppool-agent"
         type: config|noreplace
 
+      - src: "man/ntppool-agent.1"
+        dst: "/usr/share/man/man1/ntppool-agent.1"
+
     scripts:
       preinstall: scripts/preinstall.sh
       postinstall: scripts/postinstall.sh

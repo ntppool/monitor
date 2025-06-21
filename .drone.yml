@@ -60,6 +60,7 @@ steps:
       # - go env
       # curl -sf https://goreleaser.com/static/latest
       - apk add bash git
+      - ./scripts/update-man-page
       - ./scripts/run-goreleaser
       - echo Done
     depends_on: [test]

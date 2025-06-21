@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Get version from go.ntppool.org/common/version
+# Create a temporary file to get version
+TEMP_DIR=$(mktemp -d)
+cat > "$TEMP_DIR/main.go" <<'EOF'
+package main
+
+import (
+	"fmt"
+	"go.ntppool.org/common/version"
+)
+
+func main() {
+	fmt.Print(version.Version())
+}
+EOF
+
+# Copy go.mod and go.sum to temp directory
+cp go.mod go.sum "$TEMP_DIR/"
+
+# Get version by running the temporary program
+VERSION=$(cd "$TEMP_DIR" && go run main.go)
+
+# Clean up
+rm -rf "$TEMP_DIR"
+
+# Get current date in man page format (YYYY-MM-DD)
+DATE=$(date +%Y-%m-%d)
+
+# Update the man page .TH line with current version and date
+sed -i.bak "s/^\.TH NTPPOOL-AGENT 1 \"[^\"]*\" \"ntppool-agent [^\"]*\"/\.TH NTPPOOL-AGENT 1 \"$DATE\" \"ntppool-agent $VERSION\"/" man/ntppool-agent.1
+
+# Remove backup file
+rm -f man/ntppool-agent.1.bak
+
+echo "Updated man page with version: $VERSION, date: $DATE"
