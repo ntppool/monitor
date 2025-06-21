@@ -202,6 +202,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 0bf4bb759102522133f6b4422378bcb2d13bbf6a815b74fe7277f62b0d7fd960
+hmac: 53072f39b6eeed5d2bb406b3ab5e901dc8cbda82f92e2f71312992e695c287f0
 
 ...

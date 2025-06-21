@@ -143,6 +143,20 @@ Never mark a task as completed if:
 - Use consistent naming conventions for packages
 - Prefer explicit imports over dot imports
 
+### CLI Framework (Kong)
+- This codebase uses the Kong CLI framework for command-line argument parsing
+- CLI commands are defined as structs with Kong struct tags:
+  - `name:"flag-name"` - Sets the flag name
+  - `short:"x"` - Sets single-letter short flag (e.g., `-x`)
+  - `help:"Description"` - Sets help text for the flag
+  - `default:"value"` - Sets default value
+  - `env:"ENV_VAR"` - Allows setting via environment variable
+  - `required:""` - Makes the flag required
+  - `negatable:""` - Allows `--no-flag` variants for boolean flags
+- Follow existing patterns in `client/cmd/cmd.go` and `client/cmd/setup.go` for new CLI options
+- Command structs are embedded in the main `ClientCmd` struct with `cmd:""` tags
+- Use descriptive help text that explains the purpose and usage of each flag
+
 ### Testing
 - Use table-driven tests
 - Avoid `testify/assert` or similar tools
