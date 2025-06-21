@@ -103,6 +103,11 @@ func isTLSError(err error) bool {
 		return true
 	}
 
+	// Check for specific "no client certificate available" error
+	if strings.Contains(err.Error(), "no client certificate available") {
+		return true
+	}
+
 	return false
 }
 

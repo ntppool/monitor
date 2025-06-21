@@ -80,12 +80,20 @@ func (c *ClientCmd) BeforeReset() error {
 
 func (c *ClientCmd) BeforeApply() error {
 	if c.StateDir == "" {
-		configDir, err := os.UserConfigDir()
-		if err != nil {
-			return fmt.Errorf("could not find config dir: %s", err)
-		}
-		if len(configDir) > 0 {
-			c.StateDir = filepath.Join(configDir, "ntppool-agent")
+		// Priority: MONITOR_STATE_DIR > STATE_DIRECTORY > user config dir
+		if monitorStateDir := os.Getenv("MONITOR_STATE_DIR"); monitorStateDir != "" {
+			c.StateDir = monitorStateDir
+		} else if stateDir := os.Getenv("STATE_DIRECTORY"); stateDir != "" {
+			c.StateDir = stateDir
+		} else {
+			// Fall back to user config directory
+			configDir, err := os.UserConfigDir()
+			if err != nil {
+				return fmt.Errorf("could not find config dir: %s", err)
+			}
+			if len(configDir) > 0 {
+				c.StateDir = filepath.Join(configDir, "ntppool-agent")
+			}
 		}
 	}
 	return nil

@@ -614,25 +614,24 @@ func TestConfigurationInterfaceMethods(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		// Set API key so WaitUntilConfigured completes
+		// Set API key so WaitUntilAPIKey completes
 		err := env.cfg.SetAPIKey("test-key")
 		require.NoError(t, err)
 
-		// WaitUntilConfigured should complete quickly since we have an API key
-		ctx, cancel := context.WithTimeout(env.ctx, 1*time.Second)
+		// WaitUntilAPIKey should complete quickly since we have an API key
+		ctx, cancel := context.WithTimeout(env.ctx, 5*time.Second)
 		defer cancel()
 
-		err = env.cfg.WaitUntilConfigured(ctx)
+		err = env.cfg.WaitUntilAPIKey(ctx)
 		assert.NoError(t, err)
 
-		// WaitUntilLive will take longer since we don't have live IPs,
-		// but we can test it doesn't panic
+		// WaitUntilLive will timeout since we don't have live IPs or certificates
 		ctx2, cancel2 := context.WithTimeout(env.ctx, 100*time.Millisecond)
 		defer cancel2()
 
 		err = env.cfg.WaitUntilLive(ctx2)
-		// Should timeout but not error
-		assert.NoError(t, err)
+		// Should timeout with context deadline exceeded
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }
 

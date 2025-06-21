@@ -96,9 +96,14 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	// todo: option to enable local metrics?
 	// go metricssrv.ListenAndServe(ctx, 9999)
 
-	// todo: do we need to wait on a certificate here? It should
-	// have been taken care of earlier in the config setup.
-	// (previously we waited for the vault cert here)
+	// Wait for certificates to be loaded before setting up API client
+	// This ensures we don't try to use the API without proper TLS authentication
+	log.DebugContext(ctx, "waiting for certificates to be loaded before API setup")
+	err = cli.Config.WaitUntilCertificatesLoaded(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "error waiting for certificates", "err", err)
+		// Continue anyway - the API client will handle certificate errors
+	}
 
 	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
 	if err != nil {

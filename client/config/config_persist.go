@@ -137,7 +137,8 @@ func (ac *appConfig) load(ctx context.Context) error {
 	return nil
 }
 
-func (ac *appConfig) loadFromDisk(_ context.Context) error {
+func (ac *appConfig) loadFromDisk(ctx context.Context) error {
+	log := logger.FromContext(ctx)
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
 
@@ -145,7 +146,11 @@ func (ac *appConfig) loadFromDisk(_ context.Context) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// File doesn't exist, save will be handled by caller
+			// Try to migrate from old runtime directory location
+			if err := ac.tryMigrateFromRuntimeDir(ctx, path); err != nil {
+				log.DebugContext(ctx, "migration from runtime directory failed", "err", err)
+			}
+			// File doesn't exist (and migration failed or wasn't needed), save will be handled by caller
 			return nil
 		} else {
 			return err
@@ -176,6 +181,80 @@ func (ac *appConfig) save() error {
 	}
 
 	return nil
+}
+
+// tryMigrateFromRuntimeDir attempts to migrate state.json from $RUNTIME_DIRECTORY to new location
+func (ac *appConfig) tryMigrateFromRuntimeDir(ctx context.Context, newPath string) error {
+	log := logger.FromContext(ctx)
+
+	// Check if RUNTIME_DIRECTORY is set
+	runtimeDir := os.Getenv("RUNTIME_DIRECTORY")
+	if runtimeDir == "" {
+		// No runtime directory, nothing to migrate
+		return nil
+	}
+
+	// Build old state file path
+	oldPath := path.Join(runtimeDir, ac.Env().String(), stateFile)
+
+	// Try to read old state file
+	oldData, err := os.ReadFile(oldPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.DebugContext(ctx, "no old state file to migrate", "path", oldPath)
+			return nil
+		}
+		return err
+	}
+
+	log.InfoContext(ctx, "migrating state from runtime directory", "from", oldPath, "to", newPath)
+
+	// Ensure new directory exists
+	if err := os.MkdirAll(path.Dir(newPath), 0o700); err != nil {
+		return err
+	}
+
+	// Write to new location
+	if err := replaceFile(newPath, oldData); err != nil {
+		return err
+	}
+
+	// Load the migrated data into current instance
+	if err := json.Unmarshal(oldData, ac); err != nil {
+		return err
+	}
+
+	// Also migrate certificate files if they exist
+	ac.migrateCertificates(ctx, runtimeDir)
+
+	log.InfoContext(ctx, "successfully migrated state from runtime directory")
+	return nil
+}
+
+// migrateCertificates migrates certificate files from runtime directory
+func (ac *appConfig) migrateCertificates(ctx context.Context, runtimeDir string) {
+	log := logger.FromContext(ctx)
+
+	oldCertDir := path.Join(runtimeDir, ac.Env().String())
+
+	for _, filename := range []string{"cert.pem", "key.pem"} {
+		oldPath := path.Join(oldCertDir, filename)
+		newPath := ac.stateFilePrefix(filename)
+
+		data, err := os.ReadFile(oldPath)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				log.DebugContext(ctx, "failed to read old certificate file", "path", oldPath, "err", err)
+			}
+			continue
+		}
+
+		if err := replaceFile(newPath, data); err != nil {
+			log.WarnContext(ctx, "failed to migrate certificate file", "from", oldPath, "to", newPath, "err", err)
+		} else {
+			log.InfoContext(ctx, "migrated certificate file", "from", oldPath, "to", newPath)
+		}
+	}
 }
 
 func replaceFile(path string, b []byte) error {

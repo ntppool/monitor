@@ -3,7 +3,6 @@ package api
 import "testing"
 
 func TestGetServerName(t *testing.T) {
-
 	s, err := getServerName("jphnd1-21wase0.devel.mon.ntppool.dev")
 	if err != nil {
 		t.Log(err)
@@ -14,5 +13,4 @@ func TestGetServerName(t *testing.T) {
 		t.Fail()
 
 	}
-
 }

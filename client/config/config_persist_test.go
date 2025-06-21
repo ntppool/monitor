@@ -580,3 +580,169 @@ func TestLoadFromDiskEdgeCases(t *testing.T) {
 		assert.NoError(t, err, "should work after permissions restored")
 	})
 }
+
+func TestMigrationFromRuntimeDirectory(t *testing.T) {
+	t.Run("successful migration", func(t *testing.T) {
+		// Create temporary directories for runtime and state
+		tmpDir, err := os.MkdirTemp("", "migration-test-*")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpDir)
+
+		runtimeDir := filepath.Join(tmpDir, "runtime")
+		stateDir := filepath.Join(tmpDir, "state")
+
+		require.NoError(t, os.MkdirAll(runtimeDir, 0o700))
+		require.NoError(t, os.MkdirAll(stateDir, 0o700))
+
+		ctx := context.Background()
+		log := logger.Setup()
+		ctx = logger.NewContext(ctx, log)
+
+		// Create old state file in runtime directory
+		oldStateDir := filepath.Join(runtimeDir, depenv.DeployTest.String())
+		require.NoError(t, os.MkdirAll(oldStateDir, 0o700))
+
+		oldStateFile := filepath.Join(oldStateDir, "state.json")
+		oldStateData := `{"API":{"APIKey":"test-key-123"},"Data":{"Name":"test.example.com","TLSName":"test-tls","IPv4":{"Status":"active","IP":"1.2.3.4"}}}`
+		require.NoError(t, os.WriteFile(oldStateFile, []byte(oldStateData), 0o600))
+
+		// Create old certificate files
+		oldCertFile := filepath.Join(oldStateDir, "cert.pem")
+		oldKeyFile := filepath.Join(oldStateDir, "key.pem")
+		require.NoError(t, os.WriteFile(oldCertFile, []byte("test-cert-data"), 0o644))
+		require.NoError(t, os.WriteFile(oldKeyFile, []byte("test-key-data"), 0o600))
+
+		// Set environment variables to simulate systemd
+		t.Setenv("RUNTIME_DIRECTORY", runtimeDir)
+
+		// Create appConfig pointing to new state directory
+		cfg := &appConfig{
+			e:   depenv.DeployTest,
+			dir: stateDir,
+		}
+
+		// Try migration
+		newStateFile := filepath.Join(stateDir, depenv.DeployTest.String(), "state.json")
+		err = cfg.tryMigrateFromRuntimeDir(ctx, newStateFile)
+		require.NoError(t, err)
+
+		// Verify state file was migrated
+		assert.FileExists(t, newStateFile)
+
+		newData, err := os.ReadFile(newStateFile)
+		require.NoError(t, err)
+		assert.JSONEq(t, oldStateData, string(newData))
+
+		// Verify certificate files were migrated
+		newCertFile := filepath.Join(stateDir, depenv.DeployTest.String(), "cert.pem")
+		newKeyFile := filepath.Join(stateDir, depenv.DeployTest.String(), "key.pem")
+		assert.FileExists(t, newCertFile)
+		assert.FileExists(t, newKeyFile)
+
+		certData, err := os.ReadFile(newCertFile)
+		require.NoError(t, err)
+		assert.Equal(t, "test-cert-data", string(certData))
+
+		keyData, err := os.ReadFile(newKeyFile)
+		require.NoError(t, err)
+		assert.Equal(t, "test-key-data", string(keyData))
+
+		// Verify config was loaded into appConfig
+		assert.Equal(t, "test-key-123", cfg.API.APIKey)
+		assert.Equal(t, "test.example.com", cfg.Data.Name)
+	})
+
+	t.Run("no runtime directory set", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "migration-test-*")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpDir)
+
+		ctx := context.Background()
+		log := logger.Setup()
+		ctx = logger.NewContext(ctx, log)
+
+		cfg := &appConfig{
+			e:   depenv.DeployTest,
+			dir: tmpDir,
+		}
+
+		// No RUNTIME_DIRECTORY set
+		newStateFile := filepath.Join(tmpDir, depenv.DeployTest.String(), "state.json")
+		err = cfg.tryMigrateFromRuntimeDir(ctx, newStateFile)
+		require.NoError(t, err) // Should succeed with no migration
+	})
+
+	t.Run("no old state file to migrate", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "migration-test-*")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpDir)
+
+		runtimeDir := filepath.Join(tmpDir, "runtime")
+		stateDir := filepath.Join(tmpDir, "state")
+
+		require.NoError(t, os.MkdirAll(runtimeDir, 0o700))
+		require.NoError(t, os.MkdirAll(stateDir, 0o700))
+
+		ctx := context.Background()
+		log := logger.Setup()
+		ctx = logger.NewContext(ctx, log)
+
+		t.Setenv("RUNTIME_DIRECTORY", runtimeDir)
+
+		cfg := &appConfig{
+			e:   depenv.DeployTest,
+			dir: stateDir,
+		}
+
+		// No old state file exists
+		newStateFile := filepath.Join(stateDir, depenv.DeployTest.String(), "state.json")
+		err = cfg.tryMigrateFromRuntimeDir(ctx, newStateFile)
+		require.NoError(t, err) // Should succeed with no migration
+	})
+
+	t.Run("migration with partial certificate files", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "migration-test-*")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpDir)
+
+		runtimeDir := filepath.Join(tmpDir, "runtime")
+		stateDir := filepath.Join(tmpDir, "state")
+
+		require.NoError(t, os.MkdirAll(runtimeDir, 0o700))
+		require.NoError(t, os.MkdirAll(stateDir, 0o700))
+
+		ctx := context.Background()
+		log := logger.Setup()
+		ctx = logger.NewContext(ctx, log)
+
+		// Create old state file and only cert.pem (no key.pem)
+		oldStateDir := filepath.Join(runtimeDir, depenv.DeployTest.String())
+		require.NoError(t, os.MkdirAll(oldStateDir, 0o700))
+
+		oldStateFile := filepath.Join(oldStateDir, "state.json")
+		oldStateData := `{"API":{"APIKey":"test-key"}}`
+		require.NoError(t, os.WriteFile(oldStateFile, []byte(oldStateData), 0o600))
+
+		oldCertFile := filepath.Join(oldStateDir, "cert.pem")
+		require.NoError(t, os.WriteFile(oldCertFile, []byte("test-cert"), 0o644))
+		// Intentionally not creating key.pem
+
+		t.Setenv("RUNTIME_DIRECTORY", runtimeDir)
+
+		cfg := &appConfig{
+			e:   depenv.DeployTest,
+			dir: stateDir,
+		}
+
+		// Migration should succeed even with missing key.pem
+		newStateFile := filepath.Join(stateDir, depenv.DeployTest.String(), "state.json")
+		err = cfg.tryMigrateFromRuntimeDir(ctx, newStateFile)
+		require.NoError(t, err)
+
+		// Verify cert.pem was migrated but key.pem doesn't exist
+		newCertFile := filepath.Join(stateDir, depenv.DeployTest.String(), "cert.pem")
+		newKeyFile := filepath.Join(stateDir, depenv.DeployTest.String(), "key.pem")
+		assert.FileExists(t, newCertFile)
+		assert.NoFileExists(t, newKeyFile)
+	})
+}

@@ -195,6 +195,90 @@ Never mark a task as completed if:
 - Context-based notification system with proper cleanup to prevent memory leaks
 - Broadcast mechanism supports multiple concurrent monitor goroutines (one per IP version)
 
+### Certificate Management
+
+**Certificate Lifecycle and Timing:**
+- **Initial Setup**: `ntppool-agent setup` obtains API key but NOT certificates
+- **Activation Required**: Monitors must be marked "active" or "testing" in the API before certificates can be requested
+- **First Certificate Request**: Happens on first `LoadAPIAppConfig()` call after monitor activation
+- **Certificate Storage**: Stored alongside state.json in the state directory
+- **Hot Reloading**: Certificate changes are immediately detected and loaded
+
+**Wait Method Usage:**
+- **`WaitUntilAPIKey()`**: Use when only API key is needed (e.g., initial setup verification)
+- **`WaitUntilConfigured()`**: Use when both API key AND certificates are required (e.g., API operations)
+- **`WaitUntilCertificatesLoaded()`**: Internal method for waiting specifically for certificates
+- **`WaitUntilLive()`**: Use when monitor must be in active/testing state with valid IP assignment
+
+### State Directory Configuration
+
+**systemd StateDirectory vs RuntimeDirectory:**
+- **StateDirectory** (`/var/lib/ntppool-agent`): Persistent storage that survives reboots
+- **RuntimeDirectory** (`/var/run/ntppool-agent`): Temporary storage cleared on reboot
+- **Migration**: Automatic migration from RuntimeDirectory to StateDirectory on startup
+- **Priority Order**: `$MONITOR_STATE_DIR` > `$STATE_DIRECTORY` > user config directory
+
+**State Migration Best Practices:**
+- Check for `RUNTIME_DIRECTORY` environment variable on startup
+- Migrate state.json and certificate files if found
+- Log migration operations for debugging
+- Handle partial migrations gracefully (e.g., state.json exists but certificates don't)
+
+### Configuration Sources and Hierarchy
+
+**AppConfig (Local State):**
+- Stored in state.json
+- Contains: API key, monitor name, TLS name, IP assignments, status per protocol
+- Updated via HTTP endpoint every 5 minutes
+- Triggers immediate notifications on changes via `WaitForConfigChange()`
+
+**gRPC Config (Operational Config):**
+- Fetched via Connect RPC from monitor-api
+- Contains: NTP test parameters, server lists, MQTT settings
+- Updated every 60 minutes or when AppConfig changes
+- Requires valid certificates for authentication
+
+**Configuration Flow:**
+1. Setup command → API key stored in state.json
+2. Monitor activation in web UI → Status changes to "testing" or "active"
+3. First LoadAPIAppConfig() → Receives certificates
+4. Subsequent API calls → Can fetch gRPC config
+
+### Monitor Lifecycle and Status Checking
+
+**Status Values:**
+- **active**: Monitor is fully operational
+- **testing**: Monitor is in test mode (still operational)
+- **paused**: Monitor should not perform any monitoring
+
+**Status Checking Best Practices:**
+- **Check in outer loop**: Before spawning monitor goroutines
+- **Use fresh config**: Call `IPv4()`/`IPv6()` to get current status, not stale captures
+- **Wait for activation**: Use `WaitForConfigChange()` when paused
+- **Avoid inner loop checks**: Don't check status inside monitoring loops
+
+**Example Pattern:**
+```go
+// Outer loop - check status before starting monitors
+ipc := cli.Config.IPv4()
+if !ipc.IsLive() {
+    // Wait for activation using WaitForConfigChange
+    for {
+        configChangeCtx := cli.Config.WaitForConfigChange(ctx)
+        select {
+        case <-configChangeCtx.Done():
+            ipc = cli.Config.IPv4() // Get fresh status
+            if ipc.IsLive() {
+                break
+            }
+        case <-ctx.Done():
+            return nil
+        }
+    }
+}
+// Now safe to start monitoring
+```
+
 ### Communication
 
 - **Connect RPC** (replacing legacy Twirp) for client-server communication

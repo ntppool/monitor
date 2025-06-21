@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -20,6 +21,7 @@ import (
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/common/version"
+	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/httpclient"
 )
 
@@ -293,6 +295,19 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 			return true, fmt.Errorf("could not store API key: %w", err)
 		}
 
+		log.InfoContext(ctx, "API key stored successfully")
+		log.InfoContext(ctx, "Setup complete. The monitor must be activated by an administrator before it can start.")
+		log.InfoContext(ctx, "Once activated, start monitoring with:")
+
+		// Build command with same flags used for setup
+		monitorCmd := fmt.Sprintf("ntppool-agent monitor -e %s", rs.cli.DeployEnv.String())
+		if rs.cli.StateDir != "" {
+			monitorCmd += fmt.Sprintf(" --state-dir '%s'", rs.cli.StateDir)
+		}
+		log.InfoContext(ctx, "  "+monitorCmd)
+
+		log.InfoContext(ctx, "See documentation for systemd service setup and other deployment options.")
+
 		return true, nil
 	}
 
@@ -313,12 +328,28 @@ func (cmd *setupCmd) checkCurrentConfig(ctx context.Context, cli *ClientCmd) (bo
 	log := logger.FromContext(ctx)
 	checkLivenessCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	err := cli.Config.WaitUntilConfigured(checkLivenessCtx)
-	if err != nil {
-		log.ErrorContext(checkLivenessCtx, "could not check config (reset keys to create a new monitor)", "err", err)
-		return false, false, err
-	} else {
-		log.InfoContext(checkLivenessCtx, "API key already set")
+
+	// Check if we have an API key
+	if cli.Config.APIKey() == "" {
+		log.DebugContext(checkLivenessCtx, "No API key set")
+		return false, false, nil
+	}
+
+	log.InfoContext(checkLivenessCtx, "API key already set")
+
+	// If API key exists but no certificates, try to load config and certs
+	if !cli.Config.HaveCertificate() {
+		log.InfoContext(checkLivenessCtx, "API key exists but no certificates, attempting to load config")
+		_, err := cli.Config.LoadAPIAppConfigWithCertificateRequest(checkLivenessCtx)
+		if err != nil {
+			if errors.Is(err, config.ErrAuthorization) {
+				// Invalid API key - log and continue as if no API key
+				log.WarnContext(checkLivenessCtx, "API key is invalid or unauthorized, continuing with setup", "err", err)
+				return false, false, nil
+			}
+			// Other errors (network, etc) - log but don't fail
+			log.DebugContext(checkLivenessCtx, "Could not load config", "err", err)
+		}
 	}
 
 	var hasIPv4 bool

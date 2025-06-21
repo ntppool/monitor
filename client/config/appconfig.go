@@ -51,10 +51,13 @@ type AppConfig interface {
 
 	// Certificate renewal methods
 	LoadAPIAppConfig(ctx context.Context) (bool, error)
+	LoadAPIAppConfigWithCertificateRequest(ctx context.Context) (bool, error)
 	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
 
+	WaitUntilAPIKey(ctx context.Context) error
 	WaitUntilConfigured(ctx context.Context) error
 	WaitUntilLive(ctx context.Context) error
+	WaitUntilCertificatesLoaded(ctx context.Context) error
 
 	// Hot reloading from disk and API
 	load(ctx context.Context) error
@@ -134,7 +137,9 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 	err := ac.load(ctx)
 	if err != nil {
 		if errors.Is(err, ErrAuthorization) {
+			ac.lock.Lock()
 			ac.API.APIKey = ""
+			ac.lock.Unlock()
 			return ac, nil
 		}
 		log.InfoContext(ctx, "load failed", "err", err)
@@ -156,8 +161,12 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
 	for i := 0; true; i++ {
+		// Check if any IP is live under read lock
+		ac.lock.RLock()
+		isLive := ac.Data.IPv4.IsLive() || ac.Data.IPv6.IsLive()
+		ac.lock.RUnlock()
 
-		if ac.Data.IPv4.IsLive() || ac.Data.IPv6.IsLive() {
+		if isLive {
 			break
 		}
 
@@ -173,7 +182,7 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 			// check again every minute
 		}
 
-		// do this last in the loop because WaitUntilConfigured just
+		// do this last in the loop because WaitUntilAPIKey just
 		// loaded the configuration anyway
 		err := ac.load(ctx)
 		if err != nil {
@@ -185,12 +194,16 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 	return nil
 }
 
-func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
-	ctx, span := tracing.Start(ctx, "monitor.WaitUntilConfigured")
+func (ac *appConfig) WaitUntilAPIKey(ctx context.Context) error {
+	ctx, span := tracing.Start(ctx, "monitor.WaitUntilAPIKey")
 	defer span.End()
 	log := logger.FromContext(ctx)
 
-	if ac.API.APIKey != "" {
+	ac.lock.RLock()
+	hasKey := ac.API.APIKey != ""
+	ac.lock.RUnlock()
+
+	if hasKey {
 		return nil
 	}
 
@@ -204,7 +217,11 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 			return err
 		}
 
-		if ac.API.APIKey != "" {
+		ac.lock.RLock()
+		hasKey := ac.API.APIKey != ""
+		ac.lock.RUnlock()
+
+		if hasKey {
 			break
 		}
 
@@ -233,8 +250,68 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 	return nil
 }
 
+func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
+	ctx, span := tracing.Start(ctx, "monitor.WaitUntilConfigured")
+	defer span.End()
+
+	// First wait for API key
+	if err := ac.WaitUntilAPIKey(ctx); err != nil {
+		return err
+	}
+
+	// Then wait for certificates
+	return ac.WaitUntilCertificatesLoaded(ctx)
+}
+
+func (ac *appConfig) WaitUntilCertificatesLoaded(ctx context.Context) error {
+	ctx, span := tracing.Start(ctx, "monitor.WaitUntilCertificatesLoaded")
+	defer span.End()
+	log := logger.FromContext(ctx)
+
+	for i := 0; ; i++ {
+		if ac.HaveCertificate() {
+			// Verify certificate is valid and not expired
+			valid, _, err := ac.checkCertificateValidity(ctx)
+			if err == nil && valid {
+				log.DebugContext(ctx, "certificates are loaded and valid")
+				return nil
+			}
+			if err != nil {
+				log.DebugContext(ctx, "certificate validity check failed, will retry", "err", err)
+			} else {
+				log.DebugContext(ctx, "certificate is loaded but not valid, will retry")
+			}
+		}
+
+		if i == 0 {
+			log.InfoContext(ctx, "waiting for certificates to be loaded")
+		} else if i%15 == 0 { // Log every minute (15 * 4 seconds)
+			log.InfoContext(ctx, "still waiting for certificates to be loaded")
+		}
+
+		select {
+		case <-ctx.Done():
+			log.DebugContext(ctx, "WaitUntilCertificatesLoaded context done, exiting")
+			return ctx.Err()
+		case <-time.After(4 * time.Second):
+			// Check again every 4 seconds
+		}
+
+		// Try to load certificates from API if we don't have them
+		err := ac.load(ctx)
+		if err != nil {
+			log.InfoContext(ctx, "load failed while waiting for certificates", "err", err)
+			// Continue waiting, don't fail
+		}
+	}
+}
+
 func (ac *appConfig) LoadAPIAppConfig(ctx context.Context) (bool, error) {
 	return ac.loadAPIAppConfig(ctx, false)
+}
+
+func (ac *appConfig) LoadAPIAppConfigWithCertificateRequest(ctx context.Context) (bool, error) {
+	return ac.loadAPIAppConfig(ctx, true)
 }
 
 func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool, error) {
@@ -308,6 +385,10 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 		}
 	}
 
+	// Build new data configuration before acquiring lock
+	var newIPv4, newIPv6 IPConfig
+	var newName, newTLSName string
+
 	for i, ipInput := range []MonitorStatus{monStatus.IPv4, monStatus.IPv6} {
 		ipVersion := "IPv4"
 		if i == 1 {
@@ -315,12 +396,7 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 		}
 
 		if ipInput.IP == "" {
-			switch ipVersion {
-			case "IPv4":
-				ac.Data.IPv4 = IPConfig{}
-			case "IPv6":
-				ac.Data.IPv6 = IPConfig{}
-			}
+			// Leave as zero value
 			continue
 		}
 
@@ -337,31 +413,35 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 			if !ip.Is4() {
 				return false, fmt.Errorf("expected IPv4 address, got %s", ip.String())
 			}
+			newIPv4 = IPConfig{
+				Status: ntpdb.MonitorsStatus(ipInput.Status),
+				IP:     &ip,
+			}
 		case "IPv6":
 			if !ip.Is6() {
 				return false, fmt.Errorf("expected IPv6 address, got %s", ip.String())
 			}
+			newIPv6 = IPConfig{
+				Status: ntpdb.MonitorsStatus(ipInput.Status),
+				IP:     &ip,
+			}
 		}
-
-		ipConfig := IPConfig{
-			Status: ntpdb.MonitorsStatus(ipInput.Status),
-			IP:     &ip,
-		}
-
-		switch ipVersion {
-		case "IPv4":
-			ac.Data.IPv4 = ipConfig
-		case "IPv6":
-			ac.Data.IPv6 = ipConfig
-		}
-
 	}
 
-	ac.Data.Name = monStatus.Name
-	ac.Data.TLSName = monStatus.TLSName
+	newName = monStatus.Name
+	newTLSName = monStatus.TLSName
 
+	// Update fields and check for changes under lock
+	ac.lock.Lock()
+	ac.Data.IPv4 = newIPv4
+	ac.Data.IPv6 = newIPv6
+	ac.Data.Name = newName
+	ac.Data.TLSName = newTLSName
+
+	// Marshal while holding lock to ensure consistency
 	js, err := json.Marshal(ac.Data)
 	if err != nil {
+		ac.lock.Unlock()
 		log.WarnContext(ctx, "error marshalling config", "err", err)
 		return false, nil
 	}
@@ -369,27 +449,42 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 	sum := sha256.Sum256(js)
 	sha := hex.EncodeToString(sum[:])
 	dataChanged := sha != ac.DataSha
+
+	// Copy data for logging outside the lock
+	var logData struct {
+		Name     string
+		TLSName  string
+		IPv4     IPConfig
+		IPv6     IPConfig
+	}
+	if dataChanged {
+		ac.DataSha = sha
+		logData.Name = ac.Data.Name
+		logData.TLSName = ac.Data.TLSName
+		logData.IPv4 = ac.Data.IPv4
+		logData.IPv6 = ac.Data.IPv6
+	}
+	ac.lock.Unlock()
+
+	// Log and notify outside the lock
 	if dataChanged {
 		fields := []any{
-			"name", ac.Data.Name,
-			"tls_name", ac.Data.TLSName,
+			"name", logData.Name,
+			"tls_name", logData.TLSName,
 		}
-		if ac.Data.IPv4.IP != nil {
+		if logData.IPv4.IP != nil {
 			fields = append(fields,
-				"ipv4.ip", ac.Data.IPv4.IP.String(),
-				"ipv4.status", ac.Data.IPv4.Status,
+				"ipv4.ip", logData.IPv4.IP.String(),
+				"ipv4.status", logData.IPv4.Status,
 			)
 		}
-
-		if ac.Data.IPv6.IP != nil {
+		if logData.IPv6.IP != nil {
 			fields = append(fields,
-				"ipv6.ip", ac.Data.IPv6.IP.String(),
-				"ipv6.status", ac.Data.IPv6.Status,
+				"ipv6.ip", logData.IPv6.IP.String(),
+				"ipv6.status", logData.IPv6.Status,
 			)
 		}
-
 		log.InfoContext(ctx, "config changed", fields...)
-		ac.DataSha = sha
 		ac.notifyConfigChange()
 	}
 
@@ -401,10 +496,14 @@ func (ac *appConfig) Env() depenv.DeploymentEnvironment {
 }
 
 func (ac *appConfig) TLSName() string {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
 	return ac.Data.TLSName
 }
 
 func (ac *appConfig) ServerName() string {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
 	return ac.Data.Name
 }
 
@@ -429,6 +528,8 @@ func (ac *appConfig) SetAPIKey(apiKey string) error {
 }
 
 func (ac *appConfig) APIKey() string {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
 	return ac.API.APIKey
 }
 
