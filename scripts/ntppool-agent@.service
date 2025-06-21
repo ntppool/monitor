@@ -13,10 +13,9 @@ User=ntpmon
 # https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 # ConfigurationDirectory=/etc/ntppool-agent
 
-WorkingDirectory=/var/run/ntppool-agent
-RuntimeDirectoryMode=0700
-RuntimeDirectoryPreserve=yes
-RuntimeDirectory=ntppool-agent
+WorkingDirectory=/var/lib/ntppool-agent
+StateDirectoryMode=0700
+StateDirectory=ntppool-agent
 
 EnvironmentFile=-/etc/default/ntppool-agent
 ExecStart=/usr/bin/ntppool-agent --env %i monitor
