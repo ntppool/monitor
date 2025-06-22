@@ -4,11 +4,11 @@
 
 This document outlines a comprehensive plan to enhance the monitor selector system with a sophisticated constraint validation framework. The enhancement introduces a four-stage workflow (available → candidate → testing → active) with grandfathering support for existing assignments that violate new constraints. Additionally, the plan includes restructuring the monolithic `selector.go` file into focused, maintainable components.
 
-### Current Status (as of latest commit 970f83b)
+### Current Status (as of latest commit 5329158)
 - **Phase 1**: File Restructuring ✅ COMPLETED
 - **Phase 2**: Database Schema Updates ✅ COMPLETED
 - **Phase 3**: Constraint System Core ✅ COMPLETED
-- **Phase 4**: Grandfathering System - Partially complete (basic logic done)
+- **Phase 4**: Grandfathering System ✅ COMPLETED
 - **Phase 5**: Enhanced State Machine - Partially complete (basic implementation done)
 - **Phase 6**: Selection Algorithm Rewrite - TODO
 - **Phase 7-10**: Testing, Monitoring, Deployment - TODO
@@ -900,6 +900,8 @@ func (sl *selector) serverScoreExists(
 
 **New files**:
 - `selector_tracking.go` - Database tracking of constraint violations
+
+**Commit**: 5329158 - "feat(scorer): add constraint violation tracking to database"
 
 ### Phase 5: Enhanced State Machine
 **Duration**: 1 day
