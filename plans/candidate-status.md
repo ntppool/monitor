@@ -148,30 +148,18 @@ ADD COLUMN constraint_violation_since datetime DEFAULT NULL,
 ADD INDEX idx_constraint_violation (constraint_violation_type, constraint_violation_since);
 ```
 
-**3. Account monitor limits**
-```sql
-CREATE TABLE account_monitor_limits (
-  account_id int unsigned NOT NULL PRIMARY KEY,
-  max_monitors_per_server int NOT NULL DEFAULT 2,
-  created_on datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  modified_on timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (account_id) REFERENCES accounts(id)
-);
+**Note**: Account monitor limits are stored in `accounts.flags` JSON column with structure:
+```json
+{
+  "monitor_limit": 5,           // Total monitors for account
+  "monitor_per_server_limit": 2, // Max monitors per server (default: 2)
+  "monitor_enabled": true
+}
 ```
 
-**4. Constraint configuration versioning**
-```sql
-CREATE TABLE monitor_constraint_configs (
-  id int unsigned NOT NULL AUTO_INCREMENT,
-  subnet_v4 tinyint unsigned NOT NULL DEFAULT 24,
-  subnet_v6 tinyint unsigned NOT NULL DEFAULT 48,
-  default_account_limit int NOT NULL DEFAULT 2,
-  active boolean NOT NULL DEFAULT false,
-  created_on datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  INDEX idx_active (active, created_on)
-);
-```
+**Note**: Network constraints are hardcoded in the application:
+- IPv4: /24 subnet
+- IPv6: /48 subnet
 
 ### Constraint System Design
 
@@ -214,14 +202,12 @@ type constraintViolation struct {
 
 #### Constraint Configuration
 ```go
-// selector_types.go
-type constraintConfig struct {
-    ID              uint32
-    SubnetV4        int      // Default: 24
-    SubnetV6        int      // Default: 48
-    DefaultAcctLimit int     // Default: 2
-    CreatedOn       time.Time
-}
+// Hardcoded in selector_constraints.go
+const (
+    defaultSubnetV4 = 24  // IPv4 subnet constraint
+    defaultSubnetV6 = 48  // IPv6 subnet constraint
+    defaultAccountLimitPerServer = 2  // Default max monitors per server per account
+)
 ```
 
 ### State Machine
@@ -255,46 +241,33 @@ const (
 
 ### Grandfathering Logic
 
-The key to grandfathering is detecting when a monitor's constraint violation is due to a configuration change rather than a new assignment.
+Since network constraints are hardcoded, grandfathering is primarily needed for account limit changes. When an account's `monitor_per_server_limit` is reduced, existing assignments that exceed the new limit should be grandfathered.
 
 ```go
 // selector_grandfathering.go
-func (sl *selector) detectGrandfathering(
+func (sl *selector) isGrandfathered(
     monitor *monitorCandidate,
     server *serverInfo,
-    currentConfig *constraintConfig,
-) (*constraintViolation, error) {
-
-    // Check current constraint violations
-    violation := sl.checkConstraints(monitor, server, currentConfig)
-    if violation.Type == violationNone {
-        return &violation, nil
+    violation *constraintViolation,
+) bool {
+    // Only grandfather existing active/testing assignments
+    if monitor.ServerStatus != ntpdb.ServerScoresStatusActive &&
+       monitor.ServerStatus != ntpdb.ServerScoresStatusTesting {
+        return false
     }
 
-    // For active/testing monitors, check if violation is new
-    if monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||
-       monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
-
-        // Check when this monitor was assigned
-        assignedTime := monitor.CreatedOn
-
-        // Get config at assignment time
-        historicalConfig, err := sl.getConfigAtTime(assignedTime)
-        if err != nil {
-            return &violation, err
-        }
-
-        // Check if it violated constraints at assignment time
-        historicalViolation := sl.checkConstraints(monitor, server, historicalConfig)
-
-        if historicalViolation.Type == violationNone {
-            // Was valid when assigned, now violates = grandfathered
-            violation.IsGrandfathered = true
-            violation.Since = currentConfig.CreatedOn
-        }
+    // Network constraints are hardcoded, so they can't be grandfathered
+    if violation.Type == violationNetwork {
+        return false
     }
 
-    return &violation, nil
+    // Account limit violations on existing assignments are grandfathered
+    if violation.Type == violationLimit {
+        return true
+    }
+
+    // Same account violations can't be grandfathered
+    return false
 }
 ```
 
@@ -310,11 +283,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
         return false, err
     }
 
-    // 2. Load current constraint configuration
-    config, err := sl.getCurrentConstraintConfig(db)
-    if err != nil {
-        return false, err
-    }
+    // 2. Constraints are hardcoded (no configuration to load)
 
     // 3. Get all potential monitors using existing GetMonitorPriority query
     // This query already returns monitor_status (global status) for each monitor
@@ -330,7 +299,7 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
     }
 
     // 5. Categorize monitors with constraint checking
-    categories := sl.categorizeMonitors(candidates, server, config, accountLimits)
+    categories := sl.categorizeMonitors(candidates, server, accountLimits)
 
     // 6. Apply selection rules
     changes := sl.applySelectionRules(categories, db, serverID)
@@ -349,7 +318,6 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 func (sl *selector) categorizeMonitors(
     candidates []monitorCandidate,
     server *serverInfo,
-    config *constraintConfig,
     accountLimits map[uint32]*accountLimit,
 ) *monitorCategories {
 
@@ -367,13 +335,14 @@ func (sl *selector) categorizeMonitors(
             monitor: monitor,
         }
 
-        // Check constraints with grandfathering
-        violation, err := sl.detectGrandfathering(&monitor, server, config)
-        if err != nil {
-            log.Error("grandfathering check failed", "error", err)
-            continue
-        }
+        // Check constraints
+        violation := sl.checkConstraints(&monitor, server, accountLimits)
         eval.violation = violation
+
+        // Check if grandfathered
+        if violation.Type != violationNone {
+            violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
+        }
 
         // Determine candidate state based on violation and current status
         eval.recommendedState = sl.determineState(&monitor, violation)
@@ -524,7 +493,6 @@ import "net/netip"
 func (sl *selector) checkNetworkConstraint(
     monitorIP string,
     serverIP string,
-    config *constraintConfig,
 ) error {
     if monitorIP == "" || serverIP == "" {
         return nil // Can't check without IPs
@@ -547,9 +515,9 @@ func (sl *selector) checkNetworkConstraint(
 
     var prefixLen int
     if mAddr.Is4() {
-        prefixLen = config.SubnetV4
+        prefixLen = defaultSubnetV4
     } else {
-        prefixLen = config.SubnetV6
+        prefixLen = defaultSubnetV6
     }
 
     // Check if in same subnet
@@ -853,29 +821,32 @@ func (sl *selector) serverScoreExists(
 
 ## Implementation Phases
 
-### Phase 1: File Restructuring (Foundation)
+### Phase 1: File Restructuring (Foundation) ✅ COMPLETED
 **Duration**: 1 day
 
-1. Create new file structure
-2. Move existing code to appropriate files
-3. Ensure all tests still pass
-4. Update imports and dependencies
+1. Create new file structure ✅
+2. Move existing code to appropriate files ✅
+3. Ensure all tests still pass ✅
+4. Update imports and dependencies ✅
 
-**Files to create**:
-- `selector_types.go` - Move type definitions
-- `selector_state.go` - Move candidateState and state logic
-- Keep `selector.go` minimal initially
+**Files created**:
+- `selector_types.go` - Moved newStatus and newStatusList type definitions ✅
+- `selector_state.go` - Moved candidateState enum and IsOutOfOrder method ✅
+- `selector.go` - Kept minimal with core logic ✅
+- `candidatestate_enumer.go` - Generated by enumer tool ✅
 
-### Phase 2: Database Schema Updates
+**Commit**: 392bab0 - "refactor: extract selector types and state logic into separate files"
+
+### Phase 2: Database Schema Updates ✅ COMPLETED
 **Duration**: 1 day
 
-1. Create migration scripts
-2. Add `account_monitor_limits` table
-3. Add `monitor_constraint_configs` table
-4. Extend `server_scores.status` enum
-5. Add constraint tracking columns
+1. Create migration scripts ✅
+2. ~~Add `account_monitor_limits` table~~ Using existing `accounts.flags` JSON instead ✅
+3. ~~Add `monitor_constraint_configs` table~~ Hardcoded constraints in application ✅
+4. Extend `server_scores.status` enum ✅
+5. Add constraint tracking columns ✅
 
-**Validation**: Test migrations on dev database
+**Migration**: Created #143 in `/Users/ask/src/ntppool/sql/ntppool.update` - APPLIED ✅
 
 ### Phase 3: Constraint System Core
 **Duration**: 2-3 days
@@ -1090,50 +1061,14 @@ func TestGrandfatheringDetection(t *testing.T) {
 
 ### Database Migration Steps
 
-**Step 1: Add new tables**
+**Migration Script** (`/Users/ask/src/ntppool/sql/ntppool.update`):
 ```sql
--- V1_add_constraint_tables.sql
-CREATE TABLE account_monitor_limits (
-    account_id int unsigned NOT NULL PRIMARY KEY,
-    max_monitors_per_server int NOT NULL DEFAULT 2,
-    created_on datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    modified_on timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (account_id) REFERENCES accounts(id)
-);
-
-CREATE TABLE monitor_constraint_configs (
-    id int unsigned NOT NULL AUTO_INCREMENT,
-    subnet_v4 tinyint unsigned NOT NULL DEFAULT 24,
-    subnet_v6 tinyint unsigned NOT NULL DEFAULT 48,
-    default_account_limit int NOT NULL DEFAULT 2,
-    active boolean NOT NULL DEFAULT false,
-    created_on datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    INDEX idx_active (active, created_on)
-);
-
--- Insert default config
-INSERT INTO monitor_constraint_configs
-    (subnet_v4, subnet_v6, default_account_limit, active)
-VALUES
-    (24, 48, 2, true);
-```
-
-**Step 2: Extend server_scores**
-```sql
--- V2_extend_server_scores.sql
+#143
+-- Extend server_scores.status enum to include 'candidate' state
 ALTER TABLE server_scores
-ADD COLUMN status_new enum('new','candidate','testing','active') DEFAULT NULL;
+MODIFY COLUMN status enum('new','candidate','testing','active') NOT NULL DEFAULT 'new';
 
--- Copy existing status
-UPDATE server_scores SET status_new = status;
-
--- Swap columns
-ALTER TABLE server_scores
-DROP COLUMN status,
-CHANGE COLUMN status_new status enum('new','candidate','testing','active') NOT NULL DEFAULT 'new';
-
--- Add constraint tracking
+-- Add constraint tracking columns to server_scores
 ALTER TABLE server_scores
 ADD COLUMN constraint_violation_type varchar(50) DEFAULT NULL,
 ADD COLUMN constraint_violation_since datetime DEFAULT NULL,

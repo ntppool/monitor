@@ -469,14 +469,17 @@ CREATE TABLE `server_scores` (
   `score_ts` datetime DEFAULT NULL,
   `score_raw` double NOT NULL DEFAULT '0',
   `stratum` tinyint unsigned DEFAULT NULL,
-  `status` enum('new','testing','active') NOT NULL DEFAULT 'new',
+  `status` enum('new','candidate','testing','active') NOT NULL DEFAULT 'new',
   `queue_ts` datetime DEFAULT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `constraint_violation_type` varchar(50) DEFAULT NULL,
+  `constraint_violation_since` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `server_id` (`server_id`,`monitor_id`),
   KEY `monitor_id` (`monitor_id`,`server_id`),
   KEY `monitor_id_2` (`monitor_id`,`score_ts`),
+  KEY `idx_constraint_violation` (`constraint_violation_type`,`constraint_violation_since`),
   CONSTRAINT `server_score_monitor_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
   CONSTRAINT `server_score_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
@@ -873,4 +876,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-06-21  2:40:11
+-- Dump completed on 2025-06-22 21:17:53
