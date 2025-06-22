@@ -11,6 +11,10 @@ import (
 
 type Querier interface {
 	ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) error
+	// Remove a monitor assignment from a server
+	DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error
+	// Find globally active/testing monitors not assigned to this server
+	GetAvailableMonitors(ctx context.Context, serverID uint32) ([]GetAvailableMonitorsRow, error)
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (uint64, error)
 	GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error)

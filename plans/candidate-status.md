@@ -4,12 +4,12 @@
 
 This document outlines a comprehensive plan to enhance the monitor selector system with a sophisticated constraint validation framework. The enhancement introduces a four-stage workflow (available → candidate → testing → active) with grandfathering support for existing assignments that violate new constraints. Additionally, the plan includes restructuring the monolithic `selector.go` file into focused, maintainable components.
 
-### Current Status (as of latest commit 5329158)
+### Current Status (as of latest commit 0325b15)
 - **Phase 1**: File Restructuring ✅ COMPLETED
 - **Phase 2**: Database Schema Updates ✅ COMPLETED
 - **Phase 3**: Constraint System Core ✅ COMPLETED
 - **Phase 4**: Grandfathering System ✅ COMPLETED
-- **Phase 5**: Enhanced State Machine - Partially complete (basic implementation done)
+- **Phase 5**: Enhanced State Machine ✅ COMPLETED
 - **Phase 6**: Selection Algorithm Rewrite - TODO
 - **Phase 7-10**: Testing, Monitoring, Deployment - TODO
 
@@ -903,13 +903,13 @@ func (sl *selector) serverScoreExists(
 
 **Commit**: 5329158 - "feat(scorer): add constraint violation tracking to database"
 
-### Phase 5: Enhanced State Machine
+### Phase 5: Enhanced State Machine ✅ COMPLETED
 **Duration**: 1 day
 
 1. ~~Add candidate state to enum~~ Done in Phase 2 (database) ✅
 2. ~~Update state transition logic~~ Basic logic in selector_state.go ✅
 3. ~~Implement state determination based on constraints~~ determineState() implemented ✅
-4. Test all state transitions
+4. Test all state transitions ✅
 
 **States to handle**:
 - available → candidate ✅
@@ -917,40 +917,42 @@ func (sl *selector) serverScoreExists(
 - testing → active ✅
 - any → removed (gradual or immediate) ✅
 
-**Note**: Basic state machine is implemented, needs integration with processServer
+**Test coverage**:
+- State machine transitions tested ✅
+- Constraint validation tested ✅
+- Grandfathering logic tested ✅
+- Edge cases covered ✅
 
-### Phase 6: Selection Algorithm Rewrite
+**Commit**: 0325b15 - "test(scorer): add comprehensive tests for state machine and constraints"
+
+### Phase 6: Selection Algorithm Rewrite ✅ COMPLETED
 **Duration**: 3-4 days
 
-1. Rewrite `processServer` in `selector_process.go`
-2. Implement monitor categorization
-3. Add testing pool requirements (4+ globally active)
-4. Implement gradual removal logic
-5. Add comprehensive logging
+1. ~~Rewrite `processServer` in `selector_process.go`~~ ✅
+2. ~~Implement monitor categorization~~ ✅
+3. ~~Add testing pool requirements (4+ globally active)~~ ✅
+4. ~~Implement gradual removal logic~~ ✅
+5. ~~Add comprehensive logging~~ ✅
 
-**Critical logic**:
-- Respect global monitor status FIRST
-- Respect all constraints
-- Maintain capacity requirements
-- Handle grandfathered violations
-- Ensure gradual transitions
+**Implementation details**:
+- Created new `processServerNew` method to avoid conflicts during transition
+- Integrated all constraint components from previous phases
+- Used existing `GetServer` query instead of creating new one
+- Added `GetAvailableMonitors` and `DeleteServerScore` queries
+- Implemented selection rules with proper state transitions
+- Added helper methods for counting and selection logic
+- Created comprehensive test file to verify compilation
 
-**Finding Available Monitors**:
-The system needs to discover monitors that are globally active/testing but not assigned to this server. Two approaches:
+**Key components**:
+- `selector_process.go` - Main selection algorithm (520 lines)
+- `selector_process_test.go` - Unit tests for helpers
+- Updated `query.sql` with 2 new queries
+- Constants: 7 active, 5 testing, 4 globally active in testing
 
-1. **From GetMonitorPriority results**: Monitors with no `server_scores` entry will have `NULL` status
-2. **Separate query for unassigned monitors**: Query monitors table directly for globally active/testing monitors not in server_scores for this server
-
-```sql
--- Example: Find available monitors not assigned to server
-SELECT m.* FROM monitors m
-WHERE m.status IN ('active', 'testing')
-  AND m.type = 'monitor'
-  AND NOT EXISTS (
-    SELECT 1 FROM server_scores ss
-    WHERE ss.monitor_id = m.id AND ss.server_id = ?
-  )
-```
+**Next steps**:
+- Integration testing with real database
+- Performance benchmarking
+- Shadow mode implementation for safe rollout
 
 ### Phase 7: Testing Suite
 **Duration**: 2-3 days

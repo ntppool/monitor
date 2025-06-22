@@ -30,6 +30,86 @@ func (q *Queries) ClearServerScoreConstraintViolation(ctx context.Context, arg C
 	return err
 }
 
+const deleteServerScore = `-- name: DeleteServerScore :exec
+DELETE FROM server_scores
+WHERE server_id = ? AND monitor_id = ?
+`
+
+type DeleteServerScoreParams struct {
+	ServerID  uint32 `json:"server_id"`
+	MonitorID uint32 `json:"monitor_id"`
+}
+
+// Remove a monitor assignment from a server
+func (q *Queries) DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error {
+	_, err := q.db.ExecContext(ctx, deleteServerScore, arg.ServerID, arg.MonitorID)
+	return err
+}
+
+const getAvailableMonitors = `-- name: GetAvailableMonitors :many
+SELECT
+    m.id,
+    m.tls_name,
+    m.account_id,
+    m.ip as monitor_ip,
+    m.status as global_status,
+    a.flags as account_flags
+FROM monitors m
+LEFT JOIN accounts a ON m.account_id = a.id
+WHERE m.status IN ('active', 'testing')
+  AND m.type = 'monitor'
+  AND NOT EXISTS (
+    SELECT 1 FROM server_scores ss
+    WHERE ss.monitor_id = m.id AND ss.server_id = ?
+  )
+ORDER BY
+    CASE m.status
+        WHEN 'active' THEN 1
+        WHEN 'testing' THEN 2
+    END,
+    m.created_on
+`
+
+type GetAvailableMonitorsRow struct {
+	ID           uint32          `json:"id"`
+	TlsName      sql.NullString  `json:"tls_name"`
+	AccountID    sql.NullInt32   `json:"account_id"`
+	MonitorIp    sql.NullString  `json:"monitor_ip"`
+	GlobalStatus MonitorsStatus  `json:"global_status"`
+	AccountFlags json.RawMessage `json:"account_flags"`
+}
+
+// Find globally active/testing monitors not assigned to this server
+func (q *Queries) GetAvailableMonitors(ctx context.Context, serverID uint32) ([]GetAvailableMonitorsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAvailableMonitors, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAvailableMonitorsRow
+	for rows.Next() {
+		var i GetAvailableMonitorsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TlsName,
+			&i.AccountID,
+			&i.MonitorIp,
+			&i.GlobalStatus,
+			&i.AccountFlags,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMinLogScoreID = `-- name: GetMinLogScoreID :one
 select id from log_scores order by id limit 1
 `

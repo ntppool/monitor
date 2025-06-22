@@ -250,4 +250,33 @@ WHERE server_id = ? AND monitor_id = ?;
 UPDATE server_scores
 SET constraint_violation_type = NULL,
     constraint_violation_since = NULL
+WHERE server_id = ? AND monitor_id = ?;
+
+-- name: GetAvailableMonitors :many
+-- Find globally active/testing monitors not assigned to this server
+SELECT
+    m.id,
+    m.tls_name,
+    m.account_id,
+    m.ip as monitor_ip,
+    m.status as global_status,
+    a.flags as account_flags
+FROM monitors m
+LEFT JOIN accounts a ON m.account_id = a.id
+WHERE m.status IN ('active', 'testing')
+  AND m.type = 'monitor'
+  AND NOT EXISTS (
+    SELECT 1 FROM server_scores ss
+    WHERE ss.monitor_id = m.id AND ss.server_id = ?
+  )
+ORDER BY
+    CASE m.status
+        WHEN 'active' THEN 1
+        WHEN 'testing' THEN 2
+    END,
+    m.created_on;
+
+-- name: DeleteServerScore :exec
+-- Remove a monitor assignment from a server
+DELETE FROM server_scores
 WHERE server_id = ? AND monitor_id = ?
