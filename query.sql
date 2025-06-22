@@ -198,22 +198,24 @@ LIMIT  ?
 OFFSET ?;
 
 -- name: GetMonitorPriority :many
-select m.id, m.tls_name,
+select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
     avg(ls.rtt) / 1000 as avg_rtt,
     round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
     avg(ls.step) as avg_step,
     if(avg(ls.step) < 0, false, true) as healthy,
     m.status as monitor_status, ss.status as status,
-    count(*) as count
+    count(*) as count,
+    a.flags as account_flags
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
+  left join accounts a on (m.account_id = a.id)
   where
     m.id = ls.monitor_id
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.status, ss.status
+  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
 
 -- name: GetServersMonitorReview :many

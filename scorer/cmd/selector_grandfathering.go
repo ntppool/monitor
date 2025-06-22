@@ -1,0 +1,53 @@
+package cmd
+
+import (
+	"go.ntppool.org/monitor/ntpdb"
+)
+
+// isGrandfathered determines if a constraint violation should be grandfathered
+// Grandfathering allows existing assignments that violate new constraints to remain
+// but be marked for gradual removal (candidateOut instead of candidateBlock)
+func (sl *selector) isGrandfathered(
+	monitor *monitorCandidate,
+	server *serverInfo,
+	violation *constraintViolation,
+) bool {
+	// Only grandfather existing active/testing assignments
+	if monitor.ServerStatus != ntpdb.ServerScoresStatusActive &&
+		monitor.ServerStatus != ntpdb.ServerScoresStatusTesting {
+		return false
+	}
+
+	// Network constraints are hardcoded, so they can't be grandfathered
+	// (they were always enforced at the same level)
+	if violation.Type == violationNetwork {
+		return false
+	}
+
+	// Account limit violations on existing assignments are grandfathered
+	// This allows for gradual adjustment when account limits are reduced
+	if violation.Type == violationLimit {
+		return true
+	}
+
+	// Same account violations can't be grandfathered
+	// (this is a hard constraint that should never have been allowed)
+	if violation.Type == violationAccount {
+		return false
+	}
+
+	return false
+}
+
+// prioritizeGrandfatheredRemovals determines which grandfathered monitors to remove first
+// when we need to free up slots. Returns monitors sorted by removal priority.
+func (sl *selector) prioritizeGrandfatheredRemovals(monitors []evaluatedMonitor) []evaluatedMonitor {
+	// Sort by multiple criteria:
+	// 1. Performance (unhealthy first)
+	// 2. Assignment duration (newer assignments first)
+	// 3. RTT (higher latency first)
+
+	// For now, just return as-is
+	// TODO: Implement sorting logic when we have the full monitor data structure
+	return monitors
+}

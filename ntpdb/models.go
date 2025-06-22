@@ -143,9 +143,10 @@ func (ns NullMonitorsType) Value() (driver.Value, error) {
 type ServerScoresStatus string
 
 const (
-	ServerScoresStatusNew     ServerScoresStatus = "new"
-	ServerScoresStatusTesting ServerScoresStatus = "testing"
-	ServerScoresStatusActive  ServerScoresStatus = "active"
+	ServerScoresStatusNew       ServerScoresStatus = "new"
+	ServerScoresStatusCandidate ServerScoresStatus = "candidate"
+	ServerScoresStatusTesting   ServerScoresStatus = "testing"
+	ServerScoresStatusActive    ServerScoresStatus = "active"
 )
 
 func (e *ServerScoresStatus) Scan(src interface{}) error {
@@ -280,14 +281,16 @@ type Server struct {
 }
 
 type ServerScore struct {
-	ID         uint64             `json:"id"`
-	MonitorID  uint32             `json:"monitor_id"`
-	ServerID   uint32             `json:"server_id"`
-	ScoreTs    sql.NullTime       `json:"score_ts"`
-	ScoreRaw   float64            `json:"score_raw"`
-	Stratum    sql.NullInt16      `json:"stratum"`
-	Status     ServerScoresStatus `json:"status"`
-	QueueTs    sql.NullTime       `json:"queue_ts"`
-	CreatedOn  time.Time          `json:"created_on"`
-	ModifiedOn time.Time          `json:"modified_on"`
+	ID                       uint64             `json:"id"`
+	MonitorID                uint32             `json:"monitor_id"`
+	ServerID                 uint32             `json:"server_id"`
+	ScoreTs                  sql.NullTime       `json:"score_ts"`
+	ScoreRaw                 float64            `json:"score_raw"`
+	Stratum                  sql.NullInt16      `json:"stratum"`
+	Status                   ServerScoresStatus `json:"status"`
+	QueueTs                  sql.NullTime       `json:"queue_ts"`
+	CreatedOn                time.Time          `json:"created_on"`
+	ModifiedOn               time.Time          `json:"modified_on"`
+	ConstraintViolationType  sql.NullString     `json:"constraint_violation_type"`
+	ConstraintViolationSince sql.NullTime       `json:"constraint_violation_since"`
 }

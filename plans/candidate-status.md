@@ -152,10 +152,16 @@ ADD INDEX idx_constraint_violation (constraint_violation_type, constraint_violat
 ```json
 {
   "monitor_limit": 5,           // Total monitors for account
-  "monitor_per_server_limit": 2, // Max monitors per server (default: 2)
+  "monitor_per_server_limit": 2, // Base limit per server (default: 2)
   "monitor_enabled": true
 }
 ```
+
+The `monitor_per_server_limit` (X) is enforced per state:
+- Active monitors: max X per account per server
+- Testing monitors: max X+1 per account per server
+- Active + Testing combined: max X+1 per account per server
+- Candidate monitors: no limit
 
 **Note**: Network constraints are hardcoded in the application:
 - IPv4: /24 subnet
@@ -283,20 +289,15 @@ func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
         return false, err
     }
 
-    // 2. Constraints are hardcoded (no configuration to load)
-
-    // 3. Get all potential monitors using existing GetMonitorPriority query
-    // This query already returns monitor_status (global status) for each monitor
+    // 2. Get all potential monitors using existing GetMonitorPriority query
+    // This query now includes: monitor_status (global), account_id, monitor_ip, account_flags
     candidates, err := db.GetMonitorPriority(sl.ctx, serverID)
     if err != nil {
         return false, err
     }
 
-    // 4. Load account limits and current usage
-    accountLimits, err := sl.loadAccountLimits(db, serverID)
-    if err != nil {
-        return false, err
-    }
+    // 3. Build account limits from the monitor results (no separate query needed)
+    accountLimits := sl.buildAccountLimitsFromMonitors(candidates)
 
     // 5. Categorize monitors with constraint checking
     categories := sl.categorizeMonitors(candidates, server, accountLimits)
@@ -851,16 +852,18 @@ func (sl *selector) serverScoreExists(
 ### Phase 3: Constraint System Core
 **Duration**: 2-3 days
 
-1. Implement `selector_constraints.go`
-2. Add network constraint validation
-3. Add account constraint validation
-4. Create constraint configuration management
-5. Unit test all constraint functions
+1. Implement `selector_constraints.go` ✅
+   - Network constraint validation with hardcoded /24 and /48 limits ✅
+   - Account constraint validation with state-based limits ✅
+   - Build account limits from GetMonitorPriority results ✅
+2. Update `GetMonitorPriority` query to include account_id, monitor_ip, and account_flags ✅
+3. Implement state-based account limits (active=X, testing=X+1, total=X+1) ✅
+4. Unit test all constraint functions
 
 **Key deliverables**:
-- Network subnet checking with net/netip
-- Account limit enforcement
-- Configuration versioning
+- Network subnet checking with net/netip using hardcoded limits ✅
+- State-based account limit enforcement ✅
+- No separate database query needed - all data from GetMonitorPriority ✅
 
 ### Phase 4: Grandfathering System
 **Duration**: 2 days

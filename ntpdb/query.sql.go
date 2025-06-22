@@ -8,6 +8,7 @@ package ntpdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -25,28 +26,32 @@ func (q *Queries) GetMinLogScoreID(ctx context.Context) (uint64, error) {
 }
 
 const getMonitorPriority = `-- name: GetMonitorPriority :many
-select m.id, m.tls_name,
+select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
     avg(ls.rtt) / 1000 as avg_rtt,
     round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
     avg(ls.step) as avg_step,
     if(avg(ls.step) < 0, false, true) as healthy,
     m.status as monitor_status, ss.status as status,
-    count(*) as count
+    count(*) as count,
+    a.flags as account_flags
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
+  left join accounts a on (m.account_id = a.id)
   where
     m.id = ls.monitor_id
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.status, ss.status
+  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt
 `
 
 type GetMonitorPriorityRow struct {
 	ID              uint32                 `json:"id"`
 	TlsName         sql.NullString         `json:"tls_name"`
+	AccountID       sql.NullInt32          `json:"account_id"`
+	MonitorIp       sql.NullString         `json:"monitor_ip"`
 	AvgRtt          interface{}            `json:"avg_rtt"`
 	MonitorPriority float64                `json:"monitor_priority"`
 	AvgStep         interface{}            `json:"avg_step"`
@@ -54,6 +59,7 @@ type GetMonitorPriorityRow struct {
 	MonitorStatus   MonitorsStatus         `json:"monitor_status"`
 	Status          NullServerScoresStatus `json:"status"`
 	Count           int64                  `json:"count"`
+	AccountFlags    json.RawMessage        `json:"account_flags"`
 }
 
 func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error) {
@@ -68,6 +74,8 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 		if err := rows.Scan(
 			&i.ID,
 			&i.TlsName,
+			&i.AccountID,
+			&i.MonitorIp,
 			&i.AvgRtt,
 			&i.MonitorPriority,
 			&i.AvgStep,
@@ -75,6 +83,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 			&i.MonitorStatus,
 			&i.Status,
 			&i.Count,
+			&i.AccountFlags,
 		); err != nil {
 			return nil, err
 		}
@@ -476,7 +485,7 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 }
 
 const getServerScore = `-- name: GetServerScore :one
-SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on FROM server_scores
+SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since FROM server_scores
   WHERE
     server_id=? AND
     monitor_id=?
@@ -501,6 +510,8 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 		&i.QueueTs,
 		&i.CreatedOn,
 		&i.ModifiedOn,
+		&i.ConstraintViolationType,
+		&i.ConstraintViolationSince,
 	)
 	return i, err
 }

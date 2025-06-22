@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"time"
+
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -15,3 +17,66 @@ type newStatus struct {
 
 // newStatusList is a slice of newStatus entries
 type newStatusList []newStatus
+
+// constraintViolationType identifies the type of constraint violation
+type constraintViolationType string
+
+const (
+	violationNone    constraintViolationType = ""        // No violation
+	violationNetwork constraintViolationType = "network" // Same subnet
+	violationAccount constraintViolationType = "account" // Same account
+	violationLimit   constraintViolationType = "limit"   // Account limit exceeded
+)
+
+// constraintViolation describes a constraint violation
+type constraintViolation struct {
+	Type            constraintViolationType
+	Since           time.Time
+	IsGrandfathered bool
+	Details         string
+}
+
+// monitorCandidate represents a monitor being evaluated for a server
+type monitorCandidate struct {
+	ID           uint32
+	AccountID    *uint32
+	IP           string
+	GlobalStatus ntpdb.MonitorsStatus
+	ServerStatus ntpdb.ServerScoresStatus
+	HasMetrics   bool
+	IsHealthy    bool
+	// Additional fields from GetMonitorPriority query results
+}
+
+// serverInfo contains server details needed for constraint checking
+type serverInfo struct {
+	ID        uint32
+	AccountID *uint32
+	IP        string
+	IPVersion string
+}
+
+// evaluatedMonitor combines a monitor candidate with its constraint evaluation
+type evaluatedMonitor struct {
+	monitor          monitorCandidate
+	violation        *constraintViolation
+	recommendedState candidateState
+}
+
+// monitorCategories groups monitors by their current status
+type monitorCategories struct {
+	active              []evaluatedMonitor
+	testing             []evaluatedMonitor
+	candidate           []evaluatedMonitor
+	available           []evaluatedMonitor // Not assigned to this server
+	blocked             []evaluatedMonitor // Constraint violations
+	globallyActiveCount int                // Count of globally active monitors
+}
+
+// monitorChange represents a state transition for a monitor
+type monitorChange struct {
+	MonitorID uint32
+	From      ntpdb.ServerScoresStatus
+	To        ntpdb.ServerScoresStatus
+	Reason    string
+}

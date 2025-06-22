@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
-const _candidateStateName = "candidateUnknowncandidateIncandidateOutcandidateBlock"
+const _candidateStateName = "candidateUnknowncandidateIncandidateOutcandidateBlockcandidatePending"
 
-var _candidateStateIndex = [...]uint8{0, 16, 27, 39, 53}
+var _candidateStateIndex = [...]uint8{0, 16, 27, 39, 53, 69}
 
-const _candidateStateLowerName = "candidateunknowncandidateincandidateoutcandidateblock"
+const _candidateStateLowerName = "candidateunknowncandidateincandidateoutcandidateblockcandidatepending"
 
 func (i candidateState) String() string {
 	if i >= candidateState(len(_candidateStateIndex)-1) {
@@ -28,9 +28,10 @@ func _candidateStateNoOp() {
 	_ = x[candidateIn-(1)]
 	_ = x[candidateOut-(2)]
 	_ = x[candidateBlock-(3)]
+	_ = x[candidatePending-(4)]
 }
 
-var _candidateStateValues = []candidateState{candidateUnknown, candidateIn, candidateOut, candidateBlock}
+var _candidateStateValues = []candidateState{candidateUnknown, candidateIn, candidateOut, candidateBlock, candidatePending}
 
 var _candidateStateNameToValueMap = map[string]candidateState{
 	_candidateStateName[0:16]:       candidateUnknown,
@@ -41,6 +42,8 @@ var _candidateStateNameToValueMap = map[string]candidateState{
 	_candidateStateLowerName[27:39]: candidateOut,
 	_candidateStateName[39:53]:      candidateBlock,
 	_candidateStateLowerName[39:53]: candidateBlock,
+	_candidateStateName[53:69]:      candidatePending,
+	_candidateStateLowerName[53:69]: candidatePending,
 }
 
 var _candidateStateNames = []string{
@@ -48,6 +51,7 @@ var _candidateStateNames = []string{
 	_candidateStateName[16:27],
 	_candidateStateName[27:39],
 	_candidateStateName[39:53],
+	_candidateStateName[53:69],
 }
 
 // candidateStateString retrieves an enum value from the enum constants string name.
