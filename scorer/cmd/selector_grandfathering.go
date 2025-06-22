@@ -27,6 +27,14 @@ func (sl *selector) isGrandfathered(
 	// Account limit violations on existing assignments are grandfathered
 	// This allows for gradual adjustment when account limits are reduced
 	if violation.Type == violationLimit {
+		// Check if this is a long-standing violation
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationLimit) &&
+			monitor.ConstraintViolationSince != nil {
+			// Already tracked violation, definitely grandfathered
+			return true
+		}
+		// New limit violation on existing assignment
 		return true
 	}
 

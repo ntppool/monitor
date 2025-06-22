@@ -13,6 +13,23 @@ import (
 	"time"
 )
 
+const clearServerScoreConstraintViolation = `-- name: ClearServerScoreConstraintViolation :exec
+UPDATE server_scores
+SET constraint_violation_type = NULL,
+    constraint_violation_since = NULL
+WHERE server_id = ? AND monitor_id = ?
+`
+
+type ClearServerScoreConstraintViolationParams struct {
+	ServerID  uint32 `json:"server_id"`
+	MonitorID uint32 `json:"monitor_id"`
+}
+
+func (q *Queries) ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) error {
+	_, err := q.db.ExecContext(ctx, clearServerScoreConstraintViolation, arg.ServerID, arg.MonitorID)
+	return err
+}
+
 const getMinLogScoreID = `-- name: GetMinLogScoreID :one
 select id from log_scores order by id limit 1
 `
@@ -33,7 +50,9 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
     if(avg(ls.step) < 0, false, true) as healthy,
     m.status as monitor_status, ss.status as status,
     count(*) as count,
-    a.flags as account_flags
+    a.flags as account_flags,
+    ss.constraint_violation_type,
+    ss.constraint_violation_since
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
@@ -43,23 +62,26 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags
+  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+           ss.constraint_violation_type, ss.constraint_violation_since
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt
 `
 
 type GetMonitorPriorityRow struct {
-	ID              uint32                 `json:"id"`
-	TlsName         sql.NullString         `json:"tls_name"`
-	AccountID       sql.NullInt32          `json:"account_id"`
-	MonitorIp       sql.NullString         `json:"monitor_ip"`
-	AvgRtt          interface{}            `json:"avg_rtt"`
-	MonitorPriority float64                `json:"monitor_priority"`
-	AvgStep         interface{}            `json:"avg_step"`
-	Healthy         interface{}            `json:"healthy"`
-	MonitorStatus   MonitorsStatus         `json:"monitor_status"`
-	Status          NullServerScoresStatus `json:"status"`
-	Count           int64                  `json:"count"`
-	AccountFlags    json.RawMessage        `json:"account_flags"`
+	ID                       uint32                 `json:"id"`
+	TlsName                  sql.NullString         `json:"tls_name"`
+	AccountID                sql.NullInt32          `json:"account_id"`
+	MonitorIp                sql.NullString         `json:"monitor_ip"`
+	AvgRtt                   interface{}            `json:"avg_rtt"`
+	MonitorPriority          float64                `json:"monitor_priority"`
+	AvgStep                  interface{}            `json:"avg_step"`
+	Healthy                  interface{}            `json:"healthy"`
+	MonitorStatus            MonitorsStatus         `json:"monitor_status"`
+	Status                   NullServerScoresStatus `json:"status"`
+	Count                    int64                  `json:"count"`
+	AccountFlags             json.RawMessage        `json:"account_flags"`
+	ConstraintViolationType  sql.NullString         `json:"constraint_violation_type"`
+	ConstraintViolationSince sql.NullTime           `json:"constraint_violation_since"`
 }
 
 func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error) {
@@ -84,6 +106,8 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 			&i.Status,
 			&i.Count,
 			&i.AccountFlags,
+			&i.ConstraintViolationType,
+			&i.ConstraintViolationSince,
 		); err != nil {
 			return nil, err
 		}
@@ -831,6 +855,30 @@ type UpdateServerScoreParams struct {
 
 func (q *Queries) UpdateServerScore(ctx context.Context, arg UpdateServerScoreParams) error {
 	_, err := q.db.ExecContext(ctx, updateServerScore, arg.ScoreTs, arg.ScoreRaw, arg.ID)
+	return err
+}
+
+const updateServerScoreConstraintViolation = `-- name: UpdateServerScoreConstraintViolation :exec
+UPDATE server_scores
+SET constraint_violation_type = ?,
+    constraint_violation_since = ?
+WHERE server_id = ? AND monitor_id = ?
+`
+
+type UpdateServerScoreConstraintViolationParams struct {
+	ConstraintViolationType  sql.NullString `json:"constraint_violation_type"`
+	ConstraintViolationSince sql.NullTime   `json:"constraint_violation_since"`
+	ServerID                 uint32         `json:"server_id"`
+	MonitorID                uint32         `json:"monitor_id"`
+}
+
+func (q *Queries) UpdateServerScoreConstraintViolation(ctx context.Context, arg UpdateServerScoreConstraintViolationParams) error {
+	_, err := q.db.ExecContext(ctx, updateServerScoreConstraintViolation,
+		arg.ConstraintViolationType,
+		arg.ConstraintViolationSince,
+		arg.ServerID,
+		arg.MonitorID,
+	)
 	return err
 }
 

@@ -58,6 +58,29 @@ func (_d QuerierTxWithTracing) Begin(ctx context.Context) (q1 QuerierTx, err err
 	return _d.QuerierTx.Begin(ctx)
 }
 
+// ClearServerScoreConstraintViolation implements QuerierTx
+func (_d QuerierTxWithTracing) ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) (err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.ClearServerScoreConstraintViolation")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"err": err})
+		} else if err != nil {
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.ClearServerScoreConstraintViolation(ctx, arg)
+}
+
 // Commit implements QuerierTx
 func (_d QuerierTxWithTracing) Commit(ctx context.Context) (err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.Commit")
@@ -688,6 +711,29 @@ func (_d QuerierTxWithTracing) UpdateServerScore(ctx context.Context, arg Update
 		_span.End()
 	}()
 	return _d.QuerierTx.UpdateServerScore(ctx, arg)
+}
+
+// UpdateServerScoreConstraintViolation implements QuerierTx
+func (_d QuerierTxWithTracing) UpdateServerScoreConstraintViolation(ctx context.Context, arg UpdateServerScoreConstraintViolationParams) (err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.UpdateServerScoreConstraintViolation")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"err": err})
+		} else if err != nil {
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.UpdateServerScoreConstraintViolation(ctx, arg)
 }
 
 // UpdateServerScoreQueue implements QuerierTx

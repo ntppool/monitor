@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -165,10 +166,19 @@ func (sl *selector) checkConstraints(
 ) *constraintViolation {
 	// Check network constraint
 	if err := sl.checkNetworkConstraint(monitor.IP, server.IP); err != nil {
-		return &constraintViolation{
+		violation := &constraintViolation{
 			Type:    violationNetwork,
 			Details: err.Error(),
 		}
+		// If we have a stored violation of the same type, preserve the timestamp
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationNetwork) &&
+			monitor.ConstraintViolationSince != nil {
+			violation.Since = *monitor.ConstraintViolationSince
+		} else {
+			violation.Since = time.Now()
+		}
+		return violation
 	}
 
 	// Check account constraints
@@ -182,10 +192,19 @@ func (sl *selector) checkConstraints(
 			}
 		}
 
-		return &constraintViolation{
+		violation := &constraintViolation{
 			Type:    violationType,
 			Details: err.Error(),
 		}
+		// If we have a stored violation of the same type, preserve the timestamp
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationType) &&
+			monitor.ConstraintViolationSince != nil {
+			violation.Since = *monitor.ConstraintViolationSince
+		} else {
+			violation.Since = time.Now()
+		}
+		return violation
 	}
 
 	return &constraintViolation{

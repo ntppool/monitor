@@ -10,6 +10,7 @@ import (
 )
 
 type Querier interface {
+	ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) error
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (uint64, error)
 	GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error)
@@ -41,6 +42,7 @@ type Querier interface {
 	UpdateScorerStatus(ctx context.Context, arg UpdateScorerStatusParams) error
 	UpdateServer(ctx context.Context, arg UpdateServerParams) error
 	UpdateServerScore(ctx context.Context, arg UpdateServerScoreParams) error
+	UpdateServerScoreConstraintViolation(ctx context.Context, arg UpdateServerScoreConstraintViolationParams) error
 	UpdateServerScoreQueue(ctx context.Context, arg UpdateServerScoreQueueParams) error
 	UpdateServerScoreStatus(ctx context.Context, arg UpdateServerScoreStatusParams) error
 	UpdateServerScoreStratum(ctx context.Context, arg UpdateServerScoreStratumParams) error

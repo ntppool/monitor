@@ -38,14 +38,16 @@ type constraintViolation struct {
 
 // monitorCandidate represents a monitor being evaluated for a server
 type monitorCandidate struct {
-	ID           uint32
-	AccountID    *uint32
-	IP           string
-	GlobalStatus ntpdb.MonitorsStatus
-	ServerStatus ntpdb.ServerScoresStatus
-	HasMetrics   bool
-	IsHealthy    bool
-	// Additional fields from GetMonitorPriority query results
+	ID                       uint32
+	AccountID                *uint32
+	IP                       string
+	GlobalStatus             ntpdb.MonitorsStatus
+	ServerStatus             ntpdb.ServerScoresStatus
+	HasMetrics               bool
+	IsHealthy                bool
+	RTT                      float64
+	ConstraintViolationType  *string
+	ConstraintViolationSince *time.Time
 }
 
 // serverInfo contains server details needed for constraint checking

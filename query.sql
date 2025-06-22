@@ -205,7 +205,9 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
     if(avg(ls.step) < 0, false, true) as healthy,
     m.status as monitor_status, ss.status as status,
     count(*) as count,
-    a.flags as account_flags
+    a.flags as account_flags,
+    ss.constraint_violation_type,
+    ss.constraint_violation_since
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
@@ -215,7 +217,8 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags
+  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+           ss.constraint_violation_type, ss.constraint_violation_since
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
 
 -- name: GetServersMonitorReview :many
@@ -235,4 +238,16 @@ update servers_monitor_review
   where server_id=?;
 
 -- name: GetSystemSetting :one
-select value from system_settings where `key` = ?
+select value from system_settings where `key` = ?;
+
+-- name: UpdateServerScoreConstraintViolation :exec
+UPDATE server_scores
+SET constraint_violation_type = ?,
+    constraint_violation_since = ?
+WHERE server_id = ? AND monitor_id = ?;
+
+-- name: ClearServerScoreConstraintViolation :exec
+UPDATE server_scores
+SET constraint_violation_type = NULL,
+    constraint_violation_since = NULL
+WHERE server_id = ? AND monitor_id = ?
