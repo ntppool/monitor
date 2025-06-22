@@ -75,6 +75,18 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	log.InfoContext(ctx, "starting ntppool-agent", "version", version.Version())
 
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Start the config manager early so it can watch for file changes
+	// during WaitUntilLive
+	promreg := prometheus.NewRegistry()
+	if !cmd.SanityOnly && !cmd.Once {
+		g.Go(func() error {
+			log.InfoContext(ctx, "starting AppConfig manager early for file watching", "name", cli.Config.TLSName())
+			return cli.Config.Manager(ctx, promreg)
+		})
+	}
+
 	err := cli.Config.WaitUntilLive(ctx)
 	if err != nil {
 		return fmt.Errorf("waiting for config: %w", err)
@@ -87,11 +99,12 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return nil
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-
 	// todo: switch to pushing metrics over oltp
 	metricssrv := metricsserver.New()
-	promreg := metricssrv.Registry()
+	// Use the metrics server registry if we didn't create one earlier
+	if cmd.SanityOnly || cmd.Once {
+		promreg = metricssrv.Registry()
+	}
 
 	// todo: option to enable local metrics?
 	// go metricssrv.ListenAndServe(ctx, 9999)
@@ -210,14 +223,6 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return runMQTTClient(ctx, cli, mqconfigger, promreg)
 	})
 
-	g.Go(func() error {
-		if cmd.SanityOnly || cmd.Once {
-			log.DebugContext(ctx, "skipping AppConfig manager for once/sanity-only")
-			return nil
-		}
-		log.InfoContext(ctx, "starting AppConfig manager", "name", cli.Config.TLSName())
-		return cli.Config.Manager(ctx, promreg)
-	})
 
 	err = g.Wait()
 	if err != nil {

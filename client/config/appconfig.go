@@ -307,7 +307,7 @@ func (ac *appConfig) waitUntilAPIKey(ctx context.Context) error {
 		}
 
 		if currentBackoff == authErrorBackoff {
-			log.WarnContext(ctx, "API key unauthorized, waiting before retry",
+			log.DebugContext(ctx, "API key unauthorized, waiting before retry",
 				"wait_time", waitTime.Round(time.Minute).String(),
 				"next_retry", time.Now().Add(waitTime).Format("15:04:05"))
 		} else {
