@@ -79,12 +79,18 @@ func (c *ClientCmd) BeforeReset() error {
 }
 
 func (c *ClientCmd) BeforeApply() error {
+	// Create a logger for debugging
+	log := logger.Setup()
+	ctx := logger.NewContext(context.Background(), log)
+
 	if c.StateDir == "" {
 		// Priority: MONITOR_STATE_DIR > STATE_DIRECTORY > user config dir
 		if monitorStateDir := os.Getenv("MONITOR_STATE_DIR"); monitorStateDir != "" {
 			c.StateDir = monitorStateDir
+			log.DebugContext(ctx, "using state directory from MONITOR_STATE_DIR", "path", c.StateDir)
 		} else if stateDir := os.Getenv("STATE_DIRECTORY"); stateDir != "" {
 			c.StateDir = stateDir
+			log.DebugContext(ctx, "using state directory from STATE_DIRECTORY", "path", c.StateDir)
 		} else {
 			// Fall back to user config directory
 			configDir, err := os.UserConfigDir()
@@ -93,8 +99,11 @@ func (c *ClientCmd) BeforeApply() error {
 			}
 			if len(configDir) > 0 {
 				c.StateDir = filepath.Join(configDir, "ntppool-agent")
+				log.DebugContext(ctx, "using default state directory", "path", c.StateDir)
 			}
 		}
+	} else {
+		log.DebugContext(ctx, "using explicit state directory", "path", c.StateDir)
 	}
 	return nil
 }
@@ -111,6 +120,23 @@ func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
 		return fmt.Errorf("state directory not set")
 	} else {
 		c.StateDir = kong.ExpandPath(c.StateDir)
+	}
+
+	log := logger.FromContext(ctx)
+	log.DebugContext(ctx, "determined state directory",
+		"state_dir", c.StateDir,
+		"env", c.DeployEnv.String(),
+		"command", kctx.Command())
+
+	// Check for problematic runtime directory usage
+	if strings.HasPrefix(c.StateDir, "/var/run/ntppool-agent") || strings.HasPrefix(c.StateDir, "/run/ntppool-agent") {
+		runtimeDir := os.Getenv("RUNTIME_DIRECTORY")
+		if runtimeDir != "" && (c.StateDir == runtimeDir || strings.HasPrefix(c.StateDir, runtimeDir+"/")) {
+			log.WarnContext(ctx, "State directory is in runtime directory - data will be lost on reboot!",
+				"state_dir", c.StateDir,
+				"runtime_dir", runtimeDir,
+				"suggestion", "Use systemd StateDirectory or set MONITOR_STATE_DIR to a persistent location")
+		}
 	}
 
 	// Skip configuration loading for version command

@@ -54,7 +54,6 @@ type AppConfig interface {
 	LoadAPIAppConfigWithCertificateRequest(ctx context.Context) (bool, error)
 	CheckCertificateValidity(ctx context.Context) (valid bool, nextCheck time.Duration, err error)
 
-	WaitUntilAPIKey(ctx context.Context) error
 	WaitUntilConfigured(ctx context.Context) error
 	WaitUntilLive(ctx context.Context) error
 	WaitUntilCertificatesLoaded(ctx context.Context) error
@@ -127,7 +126,13 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 		return nil, fmt.Errorf("deployment environment invalid or undefined")
 	}
 
-	log.DebugContext(ctx, "loading config", "env", deployEnv, "stateDir", stateDir)
+	log.DebugContext(ctx, "creating new AppConfig",
+		"env", deployEnv,
+		"stateDir", stateDir,
+		"wait", wait,
+		"MONITOR_STATE_DIR", os.Getenv("MONITOR_STATE_DIR"),
+		"STATE_DIRECTORY", os.Getenv("STATE_DIRECTORY"),
+		"RUNTIME_DIRECTORY", os.Getenv("RUNTIME_DIRECTORY"))
 
 	ac := &appConfig{
 		e:   deployEnv,
@@ -137,6 +142,7 @@ func NewAppConfig(ctx context.Context, deployEnv depenv.DeploymentEnvironment, s
 	err := ac.load(ctx)
 	if err != nil {
 		if errors.Is(err, ErrAuthorization) {
+			log.InfoContext(ctx, "API key unauthorized, clearing it")
 			ac.lock.Lock()
 			ac.API.APIKey = ""
 			ac.lock.Unlock()
@@ -194,7 +200,7 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 	return nil
 }
 
-func (ac *appConfig) WaitUntilAPIKey(ctx context.Context) error {
+func (ac *appConfig) waitUntilAPIKey(ctx context.Context) error {
 	ctx, span := tracing.Start(ctx, "monitor.WaitUntilAPIKey")
 	defer span.End()
 	log := logger.FromContext(ctx)
@@ -211,21 +217,25 @@ func (ac *appConfig) WaitUntilAPIKey(ctx context.Context) error {
 	for {
 		i++
 
-		err := ac.load(ctx)
-		if err != nil {
-			log.InfoContext(ctx, "load failed", "err", err)
-			return err
+		// Only try to load from disk/API on first iteration
+		if i == 1 {
+			err := ac.load(ctx)
+			if err != nil {
+				log.InfoContext(ctx, "load failed", "err", err)
+				return err
+			}
+
+			// Check again after load
+			ac.lock.RLock()
+			hasKey := ac.API.APIKey != ""
+			ac.lock.RUnlock()
+
+			if hasKey {
+				break
+			}
 		}
 
-		ac.lock.RLock()
-		hasKey := ac.API.APIKey != ""
-		ac.lock.RUnlock()
-
-		if hasKey {
-			break
-		}
-
-		if i == 1 || i%60 == 0 {
+		if i == 1 || i%10 == 0 { // Log every 10 minutes (10 * 60 seconds fallback)
 			cmdName := fmt.Sprintf(
 				"ntppool-agent setup --env %s --state-dir '%s'",
 				ac.e.String(),
@@ -241,10 +251,43 @@ func (ac *appConfig) WaitUntilAPIKey(ctx context.Context) error {
 			}
 		}
 
+		// Wait for config change notification or timeout
+		waiter := ac.WaitForConfigChange(ctx)
+
+		// Use a longer timeout as fallback in case file watching isn't working
+		fallbackTimer := time.NewTimer(60 * time.Second)
+
 		select {
 		case <-ctx.Done():
+			fallbackTimer.Stop()
+			waiter.Cancel()
 			return nil
-		case <-time.After(4 * time.Second):
+		case <-waiter.Done():
+			// Config changed, check if we now have an API key
+			log.DebugContext(ctx, "config change detected, checking for API key")
+			fallbackTimer.Stop()
+		case <-fallbackTimer.C:
+			// Fallback timeout - reload manually
+			log.DebugContext(ctx, "fallback timeout reached, reloading config")
+			err := ac.load(ctx)
+			if err != nil {
+				log.InfoContext(ctx, "load failed", "err", err)
+				// Clean up before returning
+				waiter.Cancel()
+				return err
+			}
+		}
+
+		// Clean up the waiter
+		waiter.Cancel()
+
+		// Check if we now have an API key
+		ac.lock.RLock()
+		hasKey = ac.API.APIKey != ""
+		ac.lock.RUnlock()
+
+		if hasKey {
+			break
 		}
 	}
 	return nil
@@ -255,7 +298,7 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 	defer span.End()
 
 	// First wait for API key
-	if err := ac.WaitUntilAPIKey(ctx); err != nil {
+	if err := ac.waitUntilAPIKey(ctx); err != nil {
 		return err
 	}
 
@@ -452,10 +495,10 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 
 	// Copy data for logging outside the lock
 	var logData struct {
-		Name     string
-		TLSName  string
-		IPv4     IPConfig
-		IPv6     IPConfig
+		Name    string
+		TLSName string
+		IPv4    IPConfig
+		IPv6    IPConfig
 	}
 	if dataChanged {
 		ac.DataSha = sha
