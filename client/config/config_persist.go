@@ -67,6 +67,15 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 
 	_, err := os.Stat(dir)
 	if err != nil {
+		// Create a temporary context for logging
+		ctx := context.Background()
+		log := logger.Setup()
+		ctx = logger.NewContext(ctx, log)
+
+		log.DebugContext(ctx, "creating state directory",
+			"base_dir", ac.dir,
+			"env", ac.Env().String(),
+			"full_dir", dir)
 		os.MkdirAll(dir, 0o700)
 	}
 
@@ -75,6 +84,14 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 
 func (ac *appConfig) load(ctx context.Context) error {
 	log := logger.FromContext(ctx)
+
+	// Log environment variables relevant to state management
+	log.DebugContext(ctx, "loading config with environment",
+		"MONITOR_STATE_DIR", os.Getenv("MONITOR_STATE_DIR"),
+		"STATE_DIRECTORY", os.Getenv("STATE_DIRECTORY"),
+		"RUNTIME_DIRECTORY", os.Getenv("RUNTIME_DIRECTORY"),
+		"state_dir", ac.dir,
+		"env", ac.Env().String())
 
 	// Capture previous state for change detection
 	ac.lock.RLock()
@@ -86,6 +103,10 @@ func (ac *appConfig) load(ctx context.Context) error {
 	stateFilePath := ac.stateFilePrefix(stateFile)
 	_, err := os.Stat(stateFilePath)
 	stateFileExisted := err == nil
+
+	log.DebugContext(ctx, "checking state file",
+		"path", stateFilePath,
+		"exists", stateFileExisted)
 
 	err = ac.loadFromDisk(ctx)
 	if err != nil {
@@ -143,9 +164,12 @@ func (ac *appConfig) loadFromDisk(ctx context.Context) error {
 	defer ac.lock.Unlock()
 
 	path := ac.stateFilePrefix(stateFile)
+	log.DebugContext(ctx, "loading state from disk", "path", path)
+
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			log.DebugContext(ctx, "state file does not exist, checking for migration", "path", path)
 			// Try to migrate from old runtime directory location
 			if err := ac.tryMigrateFromRuntimeDir(ctx, path); err != nil {
 				log.DebugContext(ctx, "migration from runtime directory failed", "err", err)
@@ -153,14 +177,23 @@ func (ac *appConfig) loadFromDisk(ctx context.Context) error {
 			// File doesn't exist (and migration failed or wasn't needed), save will be handled by caller
 			return nil
 		} else {
+			log.ErrorContext(ctx, "failed to read state file", "path", path, "err", err)
 			return err
 		}
 	}
 
+	log.DebugContext(ctx, "read state file", "path", path, "size", len(b))
+
 	err = json.Unmarshal(b, &ac)
 	if err != nil {
+		log.ErrorContext(ctx, "failed to unmarshal state file", "path", path, "err", err)
 		return err
 	}
+
+	log.DebugContext(ctx, "successfully loaded state from disk",
+		"has_api_key", ac.API.APIKey != "",
+		"monitor_name", ac.Data.Name,
+		"tls_name", ac.Data.TLSName)
 
 	return nil
 }
@@ -171,15 +204,32 @@ func (ac *appConfig) save() error {
 
 	path := ac.stateFilePrefix(stateFile)
 
+	// Create a temporary context for logging (since save doesn't receive one)
+	ctx := context.Background()
+	log := logger.Setup()
+	ctx = logger.NewContext(ctx, log)
+
+	log.DebugContext(ctx, "saving state to disk",
+		"path", path,
+		"has_api_key", ac.API.APIKey != "",
+		"monitor_name", ac.Data.Name,
+		"tls_name", ac.Data.TLSName)
+
 	b, err := json.MarshalIndent(ac, "", "  ")
 	if err != nil {
-		return err
-	}
-	err = replaceFile(path, b)
-	if err != nil {
+		log.ErrorContext(ctx, "failed to marshal state", "err", err)
 		return err
 	}
 
+	log.DebugContext(ctx, "writing state file", "path", path, "size", len(b))
+
+	err = replaceFile(path, b)
+	if err != nil {
+		log.ErrorContext(ctx, "failed to write state file", "path", path, "err", err)
+		return err
+	}
+
+	log.DebugContext(ctx, "successfully saved state to disk", "path", path)
 	return nil
 }
 
@@ -191,11 +241,16 @@ func (ac *appConfig) tryMigrateFromRuntimeDir(ctx context.Context, newPath strin
 	runtimeDir := os.Getenv("RUNTIME_DIRECTORY")
 	if runtimeDir == "" {
 		// No runtime directory, nothing to migrate
+		log.DebugContext(ctx, "no RUNTIME_DIRECTORY set, skipping migration")
 		return nil
 	}
 
 	// Build old state file path
 	oldPath := path.Join(runtimeDir, ac.Env().String(), stateFile)
+	log.DebugContext(ctx, "checking for state file to migrate",
+		"runtime_dir", runtimeDir,
+		"old_path", oldPath,
+		"new_path", newPath)
 
 	// Try to read old state file
 	oldData, err := os.ReadFile(oldPath)
