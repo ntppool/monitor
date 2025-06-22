@@ -223,7 +223,6 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return runMQTTClient(ctx, cli, mqconfigger, promreg)
 	})
 
-
 	err = g.Wait()
 	if err != nil {
 		log.Error("monitor error", "err", err)
@@ -304,7 +303,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 			configChangeWaiter := appConfig.WaitForConfigChange(ctx)
 
 			if firstRun {
-				log.InfoContext(ctx, "getting client configuration", "errors", errors)
+				log.InfoContext(ctx, "getting client configuration with BaseChecks for LocalOK", "errors", errors)
 			}
 
 			log.WarnContext(ctx, "ipc", "ip", ipc.IP.String())
@@ -325,9 +324,17 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 				log.DebugContext(ctx, "client config", "cfg", cfgresp)
 				mqconfigger.SetConfigFromApi(cfgresp)
 				monconf.SetConfigFromApi(cfgresp)
+
+				// Only signal completion on first run if we have valid BaseChecks for LocalOK
 				if firstRun {
-					initialConfig.Done()
-					firstRun = false
+					if cfgresp != nil && len(cfgresp.BaseChecks) > 0 {
+						log.InfoContext(ctx, "received valid configuration with BaseChecks, LocalOK can be initialized", "basecheck_count", len(cfgresp.BaseChecks))
+						initialConfig.Done()
+						firstRun = false
+					} else {
+						log.WarnContext(ctx, "configuration received but no BaseChecks available, waiting for complete config")
+						// Continue as first run until we get BaseChecks
+					}
 				}
 			}
 
@@ -350,13 +357,13 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 	initialConfig.Wait()
 
 	if checkDone(ctx) {
-		// config loading was cancelled, so we don't have a config
-		// yet which everything below needs
+		// config loading was cancelled, so we don't have a config with BaseChecks
+		// yet which LocalOK and the monitoring loops need
 		return nil
 	}
 
-	// todo: update mqtt status with current health from localok?
-	log.DebugContext(ctx, "setting up localok.NewLocalOK")
+	// LocalOK can now be safely created since we're guaranteed to have valid BaseChecks
+	log.DebugContext(ctx, "setting up localok.NewLocalOK with validated configuration")
 	localOK := localok.NewLocalOK(monconf, promreg)
 
 	if cmd.SanityOnly {
