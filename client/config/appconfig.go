@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
@@ -23,6 +24,15 @@ import (
 	apitls "go.ntppool.org/monitor/api/tls"
 	"go.ntppool.org/monitor/ntpdb"
 )
+
+// newConfigBackoff creates an exponential backoff with the specified intervals
+func newConfigBackoff(initial, max time.Duration) *backoff.ExponentialBackOff {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = initial
+	b.MaxInterval = max
+	b.RandomizationFactor = 0.1 // Add jitter to prevent thundering herd
+	return b
+}
 
 // ErrAuthorization is returned when the API key is unauthorized or invalid.
 var ErrAuthorization = errors.New("api key unauthorized")
@@ -166,38 +176,70 @@ func (ac *appConfig) WaitUntilLive(ctx context.Context) error {
 
 	log := logger.FromContext(ctx)
 
-	for i := 0; true; i++ {
-		// Check if any IP is live under read lock
+	// Check if already live
+	ac.lock.RLock()
+	isLive := ac.Data.IPv4.IsLive() || ac.Data.IPv6.IsLive()
+	ac.lock.RUnlock()
+
+	if isLive {
+		return nil
+	}
+
+	// Backoff for waiting for monitor activation
+	activationBackoff := newConfigBackoff(1*time.Minute, 20*time.Minute)
+
+	log.InfoContext(ctx, "waiting for monitor status to be testing or active")
+
+	for {
+		// Wait for config change notification or backoff timeout
+		waiter := ac.WaitForConfigChange(ctx)
+		waitTime := activationBackoff.NextBackOff()
+		if waitTime == backoff.Stop {
+			waitTime = activationBackoff.MaxInterval
+		}
+
+		timer := time.NewTimer(waitTime)
+
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			waiter.Cancel()
+			log.InfoContext(ctx, "WaitUntilLive context done, exiting")
+			return nil
+		case <-waiter.Done():
+			// Config changed, check immediately
+			log.DebugContext(ctx, "config change detected, checking live status")
+			timer.Stop()
+			waiter.Cancel()
+			// Reset backoff on config change
+			activationBackoff.Reset()
+		case <-timer.C:
+			// Backoff timeout - reload config manually as fallback
+			log.DebugContext(ctx, "activation check timeout, reloading config",
+				"wait_time", waitTime.Round(time.Minute).String())
+			waiter.Cancel()
+			err := ac.load(ctx)
+			if err != nil {
+				if errors.Is(err, ErrAuthorization) {
+					// Authorization error - let waitUntilAPIKey handle it
+					log.WarnContext(ctx, "authorization error during live check, will retry", "err", err)
+					continue
+				}
+				log.InfoContext(ctx, "load failed", "err", err)
+				return err
+			}
+		}
+
+		// Check if any IP is live now
 		ac.lock.RLock()
 		isLive := ac.Data.IPv4.IsLive() || ac.Data.IPv6.IsLive()
 		ac.lock.RUnlock()
 
 		if isLive {
-			break
-		}
-
-		if i == 0 {
-			log.InfoContext(ctx, "waiting for monitor status to be testing or active")
-		}
-
-		select {
-		case <-ctx.Done():
-			log.InfoContext(ctx, "WaitUntilLive context done, exiting")
+			log.InfoContext(ctx, "monitor is now live")
 			return nil
-		case <-time.After(60 * time.Second):
-			// check again every minute
-		}
-
-		// do this last in the loop because WaitUntilAPIKey just
-		// loaded the configuration anyway
-		err := ac.load(ctx)
-		if err != nil {
-			log.InfoContext(ctx, "load failed", "err", err)
-			return err
 		}
 	}
-
-	return nil
 }
 
 func (ac *appConfig) waitUntilAPIKey(ctx context.Context) error {
@@ -213,84 +255,108 @@ func (ac *appConfig) waitUntilAPIKey(ctx context.Context) error {
 		return nil
 	}
 
+	// Backoff for authorization errors (expired/revoked keys)
+	authErrorBackoff := newConfigBackoff(10*time.Minute, 4*time.Hour)
+
+	// Backoff for missing API keys (normal case)
+	missingKeyBackoff := newConfigBackoff(30*time.Second, 5*time.Minute)
+
+	var currentBackoff backoff.BackOff = missingKeyBackoff
+	var lastAuthError time.Time
+
 	i := 0
 	for {
 		i++
 
-		// Only try to load from disk/API on first iteration
-		if i == 1 {
-			err := ac.load(ctx)
-			if err != nil {
+		// Try to load from disk/API
+		err := ac.load(ctx)
+		if err != nil {
+			if errors.Is(err, ErrAuthorization) {
+				// API key is unauthorized - could be expired or temporary server issue
+				currentBackoff = authErrorBackoff
+				lastAuthError = time.Now()
+				// Don't return error - continue waiting
+			} else {
+				// Other errors should be propagated
 				log.InfoContext(ctx, "load failed", "err", err)
 				return err
 			}
-
-			// Check again after load
+		} else {
+			// Successful load - check if we have an API key now
 			ac.lock.RLock()
 			hasKey := ac.API.APIKey != ""
 			ac.lock.RUnlock()
 
 			if hasKey {
-				break
+				// Reset backoff on success
+				authErrorBackoff.Reset()
+				missingKeyBackoff.Reset()
+				return nil
+			}
+
+			// No API key after successful load - back to missing key backoff
+			if time.Since(lastAuthError) > time.Hour {
+				currentBackoff = missingKeyBackoff
 			}
 		}
 
-		if i == 1 || i%10 == 0 { // Log every 10 minutes (10 * 60 seconds fallback)
-			cmdName := fmt.Sprintf(
-				"ntppool-agent setup --env %s --state-dir '%s'",
-				ac.e.String(),
-				ac.dir,
-			)
-			log.WarnContext(ctx, "no API key, please run ntppool-agent setup", "cmd", cmdName)
-			if i == 1 {
-				// Check if stdin is a terminal
-				fileInfo, err := os.Stdin.Stat()
-				if err == nil && (fileInfo.Mode()&os.ModeCharDevice) != 0 {
-					fmt.Printf("\nSetup API key with:\n\n    %s\n\n", cmdName)
+		// Determine wait time and log appropriate message
+		waitTime := currentBackoff.NextBackOff()
+		if waitTime == backoff.Stop {
+			waitTime = currentBackoff.(*backoff.ExponentialBackOff).MaxInterval
+		}
+
+		if currentBackoff == authErrorBackoff {
+			log.WarnContext(ctx, "API key unauthorized, waiting before retry",
+				"wait_time", waitTime.Round(time.Minute).String(),
+				"next_retry", time.Now().Add(waitTime).Format("15:04:05"))
+		} else {
+			if i == 1 || waitTime >= 2*time.Minute {
+				cmdName := fmt.Sprintf(
+					"ntppool-agent setup --env %s --state-dir '%s'",
+					ac.e.String(),
+					ac.dir,
+				)
+				log.WarnContext(ctx, "no API key, please run ntppool-agent setup",
+					"cmd", cmdName,
+					"wait_time", waitTime.Round(time.Second).String())
+
+				if i == 1 {
+					// Check if stdin is a terminal
+					fileInfo, err := os.Stdin.Stat()
+					if err == nil && (fileInfo.Mode()&os.ModeCharDevice) != 0 {
+						fmt.Printf("\nSetup API key with:\n\n    %s\n\n", cmdName)
+					}
 				}
 			}
 		}
 
 		// Wait for config change notification or timeout
 		waiter := ac.WaitForConfigChange(ctx)
-
-		// Use a longer timeout as fallback in case file watching isn't working
-		fallbackTimer := time.NewTimer(60 * time.Second)
+		timer := time.NewTimer(waitTime)
 
 		select {
 		case <-ctx.Done():
-			fallbackTimer.Stop()
+			timer.Stop()
 			waiter.Cancel()
 			return nil
 		case <-waiter.Done():
-			// Config changed, check if we now have an API key
+			// Config changed, check immediately
 			log.DebugContext(ctx, "config change detected, checking for API key")
-			fallbackTimer.Stop()
-		case <-fallbackTimer.C:
-			// Fallback timeout - reload manually
-			log.DebugContext(ctx, "fallback timeout reached, reloading config")
-			err := ac.load(ctx)
-			if err != nil {
-				log.InfoContext(ctx, "load failed", "err", err)
-				// Clean up before returning
-				waiter.Cancel()
-				return err
+			timer.Stop()
+			waiter.Cancel()
+			// Reset backoff on config change (new API key might have been added)
+			if currentBackoff == missingKeyBackoff {
+				missingKeyBackoff.Reset()
+			} else {
+				// For auth errors, also reset to try again immediately
+				authErrorBackoff.Reset()
 			}
-		}
-
-		// Clean up the waiter
-		waiter.Cancel()
-
-		// Check if we now have an API key
-		ac.lock.RLock()
-		hasKey = ac.API.APIKey != ""
-		ac.lock.RUnlock()
-
-		if hasKey {
-			break
+		case <-timer.C:
+			// Backoff timeout reached - will retry on next iteration
+			waiter.Cancel()
 		}
 	}
-	return nil
 }
 
 func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
@@ -311,7 +377,34 @@ func (ac *appConfig) WaitUntilCertificatesLoaded(ctx context.Context) error {
 	defer span.End()
 	log := logger.FromContext(ctx)
 
-	for i := 0; ; i++ {
+	// Check if we already have valid certificates
+	if ac.HaveCertificate() {
+		valid, _, err := ac.checkCertificateValidity(ctx)
+		if err == nil && valid {
+			log.DebugContext(ctx, "certificates are already loaded and valid")
+			return nil
+		}
+	}
+
+	// Backoff for certificate loading failures
+	certBackoff := newConfigBackoff(4*time.Second, 2*time.Minute)
+
+	log.InfoContext(ctx, "waiting for certificates to be loaded")
+
+	for {
+		// Try to load certificates from API if we don't have them
+		err := ac.load(ctx)
+		if err != nil {
+			if errors.Is(err, ErrAuthorization) {
+				// Authorization error - certificate loading will fail
+				log.WarnContext(ctx, "authorization error while loading certificates", "err", err)
+				return err // Propagate auth errors up to waitUntilAPIKey
+			}
+			log.InfoContext(ctx, "load failed while waiting for certificates", "err", err)
+			// Continue waiting for other errors
+		}
+
+		// Check certificate status
 		if ac.HaveCertificate() {
 			// Verify certificate is valid and not expired
 			valid, _, err := ac.checkCertificateValidity(ctx)
@@ -326,25 +419,24 @@ func (ac *appConfig) WaitUntilCertificatesLoaded(ctx context.Context) error {
 			}
 		}
 
-		if i == 0 {
-			log.InfoContext(ctx, "waiting for certificates to be loaded")
-		} else if i%15 == 0 { // Log every minute (15 * 4 seconds)
-			log.InfoContext(ctx, "still waiting for certificates to be loaded")
+		// Determine wait time
+		waitTime := certBackoff.NextBackOff()
+		if waitTime == backoff.Stop {
+			waitTime = certBackoff.MaxInterval
+		}
+
+		// Log periodically when waiting longer
+		if waitTime >= 30*time.Second {
+			log.InfoContext(ctx, "still waiting for certificates to be loaded",
+				"wait_time", waitTime.Round(time.Second).String())
 		}
 
 		select {
 		case <-ctx.Done():
 			log.DebugContext(ctx, "WaitUntilCertificatesLoaded context done, exiting")
 			return ctx.Err()
-		case <-time.After(4 * time.Second):
-			// Check again every 4 seconds
-		}
-
-		// Try to load certificates from API if we don't have them
-		err := ac.load(ctx)
-		if err != nil {
-			log.InfoContext(ctx, "load failed while waiting for certificates", "err", err)
-			// Continue waiting, don't fail
+		case <-time.After(waitTime):
+			// Continue to next iteration
 		}
 	}
 }
@@ -407,7 +499,7 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 	defer resp.Body.Close()
 	traceID := resp.Header.Get("Traceid")
 	if resp.StatusCode == http.StatusUnauthorized {
-		log.InfoContext(ctx, "unauthorized, please run setup", "trace", traceID)
+		log.WarnContext(ctx, "API authorization failed", "trace", traceID)
 		return false, ErrAuthorization
 	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return false, fmt.Errorf("unexpected response code: %d (trace %s)", resp.StatusCode, traceID)
