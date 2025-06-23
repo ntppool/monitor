@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"log/slog"
@@ -29,7 +29,7 @@ func TestCandidateStateString(t *testing.T) {
 }
 
 func TestDetermineState(t *testing.T) {
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 	}
 
@@ -145,7 +145,7 @@ func TestDetermineState(t *testing.T) {
 }
 
 func TestHasStateInconsistency(t *testing.T) {
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 	}
 
@@ -207,11 +207,11 @@ func TestHasStateInconsistency(t *testing.T) {
 
 func TestIsOutOfOrder(t *testing.T) {
 	tests := []struct {
-		name         string
-		statusList   newStatusList
-		wantBest     uint32
-		wantReplace  uint32
-		wantFound    bool
+		name        string
+		statusList  newStatusList
+		wantBest    uint32
+		wantReplace uint32
+		wantFound   bool
 	}{
 		{
 			name: "no_candidates_returns_not_found",

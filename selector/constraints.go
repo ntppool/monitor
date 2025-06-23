@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"encoding/json"
@@ -32,7 +32,7 @@ type accountLimit struct {
 }
 
 // checkNetworkConstraint verifies that monitor and server are not in the same subnet
-func (sl *selector) checkNetworkConstraint(
+func (sl *Selector) checkNetworkConstraint(
 	monitorIP string,
 	serverIP string,
 ) error {
@@ -76,7 +76,7 @@ func (sl *selector) checkNetworkConstraint(
 }
 
 // checkAccountConstraints verifies account-based constraints
-func (sl *selector) checkAccountConstraints(
+func (sl *Selector) checkAccountConstraints(
 	monitor *monitorCandidate,
 	server *serverInfo,
 	accountLimits map[uint32]*accountLimit,
@@ -158,7 +158,7 @@ func (sl *selector) checkAccountConstraints(
 }
 
 // checkConstraints performs all constraint validation
-func (sl *selector) checkConstraints(
+func (sl *Selector) checkConstraints(
 	monitor *monitorCandidate,
 	server *serverInfo,
 	accountLimits map[uint32]*accountLimit,
@@ -213,7 +213,7 @@ func (sl *selector) checkConstraints(
 }
 
 // buildAccountLimitsFromMonitors builds account limits from the monitor priority results
-func (sl *selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPriorityRow) map[uint32]*accountLimit {
+func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPriorityRow) map[uint32]*accountLimit {
 	limits := make(map[uint32]*accountLimit)
 
 	for _, monitor := range monitors {

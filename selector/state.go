@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 //go:generate go tool github.com/dmarkham/enumer -type=candidateState
 
@@ -53,7 +53,7 @@ func (nsl newStatusList) IsOutOfOrder() (uint32, uint32, bool) {
 }
 
 // determineState determines the appropriate candidate state based on global status and constraints
-func (sl *selector) determineState(
+func (sl *Selector) determineState(
 	monitor *monitorCandidate,
 	violation *constraintViolation,
 ) candidateState {
@@ -134,7 +134,7 @@ func (sl *selector) determineState(
 }
 
 // hasStateInconsistency checks for inconsistent global vs server states
-func (sl *selector) hasStateInconsistency(monitor *monitorCandidate) bool {
+func (sl *Selector) hasStateInconsistency(monitor *monitorCandidate) bool {
 	// Monitor globally pending but server-active/testing is inconsistent
 	if monitor.GlobalStatus == ntpdb.MonitorsStatusPending &&
 		(monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||

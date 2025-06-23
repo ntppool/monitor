@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestCheckNetworkConstraint(t *testing.T) {
-	sl := &selector{}
+	sl := &Selector{}
 
 	tests := []struct {
 		name      string
@@ -76,7 +76,7 @@ func TestCheckNetworkConstraint(t *testing.T) {
 }
 
 func TestCheckAccountConstraints(t *testing.T) {
-	sl := &selector{}
+	sl := &Selector{}
 
 	accountID1 := uint32(1)
 	accountID2 := uint32(2)

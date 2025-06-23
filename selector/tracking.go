@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 )
 
 // trackConstraintViolations updates the database with current constraint violations
-func (sl *selector) trackConstraintViolations(
+func (sl *Selector) trackConstraintViolations(
 	db *ntpdb.Queries,
 	serverID uint32,
 	evaluatedMonitors []evaluatedMonitor,

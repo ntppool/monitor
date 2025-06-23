@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"go.ntppool.org/monitor/ntpdb"
@@ -7,7 +7,7 @@ import (
 // isGrandfathered determines if a constraint violation should be grandfathered
 // Grandfathering allows existing assignments that violate new constraints to remain
 // but be marked for gradual removal (candidateOut instead of candidateBlock)
-func (sl *selector) isGrandfathered(
+func (sl *Selector) isGrandfathered(
 	monitor *monitorCandidate,
 	server *serverInfo,
 	violation *constraintViolation,
@@ -49,7 +49,7 @@ func (sl *selector) isGrandfathered(
 
 // prioritizeGrandfatheredRemovals determines which grandfathered monitors to remove first
 // when we need to free up slots. Returns monitors sorted by removal priority.
-func (sl *selector) prioritizeGrandfatheredRemovals(monitors []evaluatedMonitor) []evaluatedMonitor {
+func (sl *Selector) prioritizeGrandfatheredRemovals(monitors []evaluatedMonitor) []evaluatedMonitor {
 	// Sort by multiple criteria:
 	// 1. Performance (unhealthy first)
 	// 2. Assignment duration (newer assignments first)

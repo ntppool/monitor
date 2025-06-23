@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"go.ntppool.org/common/version"
+	"go.ntppool.org/monitor/selector"
 )
 
 type RootCmd struct {
-	Scorer   ScorerCmd   `cmd:"scorer" help:"Scoring commands"`
-	Selector selectorCmd `cmd:"selector" help:"monitor selection"`
+	Scorer   ScorerCmd    `cmd:"scorer" help:"Scoring commands"`
+	Selector selector.Cmd `cmd:"selector" help:"monitor selection"`
 
 	Db      dbCmd      `cmd:"db" help:"Database operations"`
 	Version versionCmd `cmd:"version" help:"Show version"`

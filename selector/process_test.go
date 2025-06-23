@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"context"
@@ -12,7 +12,7 @@ func TestProcessServerNew(t *testing.T) {
 	// This is a compilation test to ensure the new processServer implementation
 	// compiles correctly with all its dependencies
 
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 		ctx: context.Background(),
 	}
@@ -45,7 +45,7 @@ func TestProcessServerNew(t *testing.T) {
 }
 
 func TestSelectionHelpers(t *testing.T) {
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 	}
 
@@ -88,7 +88,7 @@ func TestSelectionHelpers(t *testing.T) {
 }
 
 func TestCalculateNeededCandidates(t *testing.T) {
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 	}
 
@@ -134,7 +134,7 @@ func TestCalculateNeededCandidates(t *testing.T) {
 }
 
 func TestHandleOutOfOrder(t *testing.T) {
-	sl := &selector{
+	sl := &Selector{
 		log: slog.Default(),
 	}
 

@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type statusChange struct {
 
 // processServerNew implements the main selection algorithm for a single server
 // This is the new implementation that will replace the existing processServer
-func (sl *selector) processServerNew(
+func (sl *Selector) processServerNew(
 	ctx context.Context,
 	db *ntpdb.Queries,
 	serverID uint32,
@@ -135,7 +135,7 @@ func (sl *selector) processServerNew(
 }
 
 // loadServerInfo loads server details including IP and account
-func (sl *selector) loadServerInfo(
+func (sl *Selector) loadServerInfo(
 	ctx context.Context,
 	db *ntpdb.Queries,
 	serverID uint32,
@@ -160,7 +160,7 @@ func (sl *selector) loadServerInfo(
 }
 
 // findAvailableMonitors finds globally active/testing monitors not assigned to this server
-func (sl *selector) findAvailableMonitors(
+func (sl *Selector) findAvailableMonitors(
 	ctx context.Context,
 	db *ntpdb.Queries,
 	serverID uint32,
@@ -201,7 +201,7 @@ func (sl *selector) findAvailableMonitors(
 }
 
 // applySelectionRules determines what status changes should be made
-func (sl *selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []statusChange {
+func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []statusChange {
 	changes := make([]statusChange, 0)
 
 	// Categorize monitors by current status
@@ -336,7 +336,7 @@ func (sl *selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 }
 
 // applyStatusChange executes a single status change
-func (sl *selector) applyStatusChange(
+func (sl *Selector) applyStatusChange(
 	ctx context.Context,
 	db *ntpdb.Queries,
 	serverID uint32,
@@ -382,7 +382,7 @@ func (sl *selector) applyStatusChange(
 
 // Helper methods for selection logic
 
-func (sl *selector) countHealthy(monitors []evaluatedMonitor) int {
+func (sl *Selector) countHealthy(monitors []evaluatedMonitor) int {
 	count := 0
 	for _, em := range monitors {
 		if em.monitor.IsHealthy && em.recommendedState == candidateIn {
@@ -392,7 +392,7 @@ func (sl *selector) countHealthy(monitors []evaluatedMonitor) int {
 	return count
 }
 
-func (sl *selector) countGloballyActive(monitors []evaluatedMonitor) int {
+func (sl *Selector) countGloballyActive(monitors []evaluatedMonitor) int {
 	count := 0
 	for _, em := range monitors {
 		if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
@@ -402,7 +402,7 @@ func (sl *selector) countGloballyActive(monitors []evaluatedMonitor) int {
 	return count
 }
 
-func (sl *selector) selectMonitorsForRemoval(
+func (sl *Selector) selectMonitorsForRemoval(
 	active []evaluatedMonitor,
 	testing []evaluatedMonitor,
 ) []evaluatedMonitor {
@@ -427,7 +427,7 @@ func (sl *selector) selectMonitorsForRemoval(
 	return toRemove
 }
 
-func (sl *selector) selectMonitorsForPromotion(
+func (sl *Selector) selectMonitorsForPromotion(
 	candidates []evaluatedMonitor,
 	count int,
 ) []evaluatedMonitor {
@@ -451,7 +451,7 @@ func (sl *selector) selectMonitorsForPromotion(
 	return eligible[:count]
 }
 
-func (sl *selector) selectMonitorsToAdd(
+func (sl *Selector) selectMonitorsToAdd(
 	available []evaluatedMonitor,
 	count int,
 ) []evaluatedMonitor {
@@ -473,7 +473,7 @@ func (sl *selector) selectMonitorsToAdd(
 	return eligible[:count]
 }
 
-func (sl *selector) selectCandidatesForTesting(
+func (sl *Selector) selectCandidatesForTesting(
 	candidates []evaluatedMonitor,
 	count int,
 ) []evaluatedMonitor {
@@ -502,7 +502,7 @@ func (sl *selector) selectCandidatesForTesting(
 	return eligible[:count]
 }
 
-func (sl *selector) calculateNeededCandidates(active, testing, candidates int) int {
+func (sl *Selector) calculateNeededCandidates(active, testing, candidates int) int {
 	// We want a buffer of candidates ready to be promoted
 	// Target: enough to replace both active and testing pools
 	targetCandidates := targetActiveMonitors + targetTestingMonitors
@@ -514,7 +514,7 @@ func (sl *selector) calculateNeededCandidates(active, testing, candidates int) i
 	return 0
 }
 
-func (sl *selector) handleOutOfOrder(
+func (sl *Selector) handleOutOfOrder(
 	active []evaluatedMonitor,
 	testing []evaluatedMonitor,
 	changes []statusChange,

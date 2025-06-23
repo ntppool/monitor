@@ -1,4 +1,4 @@
-package cmd
+package selector
 
 import (
 	"context"
@@ -13,25 +13,27 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-type selectorCmd struct {
-	Server selectorServerCmd `cmd:"server" help:"run continously"`
-	Run    selectorOnceCmd   `cmd:"once" help:"run once"`
+// Cmd provides the command structure for CLI integration
+type Cmd struct {
+	Server ServerCmd `cmd:"server" help:"run continously"`
+	Run    OnceCmd   `cmd:"once" help:"run once"`
 }
 
 type (
-	selectorServerCmd struct{}
-	selectorOnceCmd   struct{}
+	ServerCmd struct{}
+	OnceCmd   struct{}
 )
 
-func (cmd selectorServerCmd) Run(ctx context.Context) error {
-	return selectorRun(ctx, true)
+func (cmd ServerCmd) Run(ctx context.Context) error {
+	return Run(ctx, true)
 }
 
-func (cmd selectorOnceCmd) Run(ctx context.Context) error {
-	return selectorRun(ctx, false)
+func (cmd OnceCmd) Run(ctx context.Context) error {
+	return Run(ctx, false)
 }
 
-func selectorRun(ctx context.Context, continuous bool) error {
+// Run executes the selector logic either continuously or once
+func Run(ctx context.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
 
 	log.Info("selector starting")
@@ -41,7 +43,7 @@ func selectorRun(ctx context.Context, continuous bool) error {
 		return err
 	}
 
-	sl, err := newSelector(ctx, dbconn, log)
+	sl, err := NewSelector(ctx, dbconn, log)
 	if err != nil {
 		return nil
 	}
@@ -75,18 +77,20 @@ func selectorRun(ctx context.Context, continuous bool) error {
 	return nil
 }
 
-type selector struct {
+// Selector manages the monitor selection process
+type Selector struct {
 	ctx    context.Context
 	dbconn *sql.DB
 	log    *slog.Logger
 }
 
-func newSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger) (*selector, error) {
-	return &selector{ctx: ctx, dbconn: dbconn, log: log}, nil
+// NewSelector creates a new selector instance
+func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger) (*Selector, error) {
+	return &Selector{ctx: ctx, dbconn: dbconn, log: log}, nil
 }
 
-
-func (sl *selector) Run() (int, error) {
+// Run processes all servers that need monitor review
+func (sl *Selector) Run() (int, error) {
 	tx, err := sl.dbconn.BeginTx(sl.ctx, nil)
 	if err != nil {
 		return 0, err
@@ -136,7 +140,7 @@ func (sl *selector) Run() (int, error) {
 	return count, nil
 }
 
-func (sl *selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
+func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
 	// target this many active servers
 	targetNumber := 5
 
