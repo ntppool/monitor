@@ -7,6 +7,22 @@ environment:
   GOCACHE: /cache/pkg/cache
   GOMODCACHE: /cache/pkg/mod
 
+services:
+  - name: database
+    image: mysql:8.0
+    ports:
+      - 3306
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: monitor_test
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: test123
+    detach: true
+    resources:
+      limits:
+        cpu: 1000
+        memory: 2048MiB
+
 steps:
   - name: fetch-tags
     image: alpine/git
@@ -29,8 +45,24 @@ steps:
       - name: gopkg
         path: /cache
     commands:
-      - go test -v ./...
+      - git fetch --tags
+      - apk add --no-cache mysql-client
+      - |
+        echo "Waiting for database to be ready..."
+        for i in $(seq 1 30); do
+          if mysql -h database -u monitor -ptest123 -e "SELECT 1" monitor_test 2>/dev/null; then
+            echo "Database is ready!"
+            break
+          fi
+          echo "Waiting for database... ($i/30)"
+          sleep 2
+        done
+      - mysql -h database -u monitor -ptest123 monitor_test < schema.sql
+      - go test -v ./... -short
+      - make test-integration
       - go build ./...
+    environment:
+      TEST_DATABASE_URL: "monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true"
     resources:
       requests:
         cpu: 1000
@@ -202,6 +234,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 53072f39b6eeed5d2bb406b3ab5e901dc8cbda82f92e2f71312992e695c287f0
+hmac: 8a55de79600b227da66cae370643d94c3abb545d4799c7205f1a2587b90f6960
 
 ...
