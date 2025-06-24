@@ -20,7 +20,7 @@ func (sl *Selector) isGrandfathered(
 
 	// Network constraints are hardcoded, so they can't be grandfathered
 	// (they were always enforced at the same level)
-	if violation.Type == violationNetwork {
+	if violation.Type == violationNetworkSameSubnet {
 		return false
 	}
 
@@ -42,6 +42,13 @@ func (sl *Selector) isGrandfathered(
 	// (this is a hard constraint that should never have been allowed)
 	if violation.Type == violationAccount {
 		return false
+	}
+
+	// Network diversity violations are grandfathered for existing assignments
+	// This is a new constraint, so existing assignments that violate it should be
+	// gradually removed rather than immediately blocked
+	if violation.Type == violationNetworkDiversity {
+		return true
 	}
 
 	return false

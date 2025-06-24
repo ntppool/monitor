@@ -61,7 +61,7 @@ func (sl *Selector) processServerNew(
 		monitor := convertMonitorPriorityToCandidate(row)
 
 		// Check constraints for current state
-		violation := sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus)
+		violation := sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
 
 		if violation.Type != violationNone {
 			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
@@ -80,7 +80,7 @@ func (sl *Selector) processServerNew(
 	for _, monitor := range availableMonitors {
 		// Check constraints for potential candidate assignment
 		targetState := ntpdb.ServerScoresStatusCandidate
-		violation := sl.checkConstraints(&monitor, server, accountLimits, targetState)
+		violation := sl.checkConstraints(&monitor, server, accountLimits, targetState, assignedMonitors)
 
 		state := sl.determineState(&monitor, violation)
 

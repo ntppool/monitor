@@ -104,7 +104,7 @@ func TestDetermineState(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusNew,
 			},
 			violation: constraintViolation{
-				Type:            violationNetwork,
+				Type:            violationNetworkSameSubnet,
 				IsGrandfathered: false,
 			},
 			want: candidateBlock,

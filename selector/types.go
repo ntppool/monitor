@@ -22,10 +22,11 @@ type newStatusList []newStatus
 type constraintViolationType string
 
 const (
-	violationNone    constraintViolationType = ""        // No violation
-	violationNetwork constraintViolationType = "network" // Same subnet
-	violationAccount constraintViolationType = "account" // Same account
-	violationLimit   constraintViolationType = "limit"   // Account limit exceeded
+	violationNone              constraintViolationType = ""                    // No violation
+	violationNetworkSameSubnet constraintViolationType = "network_same_subnet" // Monitor and server in same subnet
+	violationAccount           constraintViolationType = "account"             // Same account
+	violationLimit             constraintViolationType = "limit"               // Account limit exceeded
+	violationNetworkDiversity  constraintViolationType = "network_diversity"   // Multiple monitors in same /44 or /20 network
 )
 
 // constraintViolation describes a constraint violation

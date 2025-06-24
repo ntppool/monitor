@@ -14,6 +14,10 @@ const (
 	defaultSubnetV4              = 24 // IPv4 subnet constraint (/24)
 	defaultSubnetV6              = 48 // IPv6 subnet constraint (/48)
 	defaultAccountLimitPerServer = 2  // Default max monitors per server per account
+
+	// Network diversity constraints
+	diversitySubnetV4 = 20 // IPv4 network diversity constraint (/20)
+	diversitySubnetV6 = 44 // IPv6 network diversity constraint (/44)
 )
 
 // accountFlags represents the JSON structure in accounts.flags column
@@ -70,6 +74,78 @@ func (sl *Selector) checkNetworkConstraint(
 
 	if mPrefix.Contains(sAddr) {
 		return fmt.Errorf("monitor and server in same /%d network", prefixLen)
+	}
+
+	return nil
+}
+
+// checkNetworkDiversityConstraint verifies that we don't have multiple monitors
+// in the same /44 (IPv6) or /20 (IPv4) network for active and testing states
+func (sl *Selector) checkNetworkDiversityConstraint(
+	monitorIP string,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+	targetState ntpdb.ServerScoresStatus,
+) error {
+	if monitorIP == "" {
+		return nil // Can't check without IP
+	}
+
+	candidateAddr, err := netip.ParseAddr(monitorIP)
+	if err != nil {
+		return fmt.Errorf("invalid monitor IP: %w", err)
+	}
+
+	// Determine diversity prefix length
+	var diversityPrefixLen int
+	if candidateAddr.Is4() {
+		diversityPrefixLen = diversitySubnetV4
+	} else {
+		diversityPrefixLen = diversitySubnetV6
+	}
+
+	// Get candidate's diversity network
+	candidatePrefix, err := candidateAddr.Prefix(diversityPrefixLen)
+	if err != nil {
+		return fmt.Errorf("invalid prefix length %d: %w", diversityPrefixLen, err)
+	}
+
+	// Check against existing monitors
+	for _, existing := range existingMonitors {
+		// Skip if no IP or status
+		if !existing.MonitorIp.Valid || !existing.Status.Valid {
+			continue
+		}
+
+		// Only check active and testing monitors
+		existingStatus := existing.Status.ServerScoresStatus
+		if existingStatus != ntpdb.ServerScoresStatusActive &&
+			existingStatus != ntpdb.ServerScoresStatusTesting {
+			continue
+		}
+
+		// Parse existing monitor IP
+		existingAddr, err := netip.ParseAddr(existing.MonitorIp.String)
+		if err != nil {
+			continue // Skip invalid IPs
+		}
+
+		// Must be same address family
+		if candidateAddr.Is4() != existingAddr.Is4() {
+			continue
+		}
+
+		// Check if in same diversity network
+		if candidatePrefix.Contains(existingAddr) {
+			// Special handling: if we're trying to promote to testing and there's already
+			// an active monitor in this network, or if we're trying to promote to active
+			// and there's already a testing or active monitor, it's a violation
+			if (targetState == ntpdb.ServerScoresStatusTesting && existingStatus == ntpdb.ServerScoresStatusActive) ||
+				(targetState == ntpdb.ServerScoresStatusActive && (existingStatus == ntpdb.ServerScoresStatusActive || existingStatus == ntpdb.ServerScoresStatusTesting)) ||
+				(targetState == ntpdb.ServerScoresStatusTesting && existingStatus == ntpdb.ServerScoresStatusTesting) {
+				return fmt.Errorf("monitor would conflict with existing %s monitor in same /%d network (%s)",
+					existingStatus, diversityPrefixLen, candidatePrefix.String())
+			}
+		}
 	}
 
 	return nil
@@ -163,16 +239,17 @@ func (sl *Selector) checkConstraints(
 	server *serverInfo,
 	accountLimits map[uint32]*accountLimit,
 	targetState ntpdb.ServerScoresStatus,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
 ) *constraintViolation {
 	// Check network constraint
 	if err := sl.checkNetworkConstraint(monitor.IP, server.IP); err != nil {
 		violation := &constraintViolation{
-			Type:    violationNetwork,
+			Type:    violationNetworkSameSubnet,
 			Details: err.Error(),
 		}
 		// If we have a stored violation of the same type, preserve the timestamp
 		if monitor.ConstraintViolationType != nil &&
-			*monitor.ConstraintViolationType == string(violationNetwork) &&
+			*monitor.ConstraintViolationType == string(violationNetworkSameSubnet) &&
 			monitor.ConstraintViolationSince != nil {
 			violation.Since = *monitor.ConstraintViolationSince
 		} else {
@@ -199,6 +276,23 @@ func (sl *Selector) checkConstraints(
 		// If we have a stored violation of the same type, preserve the timestamp
 		if monitor.ConstraintViolationType != nil &&
 			*monitor.ConstraintViolationType == string(violationType) &&
+			monitor.ConstraintViolationSince != nil {
+			violation.Since = *monitor.ConstraintViolationSince
+		} else {
+			violation.Since = time.Now()
+		}
+		return violation
+	}
+
+	// Check network diversity constraints
+	if err := sl.checkNetworkDiversityConstraint(monitor.IP, existingMonitors, targetState); err != nil {
+		violation := &constraintViolation{
+			Type:    violationNetworkDiversity,
+			Details: err.Error(),
+		}
+		// If we have a stored violation of the same type, preserve the timestamp
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationNetworkDiversity) &&
 			monitor.ConstraintViolationSince != nil {
 			violation.Since = *monitor.ConstraintViolationSince
 		} else {

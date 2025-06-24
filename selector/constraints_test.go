@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"database/sql"
 	"testing"
 
 	"go.ntppool.org/monitor/ntpdb"
@@ -254,4 +255,120 @@ func findSubstring(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+func TestCheckNetworkDiversityConstraint(t *testing.T) {
+	sl := &Selector{}
+
+	tests := []struct {
+		name             string
+		monitorIP        string
+		existingMonitors []ntpdb.GetMonitorPriorityRow
+		targetState      ntpdb.ServerScoresStatus
+		wantErr          bool
+		errContains      string
+	}{
+		{
+			name:             "no_existing_monitors_ok",
+			monitorIP:        "192.168.1.10",
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{},
+			targetState:      ntpdb.ServerScoresStatusActive,
+			wantErr:          false,
+		},
+		{
+			name:      "ipv4_different_20_networks_ok",
+			monitorIP: "192.168.1.10", // 192.168.0.0/20
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "192.169.1.10", Valid: true}, // 192.169.0.0/20 (different /20)
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     false,
+		},
+		{
+			name:      "ipv4_same_20_network_conflict",
+			monitorIP: "192.168.1.10", // 192.168.0.0/20
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			name:      "ipv6_different_44_networks_ok",
+			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "2001:db8:2000::1", Valid: true}, // 2001:db8:2000::/44 (different /44)
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     false,
+		},
+		{
+			name:      "ipv6_same_44_network_conflict",
+			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "2001:db8:100f::1", Valid: true}, // Same /44 network
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			name:      "testing_with_existing_active_conflict",
+			monitorIP: "192.168.1.10",
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusTesting,
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			name:      "candidate_state_no_conflict_check",
+			monitorIP: "192.168.1.10",
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        1,
+					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusCandidate,
+			wantErr:     false, // Candidates don't conflict with active/testing
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sl.checkNetworkDiversityConstraint(tt.monitorIP, tt.existingMonitors, tt.targetState)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkNetworkDiversityConstraint() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.errContains != "" {
+				if !contains(err.Error(), tt.errContains) {
+					t.Errorf("checkNetworkDiversityConstraint() error = %v, want error containing %v", err, tt.errContains)
+				}
+			}
+		})
+	}
 }
