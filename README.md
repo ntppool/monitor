@@ -20,7 +20,7 @@ sudo journalctl -u ntppool-agent@\* -f
 ```
 
 When installed from the rpm or deb package, state will by default
-be stored in `/var/run/ntppool-agent`. You can change the default in
+be stored in `/var/lib/ntppool-agent`. You can change the default in
 `/etc/default/ntppool-agent`, or with the `--state-dir` parameter
 or by setting `$MONITOR_STATE_DIR` in the environment.
 

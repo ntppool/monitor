@@ -106,7 +106,7 @@ Main configuration and authentication state.
 Directory containing TLS certificates for mutual authentication.
 .RE
 .TP
-.B /var/run/ntppool-agent/
+.B /var/lib/ntppool-agent/
 Default state directory when installed from system packages.
 .SH EXAMPLES
 .TP
