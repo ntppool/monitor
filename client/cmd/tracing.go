@@ -25,6 +25,9 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 
 	if ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); len(ep) > 0 {
 		endpoint = ""
+	} else {
+		// Set the env var so autoexport log exporter uses our endpoint
+		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://"+endpoint+":4318")
 	}
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,
