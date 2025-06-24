@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
@@ -43,9 +44,13 @@ func Run(ctx context.Context, continuous bool) error {
 		return err
 	}
 
-	sl, err := NewSelector(ctx, dbconn, log)
+	// Create metrics - for now we'll create a no-op metrics instance
+	// This will be properly wired when integrated with the scorer command
+	metrics := NewMetrics(prometheus.NewRegistry())
+
+	sl, err := NewSelector(ctx, dbconn, log, metrics)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	expback := backoff.NewExponentialBackOff()
@@ -79,14 +84,15 @@ func Run(ctx context.Context, continuous bool) error {
 
 // Selector manages the monitor selection process
 type Selector struct {
-	ctx    context.Context
-	dbconn *sql.DB
-	log    *slog.Logger
+	ctx     context.Context
+	dbconn  *sql.DB
+	log     *slog.Logger
+	metrics *Metrics
 }
 
 // NewSelector creates a new selector instance
-func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger) (*Selector, error) {
-	return &Selector{ctx: ctx, dbconn: dbconn, log: log}, nil
+func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger, metrics *Metrics) (*Selector, error) {
+	return &Selector{ctx: ctx, dbconn: dbconn, log: log, metrics: metrics}, nil
 }
 
 // Run processes all servers that need monitor review

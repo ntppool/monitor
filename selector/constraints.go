@@ -255,6 +255,12 @@ func (sl *Selector) checkConstraints(
 		} else {
 			violation.Since = time.Now()
 		}
+
+		// Track constraint violation in metrics
+		if sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+		}
+
 		return violation
 	}
 
@@ -281,6 +287,12 @@ func (sl *Selector) checkConstraints(
 		} else {
 			violation.Since = time.Now()
 		}
+
+		// Track constraint violation in metrics
+		if sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+		}
+
 		return violation
 	}
 
@@ -298,6 +310,12 @@ func (sl *Selector) checkConstraints(
 		} else {
 			violation.Since = time.Now()
 		}
+
+		// Track constraint violation in metrics
+		if sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+		}
+
 		return violation
 	}
 

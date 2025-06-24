@@ -200,7 +200,7 @@ LIMIT  ?
 OFFSET ?;
 
 -- name: GetMonitorPriority :many
-select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
+select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     avg(ls.rtt) / 1000 as avg_rtt,
     round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
     avg(ls.step) as avg_step,
@@ -219,7 +219,7 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+  group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
 
@@ -258,6 +258,7 @@ WHERE server_id = ? AND monitor_id = ?;
 -- Find globally active/testing monitors not assigned to this server
 SELECT
     m.id,
+    m.id_token,
     m.tls_name,
     m.account_id,
     m.ip as monitor_ip,

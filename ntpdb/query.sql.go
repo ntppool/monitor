@@ -49,6 +49,7 @@ func (q *Queries) DeleteServerScore(ctx context.Context, arg DeleteServerScorePa
 const getAvailableMonitors = `-- name: GetAvailableMonitors :many
 SELECT
     m.id,
+    m.id_token,
     m.tls_name,
     m.account_id,
     m.ip as monitor_ip,
@@ -72,6 +73,7 @@ ORDER BY
 
 type GetAvailableMonitorsRow struct {
 	ID           uint32          `json:"id"`
+	IDToken      sql.NullString  `json:"id_token"`
 	TlsName      sql.NullString  `json:"tls_name"`
 	AccountID    sql.NullInt32   `json:"account_id"`
 	MonitorIp    sql.NullString  `json:"monitor_ip"`
@@ -91,6 +93,7 @@ func (q *Queries) GetAvailableMonitors(ctx context.Context, serverID uint32) ([]
 		var i GetAvailableMonitorsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.IDToken,
 			&i.TlsName,
 			&i.AccountID,
 			&i.MonitorIp,
@@ -123,7 +126,7 @@ func (q *Queries) GetMinLogScoreID(ctx context.Context) (uint64, error) {
 }
 
 const getMonitorPriority = `-- name: GetMonitorPriority :many
-select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
+select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     avg(ls.rtt) / 1000 as avg_rtt,
     round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
     avg(ls.step) as avg_step,
@@ -142,13 +145,14 @@ select m.id, m.tls_name, m.account_id, m.ip as monitor_ip,
   and ls.server_id = ?
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 12 hour)
-  group by m.id, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+  group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt
 `
 
 type GetMonitorPriorityRow struct {
 	ID                       uint32                 `json:"id"`
+	IDToken                  sql.NullString         `json:"id_token"`
 	TlsName                  sql.NullString         `json:"tls_name"`
 	AccountID                sql.NullInt32          `json:"account_id"`
 	MonitorIp                sql.NullString         `json:"monitor_ip"`
@@ -175,6 +179,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 		var i GetMonitorPriorityRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.IDToken,
 			&i.TlsName,
 			&i.AccountID,
 			&i.MonitorIp,

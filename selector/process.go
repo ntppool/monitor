@@ -31,6 +31,7 @@ func (sl *Selector) processServerNew(
 	db *ntpdb.Queries,
 	serverID uint32,
 ) (bool, error) {
+	start := time.Now()
 	sl.log.Debug("processing server", "serverID", serverID)
 
 	// Step 1: Load server information
@@ -65,6 +66,11 @@ func (sl *Selector) processServerNew(
 
 		if violation.Type != violationNone {
 			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
+
+			// Track grandfathered violations in metrics
+			if violation.IsGrandfathered && sl.metrics != nil {
+				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
+			}
 		}
 
 		state := sl.determineState(&monitor, violation)
@@ -82,6 +88,15 @@ func (sl *Selector) processServerNew(
 		targetState := ntpdb.ServerScoresStatusCandidate
 		violation := sl.checkConstraints(&monitor, server, accountLimits, targetState, assignedMonitors)
 
+		if violation.Type != violationNone {
+			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
+
+			// Track grandfathered violations in metrics
+			if violation.IsGrandfathered && sl.metrics != nil {
+				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
+			}
+		}
+
 		state := sl.determineState(&monitor, violation)
 
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
@@ -95,9 +110,18 @@ func (sl *Selector) processServerNew(
 	changes := sl.applySelectionRules(evaluatedMonitors)
 
 	// Step 6: Execute changes
+	// Create a map from monitor ID to monitor candidate for metrics tracking
+	monitorMap := make(map[uint32]*monitorCandidate)
+	for _, em := range evaluatedMonitors {
+		monitorMap[em.monitor.ID] = &em.monitor
+	}
+
 	changeCount := 0
+	failedChanges := 0
 	for _, change := range changes {
-		if err := sl.applyStatusChange(ctx, db, serverID, change); err != nil {
+		monitor := monitorMap[change.monitorID]
+		if err := sl.applyStatusChange(ctx, db, serverID, change, monitor); err != nil {
+			failedChanges++
 			sl.log.Error("failed to apply status change",
 				"serverID", serverID,
 				"monitorID", change.monitorID,
@@ -122,6 +146,51 @@ func (sl *Selector) processServerNew(
 		// Don't fail the whole operation for tracking errors
 	}
 
+	// Track performance metrics
+	if sl.metrics != nil {
+		duration := time.Since(start).Seconds()
+
+		// Count globally active monitors
+		globallyActiveCount := 0
+		for _, em := range evaluatedMonitors {
+			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
+				globallyActiveCount++
+			}
+		}
+
+		// Track monitor pool sizes
+		activeCount := 0
+		testingCount := 0
+		candidateCount := 0
+		for _, em := range evaluatedMonitors {
+			switch em.monitor.ServerStatus {
+			case ntpdb.ServerScoresStatusActive:
+				activeCount++
+			case ntpdb.ServerScoresStatusTesting:
+				testingCount++
+			case ntpdb.ServerScoresStatusCandidate:
+				candidateCount++
+			}
+		}
+
+		sl.metrics.RecordProcessingMetrics(
+			serverID,
+			duration,
+			len(evaluatedMonitors),
+			changeCount,
+			failedChanges,
+			globallyActiveCount,
+		)
+
+		sl.metrics.TrackMonitorPoolSizes(
+			serverID,
+			activeCount,
+			testingCount,
+			candidateCount,
+			len(availableMonitors),
+		)
+	}
+
 	// Log summary
 	sl.log.Info("server processing complete",
 		"serverID", serverID,
@@ -129,7 +198,8 @@ func (sl *Selector) processServerNew(
 		"availableMonitors", len(availableMonitors),
 		"evaluatedMonitors", len(evaluatedMonitors),
 		"plannedChanges", len(changes),
-		"appliedChanges", changeCount)
+		"appliedChanges", changeCount,
+		"failedChanges", failedChanges)
 
 	return changeCount > 0, nil
 }
@@ -183,8 +253,18 @@ func (sl *Selector) findAvailableMonitors(
 			monitorIP = row.MonitorIp.String
 		}
 
+		var idToken, tlsName string
+		if row.IDToken.Valid {
+			idToken = row.IDToken.String
+		}
+		if row.TlsName.Valid {
+			tlsName = row.TlsName.String
+		}
+
 		candidate := monitorCandidate{
 			ID:           uint32(row.ID),
+			IDToken:      idToken,
+			TLSName:      tlsName,
 			AccountID:    accountID,
 			IP:           monitorIP,
 			GlobalStatus: row.GlobalStatus,
@@ -341,6 +421,7 @@ func (sl *Selector) applyStatusChange(
 	db *ntpdb.Queries,
 	serverID uint32,
 	change statusChange,
+	monitor *monitorCandidate,
 ) error {
 	// Handle different transition types
 	switch {
@@ -356,11 +437,14 @@ func (sl *Selector) applyStatusChange(
 		if err != nil {
 			return fmt.Errorf("failed to insert server score: %w", err)
 		}
-		return db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
+		err = db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
 			MonitorID: change.monitorID,
 			ServerID:  serverID,
 			Status:    ntpdb.ServerScoresStatusCandidate,
 		})
+		if err != nil {
+			return err
+		}
 
 	case change.toStatus == ntpdb.ServerScoresStatusNew:
 		// Remove from server_scores
@@ -372,12 +456,22 @@ func (sl *Selector) applyStatusChange(
 
 	default:
 		// Update existing status
-		return db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
+		err := db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
 			MonitorID: change.monitorID,
 			ServerID:  serverID,
 			Status:    change.toStatus,
 		})
+		if err != nil {
+			return err
+		}
 	}
+
+	// Track successful status change in metrics
+	if sl.metrics != nil {
+		sl.metrics.TrackStatusChange(monitor, change.fromStatus, change.toStatus, serverID, change.reason)
+	}
+
+	return nil
 }
 
 // Helper methods for selection logic

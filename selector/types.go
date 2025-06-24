@@ -40,6 +40,8 @@ type constraintViolation struct {
 // monitorCandidate represents a monitor being evaluated for a server
 type monitorCandidate struct {
 	ID                       uint32
+	IDToken                  string // Unique identifier for metrics
+	TLSName                  string // Human-readable name for metrics
 	AccountID                *uint32
 	IP                       string
 	GlobalStatus             ntpdb.MonitorsStatus

@@ -102,6 +102,16 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 		HasMetrics:   true, // If in GetMonitorPriority results, it has metrics
 	}
 
+	// ID Token for metrics
+	if row.IDToken.Valid {
+		candidate.IDToken = row.IDToken.String
+	}
+
+	// TLS Name for metrics
+	if row.TlsName.Valid {
+		candidate.TLSName = row.TlsName.String
+	}
+
 	// Account ID
 	if row.AccountID.Valid {
 		accountID := uint32(row.AccountID.Int32)
