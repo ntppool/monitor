@@ -4,12 +4,9 @@
 package selector
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 	"time"
-
-	"go.ntppool.org/monitor/ntpdb"
 )
 
 // Test helpers for integration tests

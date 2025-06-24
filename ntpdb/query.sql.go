@@ -811,6 +811,8 @@ const insertServerScore = `-- name: InsertServerScore :exec
 insert into server_scores
   (monitor_id, server_id, score_raw, created_on)
   values (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  score_raw = VALUES(score_raw)
 `
 
 type InsertServerScoreParams struct {

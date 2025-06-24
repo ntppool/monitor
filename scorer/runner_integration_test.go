@@ -4,7 +4,6 @@
 package scorer
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 	logger := testutil.NewTestLogger(t)
 
 	// Setup test data
-	setupScorerTestData(t, factory)
+	setupScorerTestData(t, tdb, factory)
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
@@ -30,10 +29,10 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	t.Run("ProcessBacklog", func(t *testing.T) {
-		// Insert test log scores
+		// Insert test log scores using regular monitors (not scorers)
 		now := time.Now()
 		for i := 0; i < 100; i++ {
-			factory.CreateTestLogScore(t, 3001, 2001, 20.0, 0.8, nil, now.Add(-time.Duration(i)*time.Minute))
+			factory.CreateTestLogScore(t, 3001, 2003, 20.0, 0.8, nil, now.Add(-time.Duration(i)*time.Minute))
 		}
 
 		// Run scorer
@@ -41,7 +40,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		testutil.AssertNoError(t, err, "Scorer run failed")
 		testutil.AssertTrue(t, count > 0, "Expected to process some log scores, got %d", count)
 
-		// Verify server scores were updated
+		// Verify server scores were updated (scorer 2001 processes data from monitor 2003)
 		scores, err := tdb.Queries().GetServerScore(tdb.Context(), ntpdb.GetServerScoreParams{
 			ServerID:  3001,
 			MonitorID: 2001,
@@ -64,10 +63,10 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		runner2, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg2)
 		testutil.AssertNoError(t, err, "Failed to create second scorer runner")
 
-		// Add more test data
+		// Add more test data using regular monitor
 		now := time.Now()
 		for i := 0; i < 50; i++ {
-			factory.CreateTestLogScore(t, 3002, 2002, 19.5, 0.7, nil, now.Add(-time.Duration(i)*time.Minute))
+			factory.CreateTestLogScore(t, 3002, 2004, 19.5, 0.7, nil, now.Add(-time.Duration(i)*time.Minute))
 		}
 
 		// Run both scorers concurrently
@@ -91,10 +90,10 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		testutil.AssertNoError(t, err1, "First scorer failed")
 		testutil.AssertNoError(t, err2, "Second scorer failed")
 
-		// Verify data consistency
+		// Verify data consistency (scorer 2001 should have processed data from monitor 2004)
 		scores, err := tdb.Queries().GetServerScore(tdb.Context(), ntpdb.GetServerScoreParams{
 			ServerID:  3002,
-			MonitorID: 2002,
+			MonitorID: 2001,
 		})
 		testutil.AssertNoError(t, err, "Failed to get server score")
 		testutil.AssertEqual(t, "active", string(scores.Status), "Expected server score status to be active")
@@ -106,7 +105,6 @@ func TestScorerRunner_ErrorHandling(t *testing.T) {
 	defer tdb.Close()
 	defer tdb.CleanupTestData(t)
 
-	factory := testutil.NewDataFactory(tdb)
 	logger := testutil.NewTestLogger(t)
 
 	t.Run("NoScorersConfigured", func(t *testing.T) {
@@ -140,7 +138,7 @@ func TestScorerRunner_Performance(t *testing.T) {
 	logger := testutil.NewTestLogger(t)
 
 	// Setup test data
-	setupScorerTestData(t, factory)
+	setupScorerTestData(t, tdb, factory)
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
@@ -154,7 +152,8 @@ func TestScorerRunner_Performance(t *testing.T) {
 
 		start := time.Now()
 		for i := 0; i < numScores; i++ {
-			factory.CreateTestLogScore(t, 3001, 2001, 20.0+float64(i%100)/100, 0.8, nil, now.Add(-time.Duration(i)*time.Second))
+			// Use regular monitor (2003) not scorer (2001) for generating log scores
+			factory.CreateTestLogScore(t, 3001, 2003, 20.0+float64(i%100)/100, 0.8, nil, now.Add(-time.Duration(i)*time.Second))
 		}
 		insertTime := time.Since(start)
 		t.Logf("Inserted %d log scores in %v", numScores, insertTime)
@@ -175,14 +174,29 @@ func TestScorerRunner_Performance(t *testing.T) {
 }
 
 // setupScorerTestData creates the basic test data needed for scorer tests
-func setupScorerTestData(t *testing.T, factory *testutil.DataFactory) {
+func setupScorerTestData(t *testing.T, tdb *testutil.TestDB, factory *testutil.DataFactory) {
 	// Create test accounts
 	factory.CreateTestAccount(t, 1001, "test1@example.com")
 	factory.CreateTestAccount(t, 1002, "test2@example.com")
 
-	// Create test monitors (scorers)
-	factory.CreateTestMonitor(t, 2001, "recentmedian.test", 1001, "10.0.0.1", "active")
-	factory.CreateTestMonitor(t, 2002, "every.test", 1002, "10.0.0.2", "active")
+	// Create test monitors (scorers) - hostname must match scorer registry keys
+	factory.CreateTestMonitorWithType(t, 2001, "recentmedian.test", 1001, "10.0.0.1", "active", "score")
+	factory.CreateTestMonitorWithType(t, 2002, "every.test", 1002, "10.0.0.2", "active", "score")
+
+	// Create additional regular monitors for generating log scores to process
+	factory.CreateTestMonitor(t, 2003, "monitor1.test", 1001, "10.0.0.3", "active")
+	factory.CreateTestMonitor(t, 2004, "monitor2.test", 1002, "10.0.0.4", "active")
+
+	// Set the hostname field to match the scorer names
+	var err error
+	_, err = tdb.ExecContext(tdb.Context(), "UPDATE monitors SET hostname = 'recentmedian' WHERE id = 2001")
+	if err != nil {
+		t.Fatalf("Failed to set recentmedian hostname: %v", err)
+	}
+	_, err = tdb.ExecContext(tdb.Context(), "UPDATE monitors SET hostname = 'every' WHERE id = 2002")
+	if err != nil {
+		t.Fatalf("Failed to set every hostname: %v", err)
+	}
 
 	// Create test servers
 	factory.CreateTestServer(t, 3001, "192.0.2.1", "v4", nil)
@@ -193,16 +207,34 @@ func setupScorerTestData(t *testing.T, factory *testutil.DataFactory) {
 	factory.CreateTestServerScore(t, 3001, 2001, "new", 0)
 	factory.CreateTestServerScore(t, 3002, 2002, "new", 0)
 
+	// Create server scores for regular monitors (needed for GetScorerRecentScores query)
+	// The recentmedian scorer needs these to find log scores from active monitors
+	factory.CreateTestServerScore(t, 3001, 2003, "active", 20.0)
+	factory.CreateTestServerScore(t, 3002, 2004, "active", 19.5)
+	factory.CreateTestServerScore(t, 3003, 2003, "active", 18.0)
+
 	// Set up system settings
 	factory.SetSystemSetting(t, "scorer", `{"batch_size": 100}`)
 
-	// Insert scorer configuration (this would normally be done by setup)
-	// For now, we'll insert directly into the database
-	// Note: This assumes the scorers table exists - if not, we'd need to create it
-	insertScorerSQL := `
-		INSERT INTO scorers (hostname, log_score_id)
-		VALUES ('recentmedian', 0), ('every', 0)
+	// Create an initial log score to reference in scorer_status
+	now := time.Now()
+	factory.CreateTestLogScore(t, 3001, 2003, 20.0, 0.8, nil, now.Add(-time.Hour))
+
+	// Get the last inserted log score ID
+	var logScoreID uint64
+	err = tdb.QueryRowContext(tdb.Context(), "SELECT LAST_INSERT_ID()").Scan(&logScoreID)
+	if err != nil {
+		t.Fatalf("Failed to get last insert ID: %v", err)
+	}
+
+	// Insert scorer status to enable the scorers (use valid log_score_id)
+	insertScorerStatusSQL := `
+		INSERT INTO scorer_status (scorer_id, log_score_id)
+		VALUES (2001, ?), (2002, ?)
 		ON DUPLICATE KEY UPDATE log_score_id = VALUES(log_score_id)
 	`
-	factory.tdb.ExecContext(factory.tdb.Context(), insertScorerSQL)
+	_, err = tdb.ExecContext(tdb.Context(), insertScorerStatusSQL, logScoreID, logScoreID)
+	if err != nil {
+		t.Fatalf("Failed to insert scorer status: %v", err)
+	}
 }

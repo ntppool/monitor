@@ -81,7 +81,8 @@ When diagnosing issues, follow this systematic approach:
 3. **Identify state and caching** - Where is data stored, cached, or persisted?
 4. **Consider simple explanations first** - Connection pooling, timing issues, configuration
 5. **Verify assumptions** - Test each hypothesis before implementing solutions
-6. **Prefer targeted fixes** - Avoid complex architectural changes when simple solutions exist
+6. **Check for race conditions** - Concurrent operations, database constraints, timing dependencies
+7. **Prefer targeted fixes** - Avoid complex architectural changes when simple solutions exist
 
 ## Task Completion Criteria
 
@@ -162,6 +163,25 @@ Never mark a task as completed if:
 - Avoid `testify/assert` or similar tools
 - Use mocks only when necessary
 - Follow existing test patterns in the codebase
+
+### Integration Test Debugging
+
+When debugging failing integration tests, especially those involving databases:
+
+1. **Understand Data Dependencies**: Trace through test setup to identify all required data relationships
+   - Check what monitors, servers, and scores are created
+   - Verify that all foreign key relationships are satisfied
+   - Pay special attention to the difference between monitor types ('monitor' vs 'score')
+
+2. **Verify Query Requirements**: Check SQL queries to understand what data they expect
+   - Use `Grep` to find query definitions
+   - Read the actual SQL to understand JOIN conditions and WHERE clauses
+   - Ensure test data satisfies all query conditions
+
+3. **Use CI Tools First**: Before running tests manually, use the provided CI scripts:
+   - `./scripts/test-ci-local.sh` - Full CI environment emulation
+   - `./scripts/test-scorer-integration.sh` - Component-specific tests
+   - These scripts ensure proper database setup and isolation
 
 ## Key Architecture Components
 
@@ -289,6 +309,21 @@ if !ipc.IsLive() {
 
 - **MySQL** backend with **sqlc** for compile-time verified SQL
 - **ClickHouse** support for analytics and traceroute data
+
+### Concurrent Operations and Race Conditions
+
+When implementing database operations that might be called concurrently:
+
+1. **Check for Duplicate Key Constraints**: Review table schemas for unique constraints
+2. **Use Idempotent Operations**: Prefer `INSERT ... ON DUPLICATE KEY UPDATE` over plain `INSERT`
+3. **Test Concurrent Scenarios**: Integration tests should include concurrent operation tests
+4. **Regenerate After SQL Changes**: Always run `make sqlc` after modifying query.sql
+
+Example pattern for safe inserts:
+```sql
+INSERT INTO table (col1, col2) VALUES (?, ?)
+ON DUPLICATE KEY UPDATE col2 = VALUES(col2);
+```
 
 ## Environment Configuration
 
@@ -468,11 +503,89 @@ The ntppool-agent determines the monitor-api server endpoint as follows:
 
 To change the default, set the appropriate environment variable or update the logic in the `depenv` package. See also the `README.md` for user-facing configuration options.
 
+## CI Tools and Testing Infrastructure
+
+### Test Database Management
+
+The project includes comprehensive CI tools in the `scripts/` directory:
+
+- **`scripts/test-db.sh`** - Primary test database management
+  - Commands: `start`, `stop`, `restart`, `status`, `logs`, `shell`, `reset`
+  - Creates MySQL 8.0 container on port 3308
+  - Auto-loads schema and generates test data
+  - Usage: `./scripts/test-db.sh start` then get connection string with `./scripts/test-db.sh status`
+
+### CI Test Runners
+
+- **`scripts/test-ci-local.sh`** - Emulates full Drone CI locally using Docker Compose
+- **`scripts/test-minimal-ci.sh`** - Minimal test runner for debugging specific failures
+- **`scripts/test-ci-debug.sh`** - Step-by-step CI debugging with verbose output
+- **`scripts/test-scorer-integration.sh`** - Dedicated scorer component testing
+
+### When to Use CI Tools
+
+**Always use CI tools instead of manual testing when**:
+- Debugging integration test failures
+- Testing with a clean database state
+- Reproducing CI environment issues locally
+- Running concurrent or performance tests
+
+**Tool Selection Guide**:
+- `test-ci-local.sh`: Full CI replication - use for final validation
+- `test-scorer-integration.sh`: Component testing - use for focused debugging
+- `test-minimal-ci.sh`: Quick isolation testing
+- `test-db.sh`: Direct database management
+
+### Diagnostic Tools
+
+- **`scripts/diagnose-ci.sh`** - Comprehensive CI failure diagnostics
+  - Tests MySQL connectivity, Go environment, and runs basic tests
+  - Use when CI tests fail to quickly identify root cause
+
+### Build and Release
+
+- **`scripts/build-linux-race.sh`** - Builds Linux amd64 binary with race detector
+- **`scripts/run-goreleaser`** - Automated release packaging with Harbor registry integration
+- **`scripts/update-man-page`** - Generates man pages for ntppool-agent
+
+### Database Port Allocation
+
+To avoid conflicts, different test scenarios use specific ports:
+- **3307**: Scorer integration tests
+- **3308**: Main test database (default)
+- **3309**: CI diagnostics
+
+### Local Development Workflow
+
+1. **Start test database**: `./scripts/test-db.sh start`
+2. **Run tests**: `go test ./...`
+3. **Debug failures**: `./scripts/test-ci-debug.sh` or `./scripts/diagnose-ci.sh`
+4. **Stop database**: `./scripts/test-db.sh stop`
+
+## Recent Architecture Changes (June 2025)
+
+### Selector Package Refactoring
+- Selector implementation moved to dedicated `selector/` package
+- New constraint validation algorithm for server scoring
+- Added candidate status tracking in `server_scores` table
+
+### Testing Infrastructure Improvements
+- Enhanced integration test framework
+- Improved error handling for monitor activation tests
+- Added comprehensive testing patterns for API operations
+
+### Configuration Management Updates
+- Transitioned to systemd StateDirectory for persistent storage
+- Added account parameter to setup command
+- Improved hot-reloading system with better error recovery
+
 ## Pre-Commit Best Practices
 
 - **Before committing code:**
   - Run `go test ./...` to ensure all tests pass
   - Run `gofumpt -w` on changed `.go` files to ensure consistent formatting
+  - For integration tests, use `./scripts/test-db.sh start` and run full test suite
+  - Use `./scripts/test-ci-local.sh` to validate against full CI environment
 
 
 Your last name is MonitorAI.

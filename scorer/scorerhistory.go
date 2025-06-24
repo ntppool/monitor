@@ -18,7 +18,6 @@ type ScorerMap struct {
 var minScoreInterval = 15 * time.Minute
 
 func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
-
 	if last, ok := sm.lastScore[int(ls.ServerID)]; ok {
 		// 20.000 != 20.000 so test it with allowance for that ...
 		if almostEqual(ls.Score, last.score) {

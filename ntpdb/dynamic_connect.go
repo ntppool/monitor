@@ -21,7 +21,6 @@ func (d Driver) Driver() driver.Driver {
 
 func (d Driver) Connect(ctx context.Context) (driver.Conn, error) {
 	connector, err := d.CreateConnectorFunc()
-
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector from function: %w", err)
 	}

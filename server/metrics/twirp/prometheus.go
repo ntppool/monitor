@@ -78,7 +78,6 @@ func NewServerHooks(registerer prometheus.Registerer) *twirp.ServerHooks {
 	}
 
 	hooks.RequestRouted = func(ctx context.Context) (context.Context, error) {
-
 		method, ok := twirp.MethodName(ctx)
 		if !ok {
 			return ctx, nil
@@ -89,7 +88,6 @@ func NewServerHooks(registerer prometheus.Registerer) *twirp.ServerHooks {
 	}
 
 	hooks.ResponseSent = func(ctx context.Context) {
-
 		method, _ := twirp.MethodName(ctx)
 		status, _ := twirp.StatusCode(ctx)
 		client, _ := getReqClient(ctx)

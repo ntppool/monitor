@@ -22,7 +22,6 @@ func (s *EveryScore) Setup(id uint32) {
 }
 
 func (s *EveryScore) Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, ls ntpdb.LogScore) (score.Score, error) {
-
 	if s.scorerID == 0 {
 		return score.Score{}, fmt.Errorf("EveryScore not Setup()")
 	}
@@ -52,5 +51,4 @@ func (s *EveryScore) Score(ctx context.Context, db *ntpdb.Queries, serverScore n
 		HasMaxScore: hasMaxScore,
 		MaxScore:    maxscore,
 	}, nil
-
 }

@@ -43,7 +43,9 @@ UPDATE server_scores
 -- name: InsertServerScore :exec
 insert into server_scores
   (monitor_id, server_id, score_raw, created_on)
-  values (?, ?, ?, ?);
+  values (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  score_raw = VALUES(score_raw);
 
 -- name: UpdateServerScoreStatus :exec
 update server_scores

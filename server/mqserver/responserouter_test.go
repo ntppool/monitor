@@ -16,7 +16,6 @@ import (
 )
 
 func TestResponseHandler(t *testing.T) {
-
 	ctx := context.Background()
 
 	mqs, err := Setup(logger.Setup(), nil, prometheus.NewRegistry())
@@ -72,11 +71,9 @@ func TestResponseHandler(t *testing.T) {
 
 		h := rr.Handler()
 		h(msg)
-
 	}()
 
 	wg.Wait()
 
 	rr.CloseResponseID(id.String())
-
 }

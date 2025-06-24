@@ -57,9 +57,10 @@ steps:
           sleep 2
         done
       - mysql -h database -u monitor -ptest123 monitor_test < schema.sql
+      - go build ./...
       - go test -v ./... -short
       - make test-integration
-      - go build ./...
+      - echo OK
     environment:
       TEST_DATABASE_URL: "monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true"
     resources:
@@ -233,6 +234,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 3a96a9ec7c5eb01329a3c1205c412b0c50088be2ab61de701cd7ba2fdfe34549
+hmac: 64e00f78f85786d963e3e2fbd2d7269ab72768d8584ec038e23460042e95dd6e
 
 ...

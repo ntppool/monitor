@@ -129,7 +129,6 @@ func setTwirpInfo(ctx context.Context, span otrace.Span) {
 }
 
 func (t *TraceServerHooks) startTraceSpan(ctx context.Context) (context.Context, error) {
-
 	opts := []otrace.SpanStartOption{
 		otrace.WithSpanKind(otrace.SpanKindServer),
 	}
@@ -183,7 +182,6 @@ func interfaceToAttribute(k string, value interface{}) attribute.KeyValue {
 // handleRequestRouted sets the operation name because we won't know what it is
 // until the RequestRouted hook.
 func (t *TraceServerHooks) handleRequestRouted(ctx context.Context) (context.Context, error) {
-
 	span := otrace.SpanFromContext(ctx)
 	if span != nil {
 		if method, ok := twirp.MethodName(ctx); ok {

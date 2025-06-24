@@ -71,6 +71,19 @@ coverage:
 benchmark:
 	go test -bench=. -benchmem ./...
 
+# CI-like testing locally
+test-ci-local:
+	@echo "Running CI-like tests locally..."
+	./scripts/test-ci-local.sh
+
+test-ci-debug:
+	@echo "Running CI tests with debugging..."
+	./scripts/test-ci-debug.sh
+
+test-ci-minimal:
+	@echo "Running minimal CI test..."
+	./scripts/test-minimal-ci.sh
+
 tools:
 	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
 	go install github.com/bufbuild/buf/cmd/buf@latest

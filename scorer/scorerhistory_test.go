@@ -8,7 +8,6 @@ import (
 )
 
 func TestLastScore(t *testing.T) {
-
 	sm := &ScorerMap{
 		lastScore: map[int]*lastUpdate{},
 	}
@@ -45,5 +44,4 @@ func TestLastScore(t *testing.T) {
 	if !new {
 		t.Fatalf("fourth test should be 'new' (different score)")
 	}
-
 }

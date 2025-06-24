@@ -80,7 +80,16 @@ func (tdb *TestDB) CleanupTestData(t *testing.T) {
 
 	for _, table := range tables {
 		// Only clean test data (using ID ranges)
-		query := fmt.Sprintf("DELETE FROM %s WHERE id >= 1000 AND id <= 9999", table)
+		var query string
+		switch table {
+		case "servers_monitor_review":
+			query = fmt.Sprintf("DELETE FROM %s WHERE server_id >= 1000 AND server_id <= 9999", table)
+		case "system_settings":
+			// System settings uses a different approach - cleaned separately below
+			continue
+		default:
+			query = fmt.Sprintf("DELETE FROM %s WHERE id >= 1000 AND id <= 9999", table)
+		}
 		_, err := tdb.ExecContext(tdb.ctx, query)
 		if err != nil {
 			t.Logf("Error cleaning up table %s: %v", table, err)
@@ -100,7 +109,7 @@ func (tdb *TestDB) CleanupTestData(t *testing.T) {
 	}
 
 	// Clean up test system settings
-	_, err = tdb.ExecContext(tdb.ctx, "DELETE FROM system_settings WHERE setting_key LIKE 'test_%'")
+	_, err = tdb.ExecContext(tdb.ctx, "DELETE FROM system_settings WHERE "+"`key`"+" LIKE 'test_%'")
 	if err != nil {
 		t.Logf("Error cleaning up system_settings: %v", err)
 	}
@@ -177,9 +186,9 @@ func NewDataFactory(tdb *TestDB) *DataFactory {
 // CreateTestAccount creates a test account
 func (df *DataFactory) CreateTestAccount(t *testing.T, id uint32, email string) {
 	query := `
-		INSERT INTO accounts (id, email, created_on)
+		INSERT INTO accounts (id, name, created_on)
 		VALUES (?, ?, NOW())
-		ON DUPLICATE KEY UPDATE email = VALUES(email)
+		ON DUPLICATE KEY UPDATE name = VALUES(name)
 	`
 	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, email)
 	if err != nil {
@@ -189,16 +198,22 @@ func (df *DataFactory) CreateTestAccount(t *testing.T, id uint32, email string) 
 
 // CreateTestMonitor creates a test monitor
 func (df *DataFactory) CreateTestMonitor(t *testing.T, id uint32, tlsName string, accountID uint32, ip string, status string) {
+	df.CreateTestMonitorWithType(t, id, tlsName, accountID, ip, status, "monitor")
+}
+
+// CreateTestMonitorWithType creates a test monitor with specified type
+func (df *DataFactory) CreateTestMonitorWithType(t *testing.T, id uint32, tlsName string, accountID uint32, ip string, status string, monitorType string) {
 	query := `
-		INSERT INTO monitors (id, tls_name, account_id, ip, status, type, created_on)
-		VALUES (?, ?, ?, ?, ?, 'monitor', NOW())
+		INSERT INTO monitors (id, tls_name, account_id, ip, status, type, config, created_on)
+		VALUES (?, ?, ?, ?, ?, ?, '{}', NOW())
 		ON DUPLICATE KEY UPDATE
 			tls_name = VALUES(tls_name),
 			account_id = VALUES(account_id),
 			ip = VALUES(ip),
-			status = VALUES(status)
+			status = VALUES(status),
+			type = VALUES(type)
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, tlsName, accountID, ip, status)
+	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, tlsName, accountID, ip, status, monitorType)
 	if err != nil {
 		t.Fatalf("Failed to create test monitor: %v", err)
 	}
@@ -238,8 +253,8 @@ func (df *DataFactory) CreateTestServerScore(t *testing.T, serverID, monitorID u
 // CreateTestLogScore creates a test log score
 func (df *DataFactory) CreateTestLogScore(t *testing.T, serverID, monitorID uint32, score, step float64, rtt *int32, ts time.Time) {
 	query := `
-		INSERT INTO log_scores (server_id, monitor_id, ts, score, step, rtt, created_on)
-		VALUES (?, ?, ?, ?, ?, ?, NOW())
+		INSERT INTO log_scores (server_id, monitor_id, ts, score, step, rtt)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := df.tdb.ExecContext(df.tdb.ctx, query, serverID, monitorID, ts, score, step, rtt)
 	if err != nil {
@@ -250,9 +265,9 @@ func (df *DataFactory) CreateTestLogScore(t *testing.T, serverID, monitorID uint
 // SetSystemSetting sets a system setting for tests
 func (df *DataFactory) SetSystemSetting(t *testing.T, key, value string) {
 	query := `
-		INSERT INTO system_settings (setting_key, setting_value)
-		VALUES (?, ?)
-		ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+		INSERT INTO system_settings (` + "`key`" + `, ` + "`value`" + `, created_on)
+		VALUES (?, ?, NOW())
+		ON DUPLICATE KEY UPDATE ` + "`value`" + ` = VALUES(` + "`value`" + `)
 	`
 	_, err := df.tdb.ExecContext(df.tdb.ctx, query, key, value)
 	if err != nil {

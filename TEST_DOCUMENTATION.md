@@ -844,6 +844,67 @@ Based on the behavioral clarifications, the following implementation gaps were i
 
 3. **Certificate Renewal Threshold:** Should verify the 1/3 lifetime threshold is implemented as a named constant rather than a magic number.
 
+## Recent Bug Fixes (June 2025)
+
+The following integration test failures were identified and fixed:
+
+### 1. "No Recent Scores Found" Error in Scorer Tests
+**Problem**: The `recentmedian` scorer failed with "no recent scores found for 3001" because the `GetScorerRecentScores` SQL query requires:
+- Log scores from monitors with type='monitor' (not 'score')
+- Those monitors must have corresponding `server_scores` entries with status 'active' or 'testing'
+
+**Root Cause**: Test setup created log scores from monitor 2003 but no server_score entry linking monitor 2003 to server 3001.
+
+**Fix Applied**: Added missing server_scores entries in `setupScorerTestData()`:
+```go
+// Create server scores for regular monitors (needed for GetScorerRecentScores query)
+factory.CreateTestServerScore(t, 3001, 2003, "active", 20.0)
+factory.CreateTestServerScore(t, 3002, 2004, "active", 19.5)
+factory.CreateTestServerScore(t, 3003, 2003, "active", 18.0)
+```
+
+**Files Modified**: `scorer/runner_integration_test.go`
+
+### 2. Duplicate Key Error in Concurrent Scorer Tests
+**Problem**: Concurrent scorers failed with "Duplicate entry '3002-2001' for key 'server_scores.server_id'" when both tried to insert the same server_score entry simultaneously.
+
+**Root Cause**: Race condition where two scorer instances attempted to create the same server_score entry, and the `InsertServerScore` query lacked proper handling for duplicate keys.
+
+**Fix Applied**: Modified the SQL query to use `ON DUPLICATE KEY UPDATE`:
+```sql
+-- name: InsertServerScore :exec
+insert into server_scores
+  (monitor_id, server_id, score_raw, created_on)
+  values (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  score_raw = VALUES(score_raw);
+```
+
+**Files Modified**: `query.sql` (regenerated `ntpdb/query.sql.go` with `make sqlc`)
+
+### 3. Performance Test Data Generation Issue
+**Problem**: Performance test was using scorer monitor (type='score') to generate log scores instead of regular monitor.
+
+**Root Cause**: Test used monitor 2001 (a scorer) instead of monitor 2003 (regular monitor) for generating test data.
+
+**Fix Applied**: Changed performance test to use regular monitor:
+```go
+// Use regular monitor (2003) not scorer (2001) for generating log scores
+factory.CreateTestLogScore(t, 3001, 2003, 20.0+float64(i%100)/100, 0.8, nil, now.Add(-time.Duration(i)*time.Second))
+```
+
+**Files Modified**: `scorer/runner_integration_test.go`
+
+### Testing Methodology Used
+These fixes followed the enhanced testing approach documented in `LLM_CODING_AGENT.md`:
+
+1. **Used CI Tools**: Employed `./scripts/test-ci-local.sh` and `./scripts/test-scorer-integration.sh` to reproduce CI environment locally
+2. **Understood Data Dependencies**: Traced through the `GetScorerRecentScores` query to understand required data relationships
+3. **Checked for Race Conditions**: Identified concurrent database insert operations and applied idempotent SQL patterns
+4. **Incremental Testing**: Fixed issues one at a time and validated each fix before proceeding
+
+All integration tests now pass successfully in both local and CI environments.
+
 ## Behavioral Specifications Confirmed
 
 All behavioral questions have been resolved:

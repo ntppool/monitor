@@ -61,7 +61,6 @@ func (c *TraceHTTPClient) Do(r *http.Request) (*http.Response, error) {
 	r = r.WithContext(ctx)
 
 	resp, err := c.client.Do(r)
-
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

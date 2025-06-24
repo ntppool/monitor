@@ -10,7 +10,6 @@ import (
 )
 
 func TestClientState(t *testing.T) {
-
 	mqs, err := Setup(slog.Default(), nil, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatal(err)
@@ -60,5 +59,4 @@ func TestClientState(t *testing.T) {
 			t.Fail()
 		}
 	}
-
 }

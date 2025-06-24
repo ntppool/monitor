@@ -30,14 +30,12 @@ func (mqs *server) setupResponseRouter(_ context.Context, topicPrefix string) *m
 }
 
 func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
-
 	prefixLength := len(rr.prefix)
 	tp := otel.GetTracerProvider().Tracer("mqserver")
 
 	log := rr.log
 
 	return func(p *paho.Publish) {
-
 		log := log
 
 		ctx := context.Background()
@@ -96,7 +94,6 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 			log.Warn("no response channel for", "id", topicPath[1])
 			span.RecordError(fmt.Errorf("no response channel"))
 		}
-
 	}
 }
 

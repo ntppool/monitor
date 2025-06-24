@@ -27,7 +27,6 @@ type Tx interface {
 }
 
 func (q *Queries) Begin(ctx context.Context) (QuerierTx, error) {
-
 	// log := logger.Setup()
 	// log.Warn("db type test", "db", q.db, "type", fmt.Sprintf("%T", q.db))
 

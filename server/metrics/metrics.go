@@ -11,7 +11,6 @@ type Metrics struct {
 }
 
 func New(r prometheus.Registerer) *Metrics {
-
 	m := &Metrics{
 		r: r,
 	}
