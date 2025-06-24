@@ -1,1 +1,1 @@
-# MONITOR_STATE_DIR=/var/run/ntppool-agent
+MONITOR_STATE_DIR=/var/lib/ntppool-agent
