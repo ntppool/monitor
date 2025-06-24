@@ -8,6 +8,9 @@ dist/
 vendor/
 devel/
 
+# Generated man page (source is man/ntppool-agent.1.template)
+man/ntppool-agent.1
+
 
 devspace.yaml
 devspace_start.sh

@@ -30,10 +30,13 @@ rm -rf "$TEMP_DIR"
 # Get current date in man page format (YYYY-MM-DD)
 DATE=$(date +%Y-%m-%d)
 
+# Copy template to final man page location
+cp man/ntppool-agent.1.template man/ntppool-agent.1
+
 # Update the man page .TH line with current version and date
 sed -i.bak "s/^\.TH NTPPOOL-AGENT 1 \"[^\"]*\" \"ntppool-agent [^\"]*\"/\.TH NTPPOOL-AGENT 1 \"$DATE\" \"ntppool-agent $VERSION\"/" man/ntppool-agent.1
 
 # Remove backup file
 rm -f man/ntppool-agent.1.bak
 
-echo "Updated man page with version: $VERSION, date: $DATE"
+echo "Generated man page from template with version: $VERSION, date: $DATE"
