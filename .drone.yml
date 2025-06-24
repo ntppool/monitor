@@ -178,7 +178,7 @@ name: publish-production
 
 steps:
   - name: download
-    image: fedora:42 # curl version 7.83 or later
+    image: registry.fedoraproject.org/fedora:42 # curl version 7.83 or later
     commands:
       - ./scripts/download-release ntppool-agent test/${DRONE_BUILD_PARENT} dist/
     resources:
@@ -234,6 +234,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 64e00f78f85786d963e3e2fbd2d7269ab72768d8584ec038e23460042e95dd6e
+hmac: 38dc48a3fc23c637bd4b8cc9ba8db63fdca599e66151754a3fa582f012807eee
 
 ...

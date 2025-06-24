@@ -22,7 +22,6 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - freebsd
       - darwin
     ldflags:
       - -s -w
@@ -41,6 +40,9 @@ builds:
 
 archives:
   - id: a1
+    ids:
+    - ntppool-agent
+    name_template: "ntppool-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     allow_different_binary_count: true
   # files:
   #   - LICENSE.txt
