@@ -269,7 +269,8 @@ When debugging failing integration tests, especially those involving databases:
 **Status Values:**
 - **active**: Monitor is fully operational
 - **testing**: Monitor is in test mode (still operational)
-- **paused**: Monitor should not perform any monitoring
+- **pending**: Monitor should gradually phase out (allows clean transitions)
+- **paused**: Monitor should stop all work immediately
 
 **Status Checking Best Practices:**
 - **Check in outer loop**: Before spawning monitor goroutines

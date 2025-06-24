@@ -91,7 +91,8 @@ The term "pending" is already used in the global monitor status (`monitors.statu
 
 The system ALWAYS respects global monitor status (`monitors.status`) before any server-specific logic:
 - Only monitors with global status `active` or `testing` can be assigned to servers
-- Monitors with global status `pending`, `paused`, or `deleted` are excluded from selection
+- Monitors with global status `pending` are gradually phased out to allow clean transitions
+- Monitors with global status `paused` or `deleted` are immediately blocked from selection
 - The existing `GetMonitorPriority` query already provides `monitor_status` which we use as the primary filter
 - State determination checks global status FIRST (Step 1) before any constraint validation
 
@@ -188,6 +189,7 @@ The system implements constraint enforcement through two removal mechanisms:
 - Non-grandfathered violations on new assignments
 
 **Soft Constraints (candidateOut)** - Gradual removal:
+- Globally pending monitors (allow clean transitions)
 - Grandfathered violations (existing assignments that violate new constraints)
 - Performance/health issues
 - State inconsistencies
@@ -398,20 +400,20 @@ func (sl *selector) determineState(
     // STEP 1: Check global monitor status FIRST (respecting monitors.status)
     switch monitor.GlobalStatus {
     case ntpdb.MonitorsStatusPending:
-        // Globally pending monitors should not be monitoring any server
+        // Pending monitors should gradually phase out to allow clean transition
         if monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||
            monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
-            log.Warn("inconsistent state: globally pending but server-assigned",
+            log.Info("pending monitor will be gradually removed",
                 "monitorID", monitor.ID,
                 "globalStatus", monitor.GlobalStatus,
                 "serverStatus", monitor.ServerStatus)
             return candidateOut // Gradual removal
         }
-        // Pending monitors not assigned to this server are blocked
-        return candidateBlock
+        // Pending monitors not assigned to this server should gradually phase out
+        return candidateOut
 
     case ntpdb.MonitorsStatusPaused:
-        // Paused monitors should stop all work
+        // Paused monitors should stop all work immediately
         return candidateBlock
 
     case ntpdb.MonitorsStatusDeleted:
@@ -1292,7 +1294,7 @@ The enhanced selector ALWAYS respects global monitor status as the primary filte
 5. **Step 5**: Make promotion decisions
 
 This ensures that:
-- Globally pending monitors are never assigned to servers
+- Globally pending monitors are gradually phased out rather than immediately blocked
 - Globally paused monitors stop all work immediately
 - Only globally active monitors can be promoted to server-active status
 - The existing `GetMonitorPriority` query's `monitor_status` field is properly utilized

@@ -60,20 +60,20 @@ func (sl *Selector) determineState(
 	// STEP 1: Check global monitor status FIRST (respecting monitors.status)
 	switch monitor.GlobalStatus {
 	case ntpdb.MonitorsStatusPending:
-		// Globally pending monitors should not be monitoring any server
+		// Pending monitors should gradually phase out to allow clean transition
 		if monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||
 			monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
-			sl.log.Warn("inconsistent state: globally pending but server-assigned",
+			sl.log.Info("pending monitor will be gradually removed",
 				"monitorID", monitor.ID,
 				"globalStatus", monitor.GlobalStatus,
 				"serverStatus", monitor.ServerStatus)
 			return candidateOut // Gradual removal
 		}
-		// Pending monitors not assigned to this server are blocked
-		return candidateBlock
+		// Pending monitors not assigned to this server should gradually phase out
+		return candidateOut
 
 	case ntpdb.MonitorsStatusPaused:
-		// Paused monitors should stop all work
+		// Paused monitors should stop all work immediately
 		return candidateBlock
 
 	case ntpdb.MonitorsStatusDeleted:

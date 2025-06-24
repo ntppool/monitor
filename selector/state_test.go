@@ -40,13 +40,13 @@ func TestDetermineState(t *testing.T) {
 		want      candidateState
 	}{
 		{
-			name: "globally_pending_monitor_should_be_blocked",
+			name: "globally_pending_monitor_should_phase_out_gradually",
 			monitor: monitorCandidate{
 				GlobalStatus: ntpdb.MonitorsStatusPending,
 				ServerStatus: ntpdb.ServerScoresStatusNew,
 			},
 			violation: constraintViolation{Type: violationNone},
-			want:      candidateBlock,
+			want:      candidateOut,
 		},
 		{
 			name: "globally_paused_monitor_should_be_blocked",
