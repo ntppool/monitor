@@ -36,6 +36,24 @@ The ntppool-agent supports automatic configuration reloading without restart:
 
 When you run the setup command, configuration changes are applied automatically to all running agent processes. No manual restart is required.
 
+## Monitor Selection System
+
+The NTP Pool Monitor uses an advanced candidate status system for selecting which monitors test each server:
+
+### Monitor States (Per-Server Assignment)
+- **candidate** - Monitor selected for potential assignment to server
+- **testing** - Monitor actively monitoring and being evaluated for server
+- **active** - Monitor confirmed for long-term monitoring of server
+
+### Key Features
+- **Constraint validation** - Prevents monitors from same network/account
+- **Gradual state transitions** - Safe promotion/demotion to maintain service stability
+- **Bootstrap logic** - Automatic promotion when servers need monitoring coverage
+- **Change rate limiting** - Maximum 1 change per selection cycle for operational safety
+- **Emergency safeguards** - Maintains minimum active monitors per server
+
+The system ensures diverse, reliable monitoring coverage while preventing operational disruptions from mass changes.
+
 ## Client requirements
 
 A well connected Linux or FreeBSD system (x86_64 or arm64) with good IPv4 and/or IPv6 internet connectivity.

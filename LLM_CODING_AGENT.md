@@ -565,20 +565,48 @@ To avoid conflicts, different test scenarios use specific ports:
 
 ## Recent Architecture Changes (June 2025)
 
-### Selector Package Refactoring
+### Candidate Status System Activation (007f7ac, 77589b5)
+- **Full candidate status pipeline now active in production**
+- State machine: new → candidate → testing → active
+- Constraint validation with network and account limits
+- Grandfathering support for existing assignments
+- Bootstrap logic for servers with no monitoring scores
+
+### Selector Package Refactoring (218427e)
 - Selector implementation moved to dedicated `selector/` package
+- Modular architecture with separate files for constraints, state, and processing
 - New constraint validation algorithm for server scoring
 - Added candidate status tracking in `server_scores` table
 
-### Testing Infrastructure Improvements
-- Enhanced integration test framework
+### Production Safety Enhancements (f993ed3)
+- **Critical change rate limiting** to prevent mass monitor removal
+- Emergency safeguards to maintain minimum active monitors
+- Proper state transitions with gradual demotion logic
+- Comprehensive logging and metrics for operational visibility
+
+### Monitoring and Observability (f4100fd)
+- **Comprehensive Prometheus metrics** for all selector operations
+- Constraint violation tracking and alerting
+- Performance monitoring for selection algorithm
+- Real-time production issue detection
+
+### Testing Infrastructure Improvements (736ae30)
+- Enhanced integration test framework with proper database isolation
 - Improved error handling for monitor activation tests
 - Added comprehensive testing patterns for API operations
+- CI tools for debugging production issues locally
 
 ### Configuration Management Updates
 - Transitioned to systemd StateDirectory for persistent storage
 - Added account parameter to setup command
 - Improved hot-reloading system with better error recovery
+- Enhanced certificate management lifecycle
+
+### Critical Production Fixes (June 2025)
+- **Mass removal safeguards**: Implemented change limits to prevent operational disruption
+- **NULL handling**: Fixed database scanning errors with proper COALESCE usage
+- **Scorer compatibility**: Enhanced recentmedian scorer to handle candidate status monitors
+- **Bootstrap logic**: Automatic monitor promotion when servers have no active testing monitors
 
 ## Pre-Commit Best Practices
 

@@ -268,6 +268,7 @@ FROM monitors m
 LEFT JOIN accounts a ON m.account_id = a.id
 WHERE m.status IN ('active', 'testing')
   AND m.type = 'monitor'
+  AND (m.tls_name IS NULL OR m.tls_name NOT LIKE '%.system')
   AND NOT EXISTS (
     SELECT 1 FROM server_scores ss
     WHERE ss.monitor_id = m.id AND ss.server_id = ?

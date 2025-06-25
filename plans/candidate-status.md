@@ -4,14 +4,16 @@
 
 This document outlines a comprehensive plan to enhance the monitor selector system with a sophisticated constraint validation framework. The enhancement introduces a four-stage workflow (available → candidate → testing → active) with grandfathering support for existing assignments that violate new constraints. Additionally, the plan includes restructuring the monolithic `selector.go` file into focused, maintainable components.
 
-### Current Status (as of latest commit 0325b15)
+### Current Status (as of latest commit 77589b5)
 - **Phase 1**: File Restructuring ✅ COMPLETED
 - **Phase 2**: Database Schema Updates ✅ COMPLETED
 - **Phase 3**: Constraint System Core ✅ COMPLETED
 - **Phase 4**: Grandfathering System ✅ COMPLETED
 - **Phase 5**: Enhanced State Machine ✅ COMPLETED
-- **Phase 6**: Selection Algorithm Rewrite - TODO
-- **Phase 7-10**: Testing, Monitoring, Deployment - TODO
+- **Phase 6**: Selection Algorithm Rewrite ✅ COMPLETED
+- **Phase 7**: Production Deployment ✅ COMPLETED
+- **Phase 8**: Critical Bug Fixes ✅ COMPLETED
+- **Phase 9**: Testing & Monitoring ✅ COMPLETED
 
 ### Key Goals
 1. Implement multi-stage monitor selection with "candidate" status ✅
@@ -951,59 +953,96 @@ func (sl *selector) serverScoreExists(
 - Updated `query.sql` with 2 new queries
 - Constants: 7 active, 5 testing, 4 globally active in testing
 
-**Next steps**:
-- Integration testing with real database
-- Performance benchmarking
-- Shadow mode implementation for safe rollout
+**Commits**: 970f83b, 5329158, 0325b15, 4d92b8c, 218427e
 
-### Phase 7: Testing Suite
-**Duration**: 2-3 days
+### Phase 7: Production Deployment ✅ COMPLETED
+**Duration**: 1 week
 
-1. Unit tests for each module
-2. Integration tests for workflows
-3. Constraint change scenarios
-4. Performance benchmarks
-5. Migration testing
+1. ~~Deploy selector package refactoring~~ ✅
+2. ~~Activate candidate status pipeline~~ ✅
+3. ~~Monitor production deployment~~ ✅
+4. ~~Address production issues~~ ✅
 
-**Test scenarios**:
-- Bootstrap with no monitors
-- Constraint tightening/relaxing
-- Account limit changes
-- Network configuration changes
-- Grandfathering edge cases
+**Implementation details**:
+- Moved selector implementation to dedicated `selector/` package
+- Activated candidate status system in production
+- Fixed NULL account_flags scanning errors
+- Implemented network diversity constraints
+- Added comprehensive Prometheus metrics
 
-### Phase 8: Monitoring and Observability
-**Duration**: 1 day
+**Commits**: 218427e, 007f7ac, 2557a70, f4100fd
 
-1. Add metrics for constraint violations
-2. Track grandfathering statistics
-3. Monitor removal rates
-4. Add alerting for anomalies
-5. Create operational dashboards
+### Phase 8: Critical Bug Fixes ✅ COMPLETED
+**Duration**: 2 days
 
-**Metrics to track**:
-- Constraint violations by type
-- Grandfathered monitor count
-- Removal rates
-- Selection algorithm performance
+1. ~~Fix mass removal issue~~ ✅
+2. ~~Implement change limits and emergency safeguards~~ ✅
+3. ~~Fix scorer crashes with candidate monitors~~ ✅
+4. ~~Add bootstrap logic for servers with no scores~~ ✅
 
-### Phase 9: Feature Flag and Rollout
-**Duration**: 1 day
+**Production Issues Resolved**:
+- **Mass removal catastrophe**: Fixed by implementing strict change limits (allowedChanges=1, maxRemovals with safety checks)
+- **NULL account_flags errors**: Fixed by using COALESCE(a.flags, '{}') in GetAvailableMonitors query
+- **Scorer crashes**: Fixed recentmedian scorer to handle candidate status monitors and bootstrap new servers
 
-1. Implement feature flag system
-2. Create gradual rollout plan
-3. Document rollback procedures
-4. Prepare operational runbooks
-5. Train operations team
+**Key safety mechanisms added**:
+- Change limits: Only 1 change per run with emergency override for blocked monitors
+- Proper state transitions: active→testing→candidate (not direct to new)
+- Bootstrap logic: Promote candidates to testing when no testing monitors exist
+- Emergency safeguards: Maintain minimum active monitors per server
 
-### Phase 10: Production Deployment
-**Duration**: 1 week (gradual)
+**Commits**: 6f284e4, f993ed3, 77589b5
 
-1. Deploy to staging environment
-2. Enable for subset of servers
-3. Monitor metrics and logs
-4. Gradual production rollout
-5. Full deployment
+### Phase 9: Testing & Monitoring ✅ COMPLETED
+**Duration**: Ongoing
+
+1. ~~Add comprehensive Prometheus metrics~~ ✅
+2. ~~Integration testing framework~~ ✅
+3. ~~Production monitoring and alerting~~ ✅
+4. ~~Performance validation~~ ✅
+
+**Monitoring implemented**:
+- Comprehensive Prometheus metrics for constraint violations
+- Selection algorithm performance tracking
+- State transition monitoring
+- Real-time production issue detection
+
+**Testing infrastructure**:
+- Enhanced CI tools (`scripts/test-*.sh`)
+- Database port allocation for parallel testing
+- Integration test framework improvements
+
+**Commits**: f4100fd, 736ae30
+
+## Production Lessons Learned (June 2025)
+
+### Critical Production Issues and Resolutions
+
+1. **Mass Removal Problem** (f993ed3)
+   - **Issue**: 19 changes at once removed all active monitors from servers
+   - **Root Cause**: No change rate limiting in candidate status system
+   - **Resolution**: Implemented strict change limits (allowedChanges=1) with emergency safeguards
+   - **Prevention**: Added comprehensive state transition rules and minimum monitor requirements
+
+2. **NULL Account Flags Error** (6f284e4)
+   - **Issue**: Scanning errors when accounts had NULL flags column
+   - **Root Cause**: Query didn't handle NULL JSON values properly
+   - **Resolution**: Used COALESCE(a.flags, '{}') in GetAvailableMonitors query
+   - **Prevention**: Better NULL handling patterns in SQL queries
+
+3. **Scorer Crashes with Candidate Status** (77589b5)
+   - **Issue**: "no recent scores found for X" errors when all monitors were candidates
+   - **Root Cause**: Scorer only looked for active/testing monitors, not candidates
+   - **Resolution**: Added fallback to include candidate monitors and bootstrap logic
+   - **Prevention**: Comprehensive scoring system that handles all monitor states
+
+### Key Safety Mechanisms Implemented
+
+- **Gradual State Transitions**: active→testing→candidate (never direct to new)
+- **Change Rate Limiting**: Maximum 1 change per selector run
+- **Emergency Override**: Blocked monitors can exceed change limits for safety
+- **Bootstrap Logic**: Automatic promotion when no testing monitors exist
+- **Minimum Requirements**: Maintain at least minimum active monitors per server
 
 ## Testing Strategy
 
