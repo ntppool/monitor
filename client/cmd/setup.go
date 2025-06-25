@@ -172,6 +172,8 @@ type registrationState struct {
 
 	// registrationURL stores the URL until both protocols complete
 	registrationURL string
+	// urlPrinted tracks whether we've already printed the registration URL
+	urlPrinted bool
 }
 
 func (rs *registrationState) registrationStep(ctx context.Context) (done bool, err error) {
@@ -282,8 +284,8 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 
 	log.DebugContext(ctx, "status", "status", data.Status)
 
-	// Print registration URL only after both protocol requests complete (unless one is disabled)
-	if rs.registrationURL != "" && !rs.tryIPv4 && !rs.tryIPv6 {
+	// Print registration URL only once after both protocol requests complete (unless one is disabled)
+	if rs.registrationURL != "" && !rs.tryIPv4 && !rs.tryIPv6 && !rs.urlPrinted {
 		fmt.Print(heredoc.Docf(`
 
 				Please visit the following URL to complete the monitor registration:
@@ -291,6 +293,7 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 					%s
 
 				`, rs.registrationURL))
+		rs.urlPrinted = true
 	}
 
 	if data.Status == "accepted" {
