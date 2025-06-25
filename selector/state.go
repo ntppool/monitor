@@ -142,9 +142,19 @@ func (sl *Selector) hasStateInconsistency(monitor *monitorCandidate) bool {
 		return true
 	}
 
-	// Monitor globally deleted but still server-active is inconsistent
+	// Monitor globally deleted but still assigned to server is inconsistent
 	if monitor.GlobalStatus == ntpdb.MonitorsStatusDeleted &&
-		monitor.ServerStatus == ntpdb.ServerScoresStatusActive {
+		(monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||
+			monitor.ServerStatus == ntpdb.ServerScoresStatusTesting ||
+			monitor.ServerStatus == ntpdb.ServerScoresStatusCandidate) {
+		return true
+	}
+
+	// Monitor globally paused but still assigned to server is inconsistent
+	if monitor.GlobalStatus == ntpdb.MonitorsStatusPaused &&
+		(monitor.ServerStatus == ntpdb.ServerScoresStatusActive ||
+			monitor.ServerStatus == ntpdb.ServerScoresStatusTesting ||
+			monitor.ServerStatus == ntpdb.ServerScoresStatusCandidate) {
 		return true
 	}
 

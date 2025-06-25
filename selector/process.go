@@ -254,16 +254,42 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 		promotionsNeeded := min(toAdd, changesRemaining)
 		promoted := 0
 
+		// Emergency override: if zero active monitors, ignore constraint violations
+		emergencyOverride := (currentActiveMonitors == 0)
+		if emergencyOverride {
+			sl.log.Warn("emergency override: zero active monitors, ignoring constraints for promotion",
+				"testingMonitors", len(testingMonitors))
+		}
+
 		for _, em := range testingMonitors {
 			if promoted >= promotionsNeeded {
 				break
 			}
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive && em.recommendedState == candidateIn {
+
+			// Normal case: require candidateIn (no constraint violations)
+			// Emergency case: allow candidateOut but still require healthy and globally active
+			canPromote := false
+			reason := "promotion to active"
+
+			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
+				if em.recommendedState == candidateIn {
+					canPromote = true
+				} else if emergencyOverride && em.recommendedState == candidateOut {
+					// In emergency, allow promoting monitors with constraint violations
+					// but they must still be healthy
+					if !em.monitor.HasMetrics || em.monitor.IsHealthy {
+						canPromote = true
+						reason = "emergency promotion: zero active monitors"
+					}
+				}
+			}
+
+			if canPromote {
 				changes = append(changes, statusChange{
 					monitorID:  em.monitor.ID,
 					fromStatus: ntpdb.ServerScoresStatusTesting,
 					toStatus:   ntpdb.ServerScoresStatusActive,
-					reason:     "promotion to active",
+					reason:     reason,
 				})
 				promoted++
 			}
