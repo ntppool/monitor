@@ -355,9 +355,11 @@ func TestPromotionConstraintChecking(t *testing.T) {
 		IP:        "192.168.1.1",
 	}
 
-	// Testing limit reached (3), but active limit not reached (1 < 2)
+	// Testing limit reached (2), but active limit not reached (1 < 2)
+	// Total is 1 + 2 = 3, which is at the max total limit (MaxPerServer + 1 = 3)
+	// But since this monitor is already in testing, it's already counted in TestingCount
 	accountLimits := map[uint32]*accountLimit{
-		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 1, TestingCount: 3},
+		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 1, TestingCount: 2},
 	}
 
 	// Create some dummy assigned monitors for the constraint check
@@ -366,7 +368,9 @@ func TestPromotionConstraintChecking(t *testing.T) {
 	// Should be able to promote to active
 	canPromote := sl.canPromoteToActive(monitor, server, accountLimits, assignedMonitors, false)
 	if !canPromote {
-		t.Error("Should be able to promote to active when active limit not reached")
+		// Add debug output
+		violation := sl.checkConstraints(monitor, server, accountLimits, ntpdb.ServerScoresStatusActive, assignedMonitors)
+		t.Errorf("Should be able to promote to active when active limit not reached. Violation: %+v", violation)
 	}
 
 	// For more accurate testing, let's also verify with empty account limits
