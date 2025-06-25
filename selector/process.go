@@ -101,7 +101,12 @@ func (sl *Selector) findAvailableMonitors(
 }
 
 // applySelectionRules determines what status changes should be made
-func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []statusChange {
+func (sl *Selector) applySelectionRules(
+	evaluatedMonitors []evaluatedMonitor,
+	server *serverInfo,
+	accountLimits map[uint32]*accountLimit,
+	assignedMonitors []ntpdb.GetMonitorPriorityRow,
+) []statusChange {
 	changes := make([]statusChange, 0)
 
 	// Categorize monitors by current status
@@ -157,8 +162,15 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 
 	maxRemovals := allowedChanges
 	// Safety: don't remove monitors if we're at/below target and don't have enough healthy
+	// BUT: always allow demotions from testing to candidate to clean up constraint violations
 	if currentActiveMonitors <= targetNumber && healthyActive < targetNumber {
-		maxRemovals = 0
+		// Only block removals from active status, not demotions from testing to candidate
+		// This allows cleanup of testing monitors with constraint violations
+		if currentActiveMonitors > 0 {
+			maxRemovals = 0
+		}
+		// If zero active monitors, allow demotions to clean up testing violations
+		// The emergency override logic will handle promotions separately
 	}
 
 	// Emergency: never remove all active monitors
@@ -205,11 +217,11 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 	}
 
 	// Rule 2: Gradual removal of candidateOut monitors (with limits)
-	removalsRemaining := maxRemovals
 
-	// First remove active monitors (demote to testing, not new)
+	// First remove active monitors (demote to testing, not new) - use maxRemovals limit
+	activeRemovalsRemaining := maxRemovals
 	for _, em := range activeMonitors {
-		if removalsRemaining <= 0 {
+		if activeRemovalsRemaining <= 0 {
 			break
 		}
 		if em.recommendedState == candidateOut {
@@ -219,13 +231,29 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 				toStatus:   ntpdb.ServerScoresStatusTesting,
 				reason:     "gradual removal (health or constraints)",
 			})
-			removalsRemaining--
+			activeRemovalsRemaining--
 		}
 	}
 
 	// Then remove testing monitors (demote to candidate, not new)
+	// Use separate limit calculation for testing demotions
+	testingRemovalsRemaining := allowedChanges - len(changes)
+
+	// When zero active monitors, allow more aggressive cleanup of testing violations
+	if currentActiveMonitors == 0 {
+		// Count testing monitors with constraint violations
+		testingViolationCount := 0
+		for _, em := range testingMonitors {
+			if em.recommendedState == candidateOut {
+				testingViolationCount++
+			}
+		}
+		// Allow demoting all testing monitors with violations, but respect change limits
+		testingRemovalsRemaining = min(testingViolationCount, allowedChanges-len(changes))
+	}
+
 	for _, em := range testingMonitors {
-		if removalsRemaining <= 0 {
+		if testingRemovalsRemaining <= 0 {
 			break
 		}
 		if em.recommendedState == candidateOut {
@@ -235,11 +263,23 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 				toStatus:   ntpdb.ServerScoresStatusCandidate,
 				reason:     "gradual removal (health or constraints)",
 			})
-			removalsRemaining--
+			testingRemovalsRemaining--
 		}
 	}
 
-	// Rule 3: Promote from testing to active (respecting constraints and limits)
+	// Create a working copy of account limits for iterative constraint checking
+	// This will be updated as we make promotion decisions
+	workingAccountLimits := make(map[uint32]*accountLimit)
+	for k, v := range accountLimits {
+		workingAccountLimits[k] = &accountLimit{
+			AccountID:    v.AccountID,
+			MaxPerServer: v.MaxPerServer,
+			ActiveCount:  v.ActiveCount,
+			TestingCount: v.TestingCount,
+		}
+	}
+
+	// Rule 3: Promote from testing to active (iterative constraint checking)
 	changesRemaining := allowedChanges - len(changes)
 	toAdd := targetNumber - currentActiveMonitors
 
@@ -261,27 +301,17 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 				"testingMonitors", len(testingMonitors))
 		}
 
+		// Iteratively check each testing monitor for promotion
 		for _, em := range testingMonitors {
 			if promoted >= promotionsNeeded {
 				break
 			}
 
-			// Normal case: require candidateIn (no constraint violations)
-			// Emergency case: allow candidateOut but still require healthy and globally active
-			canPromote := false
+			// Check if this monitor can be promoted to active using current state
+			canPromote := sl.canPromoteToActive(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
 			reason := "promotion to active"
-
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-				if em.recommendedState == candidateIn {
-					canPromote = true
-				} else if emergencyOverride && em.recommendedState == candidateOut {
-					// In emergency, allow promoting monitors with constraint violations
-					// but they must still be healthy
-					if !em.monitor.HasMetrics || em.monitor.IsHealthy {
-						canPromote = true
-						reason = "emergency promotion: zero active monitors"
-					}
-				}
+			if emergencyOverride && canPromote {
+				reason = "emergency promotion: zero active monitors"
 			}
 
 			if canPromote {
@@ -291,6 +321,11 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 					toStatus:   ntpdb.ServerScoresStatusActive,
 					reason:     reason,
 				})
+
+				// Update working account limits for next iteration
+				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
+					ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive)
+
 				promoted++
 			}
 		}
@@ -317,41 +352,59 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 		}
 	}
 
-	// Rule 5: Promote candidates to testing (respecting change limits)
+	// Rule 5: Promote candidates to testing (iterative constraint checking)
 	changesRemaining = allowedChanges - len(changes)
 	if changesRemaining > 0 && len(candidateMonitors) > 0 {
 		promotionsNeeded := min(changesRemaining, 2) // Limit candidate promotions
 		promoted := 0
 
-		// Prefer globally active monitors
+		// Note: workingAccountLimits are already updated from testing→active promotions above
+
+		// Prefer globally active monitors - check constraints dynamically
 		for _, em := range candidateMonitors {
 			if promoted >= promotionsNeeded {
 				break
 			}
-			if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusCandidate,
-					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     "candidate to testing",
-				})
-				promoted++
+			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
+				// Check if can promote to testing using current constraint state
+				if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+					changes = append(changes, statusChange{
+						monitorID:  em.monitor.ID,
+						fromStatus: ntpdb.ServerScoresStatusCandidate,
+						toStatus:   ntpdb.ServerScoresStatusTesting,
+						reason:     "candidate to testing",
+					})
+
+					// Update working account limits for next iteration
+					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
+						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+
+					promoted++
+				}
 			}
 		}
 
-		// Fill remaining with testing monitors if needed
+		// Fill remaining with globally testing monitors if needed
 		for _, em := range candidateMonitors {
 			if promoted >= promotionsNeeded {
 				break
 			}
-			if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusCandidate,
-					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     "candidate to testing",
-				})
-				promoted++
+			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
+				// Check if can promote to testing using current constraint state
+				if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+					changes = append(changes, statusChange{
+						monitorID:  em.monitor.ID,
+						fromStatus: ntpdb.ServerScoresStatusCandidate,
+						toStatus:   ntpdb.ServerScoresStatusTesting,
+						reason:     "candidate to testing",
+					})
+
+					// Update working account limits for next iteration
+					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
+						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+
+					promoted++
+				}
 			}
 		}
 	}

@@ -374,6 +374,111 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 	return limits
 }
 
+// canPromoteToActive checks if a monitor can be promoted to active status
+func (sl *Selector) canPromoteToActive(
+	monitor *monitorCandidate,
+	server *serverInfo,
+	accountLimits map[uint32]*accountLimit,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+	emergencyOverride bool,
+) bool {
+	// Must be globally active to be promoted to server-active
+	if monitor.GlobalStatus != ntpdb.MonitorsStatusActive {
+		return false
+	}
+
+	// Check if healthy (if we have metrics)
+	if monitor.HasMetrics && !monitor.IsHealthy {
+		return false
+	}
+
+	// In emergency mode, skip constraint checking
+	if emergencyOverride {
+		return true
+	}
+
+	// Check constraints against active state specifically
+	violation := sl.checkConstraints(monitor, server, accountLimits, ntpdb.ServerScoresStatusActive, existingMonitors)
+	return violation.Type == violationNone || violation.IsGrandfathered
+}
+
+// canPromoteToTesting checks if a monitor can be promoted to testing status
+func (sl *Selector) canPromoteToTesting(
+	monitor *monitorCandidate,
+	server *serverInfo,
+	accountLimits map[uint32]*accountLimit,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+) bool {
+	// Must be globally active or testing
+	if monitor.GlobalStatus != ntpdb.MonitorsStatusActive &&
+		monitor.GlobalStatus != ntpdb.MonitorsStatusTesting {
+		return false
+	}
+
+	// Check constraints against testing state specifically
+	violation := sl.checkConstraints(monitor, server, accountLimits, ntpdb.ServerScoresStatusTesting, existingMonitors)
+	return violation.Type == violationNone || violation.IsGrandfathered
+}
+
+// updateAccountLimitsForPromotion updates account limits after a monitor promotion
+func (sl *Selector) updateAccountLimitsForPromotion(
+	accountLimits map[uint32]*accountLimit,
+	monitor *monitorCandidate,
+	fromState, toState ntpdb.ServerScoresStatus,
+) {
+	if monitor.AccountID == nil {
+		return
+	}
+
+	limit, exists := accountLimits[*monitor.AccountID]
+	if !exists {
+		return
+	}
+
+	// Remove from old state count
+	switch fromState {
+	case ntpdb.ServerScoresStatusActive:
+		if limit.ActiveCount > 0 {
+			limit.ActiveCount--
+		}
+	case ntpdb.ServerScoresStatusTesting:
+		if limit.TestingCount > 0 {
+			limit.TestingCount--
+		}
+	}
+
+	// Add to new state count
+	switch toState {
+	case ntpdb.ServerScoresStatusActive:
+		limit.ActiveCount++
+	case ntpdb.ServerScoresStatusTesting:
+		limit.TestingCount++
+	}
+}
+
+// canTransitionTo checks if a monitor can transition to the target state without constraint violations
+func (sl *Selector) canTransitionTo(
+	monitor *monitorCandidate,
+	server *serverInfo,
+	accountLimits map[uint32]*accountLimit,
+	targetState ntpdb.ServerScoresStatus,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+) (bool, *constraintViolation) {
+	violation := sl.checkConstraints(monitor, server, accountLimits, targetState, existingMonitors)
+
+	if violation.Type == violationNone {
+		return true, violation
+	}
+
+	// Check if this is a grandfathered violation
+	if violation.IsGrandfathered = sl.isGrandfathered(monitor, server, violation); violation.IsGrandfathered {
+		// Grandfathered violations can stay in current state but shouldn't be promoted
+		return targetState == monitor.ServerStatus, violation
+	}
+
+	return false, violation
+}
+
 // parseAccountFlags parses the JSON flags column from accounts table
 func parseAccountFlags(flagsJSON *string) (*accountFlags, error) {
 	if flagsJSON == nil || *flagsJSON == "" {

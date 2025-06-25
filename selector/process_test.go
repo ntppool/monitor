@@ -24,7 +24,7 @@ func TestProcessServerTypes(t *testing.T) {
 			GlobalStatus: ntpdb.MonitorsStatusActive,
 			ServerStatus: ntpdb.ServerScoresStatusActive,
 		},
-		violation: &constraintViolation{
+		currentViolation: &constraintViolation{
 			Type: violationNone,
 		},
 		recommendedState: candidateIn,

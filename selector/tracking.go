@@ -15,7 +15,7 @@ func (sl *Selector) trackConstraintViolations(
 ) error {
 	for _, eval := range evaluatedMonitors {
 		monitor := eval.monitor
-		violation := eval.violation
+		violation := eval.currentViolation
 
 		// Check if we need to update the database
 		shouldUpdate := false

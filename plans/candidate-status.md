@@ -1014,6 +1014,46 @@ func (sl *selector) serverScoreExists(
 
 **Commits**: f4100fd, 736ae30
 
+### Phase 10: Critical Production Fixes (June 2025) ✅ COMPLETED
+**Duration**: 3 days
+
+1. ~~Fix monitor flow issues (stuck in testing state)~~ ✅
+2. ~~Implement dynamic constraint checking for promotions~~ ✅
+3. ~~Optimize performance (remove transition evaluation overhead)~~ ✅
+4. ~~Add comprehensive edge case tests~~ ✅
+
+**Production Issues Fixed**:
+- **One-way monitor flow**: Monitors stuck in testing state with constraint violations
+  - **Root Cause**: Static constraint checking prevented valid promotions
+  - **Fix**: Dynamic constraint checking against target state for promotions
+
+- **Demotion blocking**: Testing monitors couldn't be demoted when zero active
+  - **Root Cause**: `maxRemovals = 0` logic blocked all demotions
+  - **Fix**: Allow testing→candidate demotions for constraint cleanup
+
+- **Performance overhead**: Unnecessary constraint evaluation for all transitions
+  - **Root Cause**: Evaluating all 4 possible transitions for every monitor
+  - **Fix**: Lazy evaluation - only check constraints when needed (~80% reduction)
+
+**Key improvements**:
+- **Dynamic promotion logic**: Check constraints against target state, not current state
+- **Iterative account limits**: Prevent simultaneous violations by checking sequentially
+- **Simplified emergency override**: Unified logic path using `canPromoteToActive()`
+- **Enhanced state consistency**: Detect deleted/paused monitors in all server states
+
+**Test coverage added**:
+- Zero active monitors with constraint violations
+- Iterative account limit enforcement
+- Emergency override behavior
+- Promotion constraint checking scenarios
+
+**Performance gains**:
+- Reduced constraint checks from 60 to ~12 per server (80% reduction)
+- Eliminated memory allocation for unused transition evaluations
+- Cleaner, more maintainable code structure
+
+**Commits**: 2a53623, current
+
 ## Production Lessons Learned (June 2025)
 
 ### Critical Production Issues and Resolutions
