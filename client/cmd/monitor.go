@@ -81,6 +81,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	// Start the config manager early so it can watch for file changes
 	// during WaitUntilLive
 	promreg := prometheus.NewRegistry()
+	version.RegisterMetric("monitor", promreg)
+
 	if !cmd.SanityOnly && !cmd.Once {
 		g.Go(func() error {
 			log.InfoContext(ctx, "starting AppConfig manager early for file watching", "name", cli.Config.TLSName())
