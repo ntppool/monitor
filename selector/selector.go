@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -37,7 +38,7 @@ func (cmd OnceCmd) Run(ctx context.Context) error {
 func Run(ctx context.Context, continuous bool) error {
 	log := logger.FromContext(ctx)
 
-	log.Info("selector starting")
+	log.InfoContext(ctx, "selector starting", "version", version.Version())
 
 	dbconn, err := ntpdb.OpenDB()
 	if err != nil {
@@ -64,7 +65,7 @@ func Run(ctx context.Context, continuous bool) error {
 			return err
 		}
 		if count > 0 || !continuous {
-			log.Info("processed servers", "count", count)
+			log.InfoContext(ctx, "processed servers", "count", count)
 		}
 		if !continuous {
 			break

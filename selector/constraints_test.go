@@ -262,6 +262,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 
 	tests := []struct {
 		name             string
+		monitorID        uint32
 		monitorIP        string
 		existingMonitors []ntpdb.GetMonitorPriorityRow
 		targetState      ntpdb.ServerScoresStatus
@@ -270,6 +271,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 	}{
 		{
 			name:             "no_existing_monitors_ok",
+			monitorID:        100,
 			monitorIP:        "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{},
 			targetState:      ntpdb.ServerScoresStatusActive,
@@ -277,6 +279,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "ipv4_different_20_networks_ok",
+			monitorID: 100,
 			monitorIP: "192.168.1.10", // 192.168.0.0/20
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -290,6 +293,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "ipv4_same_20_network_conflict",
+			monitorID: 100,
 			monitorIP: "192.168.1.10", // 192.168.0.0/20
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -304,6 +308,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "ipv6_different_44_networks_ok",
+			monitorID: 100,
 			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -317,6 +322,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "ipv6_same_44_network_conflict",
+			monitorID: 100,
 			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -331,6 +337,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "testing_with_existing_active_conflict",
+			monitorID: 100,
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -345,6 +352,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		},
 		{
 			name:      "candidate_state_no_conflict_check",
+			monitorID: 100,
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
@@ -356,11 +364,30 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 			targetState: ntpdb.ServerScoresStatusCandidate,
 			wantErr:     false, // Candidates don't conflict with active/testing
 		},
+		{
+			name:      "self_comparison_should_not_conflict",
+			monitorID: 100,
+			monitorIP: "192.168.1.10",
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        100, // Same ID as the monitor being checked
+					MonitorIp: sql.NullString{String: "192.168.1.10", Valid: true}, // Same IP
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+				{
+					ID:        101,
+					MonitorIp: sql.NullString{String: "10.0.0.1", Valid: true}, // Different network
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+			},
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     false, // Should not conflict with itself
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := sl.checkNetworkDiversityConstraint(tt.monitorIP, tt.existingMonitors, tt.targetState)
+			err := sl.checkNetworkDiversityConstraint(tt.monitorID, tt.monitorIP, tt.existingMonitors, tt.targetState)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("checkNetworkDiversityConstraint() error = %v, wantErr %v", err, tt.wantErr)
 			}

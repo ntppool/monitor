@@ -82,6 +82,7 @@ func (sl *Selector) checkNetworkConstraint(
 // checkNetworkDiversityConstraint verifies that we don't have multiple monitors
 // in the same /44 (IPv6) or /20 (IPv4) network for active and testing states
 func (sl *Selector) checkNetworkDiversityConstraint(
+	monitorID uint32,
 	monitorIP string,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 	targetState ntpdb.ServerScoresStatus,
@@ -111,6 +112,11 @@ func (sl *Selector) checkNetworkDiversityConstraint(
 
 	// Check against existing monitors
 	for _, existing := range existingMonitors {
+		// Skip self
+		if existing.ID == monitorID {
+			continue
+		}
+
 		// Skip if no IP or status
 		if !existing.MonitorIp.Valid || !existing.Status.Valid {
 			continue
@@ -297,7 +303,7 @@ func (sl *Selector) checkConstraints(
 	}
 
 	// Check network diversity constraints
-	if err := sl.checkNetworkDiversityConstraint(monitor.IP, existingMonitors, targetState); err != nil {
+	if err := sl.checkNetworkDiversityConstraint(monitor.ID, monitor.IP, existingMonitors, targetState); err != nil {
 		violation := &constraintViolation{
 			Type:    violationNetworkDiversity,
 			Details: err.Error(),
