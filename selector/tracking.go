@@ -23,6 +23,21 @@ func (sl *Selector) trackConstraintViolations(
 		var newViolationSince sql.NullTime
 
 		if violation.Type != violationNone {
+			// Defensive programming: only record violations for states that should have constraints
+			if monitor.ServerStatus != ntpdb.ServerScoresStatusActive && monitor.ServerStatus != ntpdb.ServerScoresStatusTesting {
+				// Candidate and new states should not have constraint violations
+				sl.log.Warn("attempted to record constraint violation for state that should have no constraints",
+					"monitorID", monitor.ID,
+					"serverStatus", monitor.ServerStatus,
+					"violationType", violation.Type)
+				// Clear any existing violation instead
+				if monitor.ConstraintViolationType != nil {
+					shouldUpdate = true
+					// newViolationType and newViolationSince remain null for clearing
+				}
+				continue
+			}
+
 			// We have a current violation
 			violationType := string(violation.Type)
 			newViolationType = sql.NullString{String: violationType, Valid: true}

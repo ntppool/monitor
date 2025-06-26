@@ -102,6 +102,7 @@ func (sl *Selector) findAvailableMonitors(
 
 // applySelectionRules determines what status changes should be made
 func (sl *Selector) applySelectionRules(
+	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
 	server *serverInfo,
 	accountLimits map[uint32]*accountLimit,
@@ -297,7 +298,7 @@ func (sl *Selector) applySelectionRules(
 		// Emergency override: if zero active monitors, ignore constraint violations
 		emergencyOverride := (currentActiveMonitors == 0)
 		if emergencyOverride {
-			sl.log.Warn("emergency override: zero active monitors, ignoring constraints for promotion",
+			sl.log.WarnContext(ctx, "emergency override: zero active monitors, ignoring constraints for promotion",
 				"testingMonitors", len(testingMonitors))
 		}
 

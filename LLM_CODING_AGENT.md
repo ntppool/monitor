@@ -84,6 +84,46 @@ When diagnosing issues, follow this systematic approach:
 6. **Check for race conditions** - Concurrent operations, database constraints, timing dependencies
 7. **Prefer targeted fixes** - Avoid complex architectural changes when simple solutions exist
 
+### Common Bug Patterns in Constraint Systems
+
+When debugging constraint violations or unexpected behavior:
+
+1. **Self-Reference Bugs**: Check if entities are being compared against lists that include themselves
+   - Look for functions that take an entity ID and a list of entities
+   - Verify that self-exclusion logic exists (e.g., `if existing.ID == currentID { continue }`)
+   - Common in: network diversity checks, conflict detection, constraint validation
+
+2. **Order-Dependent Logic**: Ensure processing order matches business priorities
+   - Check SQL ORDER BY clauses to understand intended priority
+   - Verify that "first wins" vs "last wins" logic aligns with business rules
+   - Look for cases where evaluation order affects outcomes
+
+3. **State Consistency Issues**: Verify that constraint checks use the correct state
+   - Check constraints against target state for promotions, not current state
+   - Ensure iterative updates don't create race conditions
+   - Validate that account limits and counts are updated after each change
+
+### SQL Query Analysis for Business Logic Understanding
+
+When working with data-driven systems:
+
+1. **Examine ORDER BY Clauses**: Understanding data prioritization
+   - Check how entities are ordered (priority, health, performance metrics)
+   - Understand if processing order affects business outcomes
+   - Look for composite ordering (multiple criteria)
+
+2. **Analyze JOIN Patterns**: Understanding data relationships
+   - Identify which tables provide which constraints
+   - Check for INNER vs LEFT JOINs that affect data availability
+   - Look for aggregate functions that summarize constraint data
+
+3. **Query-Driven Behavior Analysis**: Let SQL inform code understanding
+   - Use query ordering to understand which entities should "win" conflicts
+   - Check WHERE clauses for filtering logic that affects constraint evaluation
+   - Examine GROUP BY clauses to understand aggregation boundaries
+
+Example: `ORDER BY healthy desc, monitor_priority asc` means healthy monitors with lower priority values are processed first, so they get first choice in constraint conflicts.
+
 ## Task Completion Criteria
 
 Before marking any coding task as complete:
@@ -99,6 +139,42 @@ Never mark a task as completed if:
 - Implementation is partial
 - Unresolved compilation errors exist
 - You couldn't verify the functionality works
+
+## Constraint Checking Architecture Patterns
+
+### Common Patterns in Monitor Selection Systems
+
+1. **Iterative Constraint Checking**
+   - Check constraints against current state after each promotion/demotion
+   - Update working limits and counts incrementally
+   - Prevent simultaneous violations by processing changes sequentially
+
+2. **Emergency Override Logic**
+   - Implement safety overrides for critical system states (e.g., zero active monitors)
+   - Document when constraint violations should be ignored for system health
+   - Use clear naming and logging for override conditions
+
+3. **Self-Exclusion in Constraint Checks**
+   - Always exclude the entity being evaluated from conflict detection
+   - Pass entity IDs to constraint functions for proper self-filtering
+   - Test self-comparison scenarios explicitly
+
+4. **Target State vs Current State Validation**
+   - Check constraints against the target state for promotions
+   - Check constraints against current state for status maintenance
+   - Don't check constraints when demoting (constraints may be why we're demoting)
+
+5. **Grandfathering and Gradual Transitions**
+   - Allow existing constraint violations to persist temporarily
+   - Implement gradual removal rather than immediate blocking
+   - Track violation timestamps for aging out grandfathered exceptions
+
+### Implementation Best Practices
+
+- **Lazy Evaluation**: Only evaluate constraints when needed for decisions
+- **Consistent Error Handling**: Return structured constraint violation information
+- **Audit Logging**: Log all constraint checks and their outcomes for debugging
+- **Performance Monitoring**: Track constraint evaluation overhead and optimize bottlenecks
 
 ## Concurrency and Thread Safety
 
@@ -163,6 +239,36 @@ Never mark a task as completed if:
 - Avoid `testify/assert` or similar tools
 - Use mocks only when necessary
 - Follow existing test patterns in the codebase
+
+### Test Data Validation and Mathematical Correctness
+
+When creating test data:
+
+1. **Validate Constraint Mathematics**: Ensure test conditions make the expected outcome possible
+   - For account limits: verify that total counts don't exceed limits in impossible ways
+   - For network constraints: confirm IP addresses are actually in different/same networks as intended
+   - For time-based constraints: ensure timestamps and durations are realistic
+
+2. **Cross-Check Test Logic**: Before writing assertions
+   - Calculate expected outcomes manually based on test data
+   - Verify that business rules would actually produce the expected result
+   - Check for off-by-one errors in limits and counts
+
+3. **Test Data Documentation**: Include comments explaining the mathematical relationships
+   - Document why specific limits were chosen
+   - Explain how counts relate to limits
+   - Show the calculation that leads to expected outcomes
+
+Example:
+```go
+// MaxPerServer=2, ActiveCount=1, TestingCount=2
+// Total limit = MaxPerServer + 1 = 3
+// Current total = 1 + 2 = 3 (at limit)
+// Promoting testing->active: would become 2 active + 1 testing = 3 (still valid)
+accountLimits := map[uint32]*accountLimit{
+    1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 1, TestingCount: 2},
+}
+```
 
 ### Integration Test Debugging
 
@@ -565,48 +671,20 @@ To avoid conflicts, different test scenarios use specific ports:
 
 ## Recent Architecture Changes (June 2025)
 
-### Candidate Status System Activation (007f7ac, 77589b5)
-- **Full candidate status pipeline now active in production**
-- State machine: new → candidate → testing → active
-- Constraint validation with network and account limits
-- Grandfathering support for existing assignments
-- Bootstrap logic for servers with no monitoring scores
-
-### Selector Package Refactoring (218427e)
+### Selector Package Refactoring
 - Selector implementation moved to dedicated `selector/` package
-- Modular architecture with separate files for constraints, state, and processing
 - New constraint validation algorithm for server scoring
 - Added candidate status tracking in `server_scores` table
 
-### Production Safety Enhancements (f993ed3)
-- **Critical change rate limiting** to prevent mass monitor removal
-- Emergency safeguards to maintain minimum active monitors
-- Proper state transitions with gradual demotion logic
-- Comprehensive logging and metrics for operational visibility
-
-### Monitoring and Observability (f4100fd)
-- **Comprehensive Prometheus metrics** for all selector operations
-- Constraint violation tracking and alerting
-- Performance monitoring for selection algorithm
-- Real-time production issue detection
-
-### Testing Infrastructure Improvements (736ae30)
-- Enhanced integration test framework with proper database isolation
+### Testing Infrastructure Improvements
+- Enhanced integration test framework
 - Improved error handling for monitor activation tests
 - Added comprehensive testing patterns for API operations
-- CI tools for debugging production issues locally
 
 ### Configuration Management Updates
 - Transitioned to systemd StateDirectory for persistent storage
 - Added account parameter to setup command
 - Improved hot-reloading system with better error recovery
-- Enhanced certificate management lifecycle
-
-### Critical Production Fixes (June 2025)
-- **Mass removal safeguards**: Implemented change limits to prevent operational disruption
-- **NULL handling**: Fixed database scanning errors with proper COALESCE usage
-- **Scorer compatibility**: Enhanced recentmedian scorer to handle candidate status monitors
-- **Bootstrap logic**: Automatic monitor promotion when servers have no active testing monitors
 
 ## Pre-Commit Best Practices
 

@@ -98,7 +98,9 @@ func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger, metrics 
 
 // Run processes all servers that need monitor review
 func (sl *Selector) Run() (int, error) {
-	tx, err := sl.dbconn.BeginTx(sl.ctx, nil)
+	ctx, cancel := context.WithCancel(sl.ctx)
+	defer cancel()
+	tx, err := sl.dbconn.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -106,14 +108,14 @@ func (sl *Selector) Run() (int, error) {
 
 	db := ntpdb.New(sl.dbconn).WithTx(tx)
 
-	ids, err := db.GetServersMonitorReview(sl.ctx)
+	ids, err := db.GetServersMonitorReview(ctx)
 	if err != nil {
 		return 0, err
 	}
 
 	count := 0
 	for _, serverID := range ids {
-		changed, err := sl.processServer(db, serverID)
+		changed, err := sl.processServer(ctx, db, serverID)
 		if err != nil {
 			// todo: rollback transaction here? Save that we did a review anyway?
 			sl.log.Warn("could not process selection of monitors", "serverID", serverID, "err", err)
@@ -121,7 +123,7 @@ func (sl *Selector) Run() (int, error) {
 		count++
 
 		if changed {
-			err := db.UpdateServersMonitorReviewChanged(sl.ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
+			err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
 				ServerID:   serverID,
 				NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
 			})
@@ -129,7 +131,7 @@ func (sl *Selector) Run() (int, error) {
 				return count, err
 			}
 		} else {
-			err := db.UpdateServersMonitorReview(sl.ctx, ntpdb.UpdateServersMonitorReviewParams{
+			err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
 				ServerID:   serverID,
 				NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
 			})
@@ -147,23 +149,23 @@ func (sl *Selector) Run() (int, error) {
 	return count, nil
 }
 
-func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
+func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, serverID uint32) (bool, error) {
 	start := time.Now()
 	sl.log.Debug("processing server", "serverID", serverID)
 
 	// Step 1: Load server information
-	server, err := sl.loadServerInfo(sl.ctx, db, serverID)
+	server, err := sl.loadServerInfo(ctx, db, serverID)
 	if err != nil {
 		return false, fmt.Errorf("failed to load server info: %w", err)
 	}
 
 	// Step 2: Get all monitors (assigned and available)
-	assignedMonitors, err := db.GetMonitorPriority(sl.ctx, serverID)
+	assignedMonitors, err := db.GetMonitorPriority(ctx, serverID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get monitor priority: %w", err)
 	}
 
-	availableMonitors, err := sl.findAvailableMonitors(sl.ctx, db, serverID)
+	availableMonitors, err := sl.findAvailableMonitors(ctx, db, serverID)
 	if err != nil {
 		return false, fmt.Errorf("failed to find available monitors: %w", err)
 	}
@@ -178,8 +180,15 @@ func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	for _, row := range assignedMonitors {
 		monitor := convertMonitorPriorityToCandidate(row)
 
-		// Check constraints for current state
-		currentViolation := sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
+		// Check constraints for current state (only for states that have constraints)
+		var currentViolation *constraintViolation
+		if monitor.ServerStatus == ntpdb.ServerScoresStatusActive || monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
+			// Only active and testing states have constraints that can be violated
+			currentViolation = sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
+		} else {
+			// Candidate and new states have no constraints
+			currentViolation = &constraintViolation{Type: violationNone}
+		}
 
 		if currentViolation.Type != violationNone {
 			currentViolation.IsGrandfathered = sl.isGrandfathered(&monitor, server, currentViolation)
@@ -226,7 +235,7 @@ func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	}
 
 	// Step 5: Apply selection rules
-	changes := sl.applySelectionRules(evaluatedMonitors, server, accountLimits, assignedMonitors)
+	changes := sl.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, assignedMonitors)
 
 	// Step 6: Execute changes
 	// Create a map from monitor ID to monitor candidate for metrics tracking
@@ -239,7 +248,7 @@ func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, err
 	failedChanges := 0
 	for _, change := range changes {
 		monitor := monitorMap[change.monitorID]
-		if err := sl.applyStatusChange(sl.ctx, db, serverID, change, monitor); err != nil {
+		if err := sl.applyStatusChange(ctx, db, serverID, change, monitor); err != nil {
 			failedChanges++
 			sl.log.Error("failed to apply status change",
 				"serverID", serverID,

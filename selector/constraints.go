@@ -228,7 +228,9 @@ func (sl *Selector) checkAccountConstraints(
 			}
 
 		case ntpdb.ServerScoresStatusCandidate:
-			// No limits on candidate status
+			// No limits on candidate status - candidates are unconstrained by design
+			// This allows monitors to be selected as candidates without worrying about limits,
+			// and constraints are only checked when promoting to testing/active
 			return nil
 
 		default:

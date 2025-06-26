@@ -370,7 +370,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        100, // Same ID as the monitor being checked
+					ID:        100,                                                 // Same ID as the monitor being checked
 					MonitorIp: sql.NullString{String: "192.168.1.10", Valid: true}, // Same IP
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},

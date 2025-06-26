@@ -84,7 +84,7 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 		2: {AccountID: 2, MaxPerServer: 2, ActiveCount: 0, TestingCount: 2},
 	}
 
-	changes := sl.applySelectionRules(evaluatedMonitors, server, accountLimits, nil)
+	changes := sl.applySelectionRules(t.Context(), evaluatedMonitors, server, accountLimits, nil)
 
 	// Debug output
 	for _, change := range changes {
@@ -209,7 +209,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		3: {AccountID: 3, MaxPerServer: 2, ActiveCount: 1, TestingCount: 0},
 	}
 
-	changes := sl.applySelectionRules(evaluatedMonitors, server, accountLimits, nil)
+	changes := sl.applySelectionRules(t.Context(), evaluatedMonitors, server, accountLimits, nil)
 
 	// Debug output
 	for _, change := range changes {
@@ -290,7 +290,7 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 		3: {AccountID: 3, MaxPerServer: 1, ActiveCount: 0, TestingCount: 1},
 	}
 
-	changes := sl.applySelectionRules(evaluatedMonitors, server, accountLimits, nil)
+	changes := sl.applySelectionRules(t.Context(), evaluatedMonitors, server, accountLimits, nil)
 
 	// Check emergency promotions
 	emergencyPromotions := 0
