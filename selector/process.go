@@ -220,11 +220,13 @@ func (sl *Selector) applySelectionRules(
 	// Rule 2: Gradual removal of candidateOut monitors (with limits)
 
 	// First remove active monitors (demote to testing, not new) - use maxRemovals limit
+	// Iterate backwards to demote worst performers first (bottom-up)
 	activeRemovalsRemaining := maxRemovals
-	for _, em := range activeMonitors {
+	for i := len(activeMonitors) - 1; i >= 0; i-- {
 		if activeRemovalsRemaining <= 0 {
 			break
 		}
+		em := activeMonitors[i]
 		if em.recommendedState == candidateOut {
 			changes = append(changes, statusChange{
 				monitorID:  em.monitor.ID,
@@ -253,10 +255,12 @@ func (sl *Selector) applySelectionRules(
 		testingRemovalsRemaining = min(testingViolationCount, allowedChanges-len(changes))
 	}
 
-	for _, em := range testingMonitors {
+	// Iterate backwards to demote worst performers first (bottom-up)
+	for i := len(testingMonitors) - 1; i >= 0; i-- {
 		if testingRemovalsRemaining <= 0 {
 			break
 		}
+		em := testingMonitors[i]
 		if em.recommendedState == candidateOut {
 			changes = append(changes, statusChange{
 				monitorID:  em.monitor.ID,
