@@ -22,9 +22,9 @@ const (
 
 // accountFlags represents the JSON structure in accounts.flags column
 type accountFlags struct {
-	MonitorLimit          int  `json:"monitor_limit"`            // Total monitors for account
-	MonitorPerServerLimit int  `json:"monitor_per_server_limit"` // Max monitors per server
-	MonitorEnabled        bool `json:"monitor_enabled"`
+	MonitorLimit           int  `json:"monitor_limit"`             // Total monitors for account
+	MonitorsPerServerLimit int  `json:"monitors_per_server_limit"` // Max monitors per server
+	MonitorEnabled         bool `json:"monitor_enabled"`
 }
 
 // accountLimit tracks monitor limits and current usage for an account
@@ -195,9 +195,10 @@ func (sl *Selector) checkAccountConstraints(
 		testingCount := limit.TestingCount
 
 		// Don't count self
-		if monitor.ServerStatus == ntpdb.ServerScoresStatusActive {
+		switch monitor.ServerStatus {
+		case ntpdb.ServerScoresStatusActive:
 			activeCount--
-		} else if monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
+		case ntpdb.ServerScoresStatusTesting:
 			testingCount--
 		}
 		// Note: We don't track/limit candidate counts
@@ -346,14 +347,14 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 		if _, exists := limits[accountID]; !exists {
 			// Parse account flags to get limit
 			var flags accountFlags
-			if monitor.AccountFlags != nil && len(monitor.AccountFlags) > 0 {
+			if len(monitor.AccountFlags) > 0 {
 				if err := json.Unmarshal(monitor.AccountFlags, &flags); err != nil {
 					sl.log.Warn("failed to parse account flags", "accountID", accountID, "error", err)
-					flags.MonitorPerServerLimit = defaultAccountLimitPerServer
+					flags.MonitorsPerServerLimit = defaultAccountLimitPerServer
 				}
 			}
 
-			limit := flags.MonitorPerServerLimit
+			limit := flags.MonitorsPerServerLimit
 			if limit <= 0 {
 				limit = defaultAccountLimitPerServer
 			}
@@ -460,49 +461,4 @@ func (sl *Selector) updateAccountLimitsForPromotion(
 	case ntpdb.ServerScoresStatusTesting:
 		limit.TestingCount++
 	}
-}
-
-// canTransitionTo checks if a monitor can transition to the target state without constraint violations
-func (sl *Selector) canTransitionTo(
-	monitor *monitorCandidate,
-	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
-	targetState ntpdb.ServerScoresStatus,
-	existingMonitors []ntpdb.GetMonitorPriorityRow,
-) (bool, *constraintViolation) {
-	violation := sl.checkConstraints(monitor, server, accountLimits, targetState, existingMonitors)
-
-	if violation.Type == violationNone {
-		return true, violation
-	}
-
-	// Check if this is a grandfathered violation
-	if violation.IsGrandfathered = sl.isGrandfathered(monitor, server, violation); violation.IsGrandfathered {
-		// Grandfathered violations can stay in current state but shouldn't be promoted
-		return targetState == monitor.ServerStatus, violation
-	}
-
-	return false, violation
-}
-
-// parseAccountFlags parses the JSON flags column from accounts table
-func parseAccountFlags(flagsJSON *string) (*accountFlags, error) {
-	if flagsJSON == nil || *flagsJSON == "" {
-		return &accountFlags{
-			MonitorPerServerLimit: defaultAccountLimitPerServer,
-			MonitorEnabled:        true,
-		}, nil
-	}
-
-	var flags accountFlags
-	if err := json.Unmarshal([]byte(*flagsJSON), &flags); err != nil {
-		return nil, fmt.Errorf("failed to parse account flags: %w", err)
-	}
-
-	// Set defaults for missing values
-	if flags.MonitorPerServerLimit <= 0 {
-		flags.MonitorPerServerLimit = defaultAccountLimitPerServer
-	}
-
-	return &flags, nil
 }

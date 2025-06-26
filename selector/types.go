@@ -68,44 +68,6 @@ type evaluatedMonitor struct {
 	recommendedState candidateState       // Legacy field for backward compatibility
 }
 
-// shouldBeBlocked checks if this monitor should be immediately removed (blocked)
-func (em *evaluatedMonitor) shouldBeBlocked() bool {
-	// Check for global status that requires blocking
-	switch em.monitor.GlobalStatus {
-	case ntpdb.MonitorsStatusDeleted, ntpdb.MonitorsStatusPaused:
-		return true
-	}
-
-	// Check for severe constraint violations on unassigned monitors
-	if em.monitor.ServerStatus == ntpdb.ServerScoresStatusNew {
-		if em.currentViolation != nil && em.currentViolation.Type != violationNone && !em.currentViolation.IsGrandfathered {
-			return true
-		}
-	}
-
-	return false
-}
-
-// shouldBeRemovedGradually checks if this monitor should be removed gradually
-func (em *evaluatedMonitor) shouldBeRemovedGradually() bool {
-	// Pending monitors should be phased out
-	if em.monitor.GlobalStatus == ntpdb.MonitorsStatusPending {
-		return true
-	}
-
-	// Unhealthy monitors should be removed
-	if em.monitor.HasMetrics && !em.monitor.IsHealthy {
-		return true
-	}
-
-	// Monitors with new (non-grandfathered) constraint violations
-	if em.currentViolation != nil && em.currentViolation.Type != violationNone && !em.currentViolation.IsGrandfathered {
-		return true
-	}
-
-	return false
-}
-
 // monitorCategories groups monitors by their current status
 type monitorCategories struct {
 	active              []evaluatedMonitor
@@ -114,12 +76,4 @@ type monitorCategories struct {
 	available           []evaluatedMonitor // Not assigned to this server
 	blocked             []evaluatedMonitor // Constraint violations
 	globallyActiveCount int                // Count of globally active monitors
-}
-
-// monitorChange represents a state transition for a monitor
-type monitorChange struct {
-	MonitorID uint32
-	From      ntpdb.ServerScoresStatus
-	To        ntpdb.ServerScoresStatus
-	Reason    string
 }
