@@ -127,17 +127,59 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 		}
 	}
 
-	// Count healthy monitors
+	// Count healthy monitors and blocked monitors (for change limit calculation)
 	healthyActive := sl.countHealthy(activeMonitors)
 	healthyTesting := sl.countHealthy(testingMonitors)
+	blockedMonitors := sl.countBlocked(evaluatedMonitors)
 
-	sl.log.Debug("current monitor counts",
+	// Calculate change limits based on old selector logic
+	targetNumber := targetActiveMonitors         // 7 from constants
+	bootStrapModeLimit := (targetNumber / 2) + 1 // 4
+	currentActiveMonitors := len(activeMonitors)
+
+	allowedChanges := 1
+	if blockedMonitors > 1 {
+		allowedChanges = 2
+	}
+	if currentActiveMonitors == 0 {
+		allowedChanges = bootStrapModeLimit
+	}
+
+	// Emergency safeguards
+	if targetNumber > len(evaluatedMonitors) && healthyActive < currentActiveMonitors {
+		sl.log.Warn("emergency: not enough healthy monitors available",
+			"targetNumber", targetNumber,
+			"totalMonitors", len(evaluatedMonitors),
+			"healthyActive", healthyActive,
+			"currentActive", currentActiveMonitors)
+		return []statusChange{} // No changes in emergency situation
+	}
+
+	maxRemovals := allowedChanges
+	// Safety: don't remove monitors if we're at/below target and don't have enough healthy
+	if currentActiveMonitors <= targetNumber && healthyActive < targetNumber {
+		maxRemovals = 0
+	}
+
+	// Emergency: never remove all active monitors
+	if maxRemovals >= currentActiveMonitors && currentActiveMonitors > 0 {
+		maxRemovals = currentActiveMonitors - 1
+		sl.log.Warn("emergency: limiting removals to prevent zero active monitors",
+			"originalMaxRemovals", allowedChanges,
+			"adjustedMaxRemovals", maxRemovals,
+			"currentActive", currentActiveMonitors)
+	}
+
+	sl.log.Debug("current monitor counts and limits",
 		"active", len(activeMonitors),
 		"healthyActive", healthyActive,
 		"testing", len(testingMonitors),
 		"healthyTesting", healthyTesting,
 		"candidates", len(candidateMonitors),
-		"available", len(availablePool))
+		"available", len(availablePool),
+		"blocked", blockedMonitors,
+		"allowedChanges", allowedChanges,
+		"maxRemovals", maxRemovals)
 
 	// Rule 1: Remove monitors that should be blocked immediately
 	for _, em := range activeMonitors {
@@ -162,23 +204,60 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 		}
 	}
 
-	// Rule 2: Gradual removal of candidateOut monitors
-	toRemove := sl.selectMonitorsForRemoval(activeMonitors, testingMonitors)
-	for _, em := range toRemove {
-		changes = append(changes, statusChange{
-			monitorID:  em.monitor.ID,
-			fromStatus: em.monitor.ServerStatus,
-			toStatus:   ntpdb.ServerScoresStatusNew,
-			reason:     "gradual removal (health or constraints)",
-		})
+	// Rule 2: Gradual removal of candidateOut monitors (with limits)
+	removalsRemaining := maxRemovals
+
+	// First remove active monitors (demote to testing, not new)
+	for _, em := range activeMonitors {
+		if removalsRemaining <= 0 {
+			break
+		}
+		if em.recommendedState == candidateOut {
+			changes = append(changes, statusChange{
+				monitorID:  em.monitor.ID,
+				fromStatus: ntpdb.ServerScoresStatusActive,
+				toStatus:   ntpdb.ServerScoresStatusTesting,
+				reason:     "gradual removal (health or constraints)",
+			})
+			removalsRemaining--
+		}
 	}
 
-	// Rule 3: Promote from testing to active (respecting constraints)
-	currentHealthyActive := healthyActive - len(toRemove)
-	if currentHealthyActive < targetActiveMonitors {
-		needed := targetActiveMonitors - currentHealthyActive
-		toPromote := sl.selectMonitorsForPromotion(testingMonitors, needed)
-		for _, em := range toPromote {
+	// Then remove testing monitors (demote to candidate, not new)
+	for _, em := range testingMonitors {
+		if removalsRemaining <= 0 {
+			break
+		}
+		if em.recommendedState == candidateOut {
+			changes = append(changes, statusChange{
+				monitorID:  em.monitor.ID,
+				fromStatus: ntpdb.ServerScoresStatusTesting,
+				toStatus:   ntpdb.ServerScoresStatusCandidate,
+				reason:     "gradual removal (health or constraints)",
+			})
+			removalsRemaining--
+		}
+	}
+
+	// Rule 3: Promote from testing to active (respecting constraints and limits)
+	changesRemaining := allowedChanges - len(changes)
+	toAdd := targetNumber - currentActiveMonitors
+
+	// Account for demotions (active->testing increases toAdd)
+	for _, change := range changes {
+		if change.fromStatus == ntpdb.ServerScoresStatusActive && change.toStatus == ntpdb.ServerScoresStatusTesting {
+			toAdd++
+		}
+	}
+
+	if toAdd > 0 && changesRemaining > 0 {
+		promotionsNeeded := min(toAdd, changesRemaining)
+		promoted := 0
+
+		for _, em := range testingMonitors {
+			if promoted >= promotionsNeeded {
+				break
+			}
 			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive && em.recommendedState == candidateIn {
 				changes = append(changes, statusChange{
 					monitorID:  em.monitor.ID,
@@ -186,51 +265,75 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 					toStatus:   ntpdb.ServerScoresStatusActive,
 					reason:     "promotion to active",
 				})
+				promoted++
 			}
 		}
 	}
 
-	// Rule 4: Add new monitors as candidates
-	neededCandidates := sl.calculateNeededCandidates(len(activeMonitors), len(testingMonitors), len(candidateMonitors))
-	if neededCandidates > 0 && len(availablePool) > 0 {
-		toAdd := sl.selectMonitorsToAdd(availablePool, neededCandidates)
-		for _, em := range toAdd {
-			changes = append(changes, statusChange{
-				monitorID:  em.monitor.ID,
-				fromStatus: ntpdb.ServerScoresStatusNew,
-				toStatus:   ntpdb.ServerScoresStatusCandidate,
-				reason:     "new candidate",
-			})
+	// Rule 4: Add new monitors as candidates (respecting change limits)
+	changesRemaining = allowedChanges - len(changes)
+	if changesRemaining > 0 && len(availablePool) > 0 {
+		candidatesAdded := 0
+
+		for _, em := range availablePool {
+			if candidatesAdded >= changesRemaining {
+				break
+			}
+			if em.recommendedState == candidateIn {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusNew,
+					toStatus:   ntpdb.ServerScoresStatusCandidate,
+					reason:     "new candidate",
+				})
+				candidatesAdded++
+			}
 		}
 	}
 
-	// Rule 5: Promote candidates to testing
-	// Ensure testing pool has at least 4 globally active monitors
-	globallyActiveInTesting := sl.countGloballyActive(testingMonitors)
-	neededTesting := targetTestingMonitors - len(testingMonitors)
+	// Rule 5: Promote candidates to testing (respecting change limits)
+	changesRemaining = allowedChanges - len(changes)
+	if changesRemaining > 0 && len(candidateMonitors) > 0 {
+		promotionsNeeded := min(changesRemaining, 2) // Limit candidate promotions
+		promoted := 0
 
-	// Also ensure minimum globally active in testing
-	if globallyActiveInTesting < minGloballyActiveInTesting {
-		minNeeded := minGloballyActiveInTesting - globallyActiveInTesting
-		if minNeeded > neededTesting {
-			neededTesting = minNeeded
+		// Prefer globally active monitors
+		for _, em := range candidateMonitors {
+			if promoted >= promotionsNeeded {
+				break
+			}
+			if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusCandidate,
+					toStatus:   ntpdb.ServerScoresStatusTesting,
+					reason:     "candidate to testing",
+				})
+				promoted++
+			}
+		}
+
+		// Fill remaining with testing monitors if needed
+		for _, em := range candidateMonitors {
+			if promoted >= promotionsNeeded {
+				break
+			}
+			if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusCandidate,
+					toStatus:   ntpdb.ServerScoresStatusTesting,
+					reason:     "candidate to testing",
+				})
+				promoted++
+			}
 		}
 	}
 
-	if neededTesting > 0 && len(candidateMonitors) > 0 {
-		toPromote := sl.selectCandidatesForTesting(candidateMonitors, neededTesting)
-		for _, em := range toPromote {
-			changes = append(changes, statusChange{
-				monitorID:  em.monitor.ID,
-				fromStatus: ntpdb.ServerScoresStatusCandidate,
-				toStatus:   ntpdb.ServerScoresStatusTesting,
-				reason:     "candidate to testing",
-			})
-		}
-	}
+	// Rule 6: Handle out-of-order situations (disabled for now to respect change limits)
+	// TODO: Implement out-of-order logic that respects allowedChanges limits
 
-	// Rule 6: Handle out-of-order situations (testing monitor should replace active)
-	changes = sl.handleOutOfOrder(activeMonitors, testingMonitors, changes)
+	sl.log.Debug("planned changes", "totalChanges", len(changes), "allowedChanges", allowedChanges)
 
 	return changes
 }
@@ -316,6 +419,24 @@ func (sl *Selector) countGloballyActive(monitors []evaluatedMonitor) int {
 		}
 	}
 	return count
+}
+
+func (sl *Selector) countBlocked(monitors []evaluatedMonitor) int {
+	count := 0
+	for _, em := range monitors {
+		if em.recommendedState == candidateBlock {
+			count++
+		}
+	}
+	return count
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (sl *Selector) selectMonitorsForRemoval(
