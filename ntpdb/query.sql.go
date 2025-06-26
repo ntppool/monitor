@@ -54,7 +54,7 @@ SELECT
     m.account_id,
     m.ip as monitor_ip,
     m.status as global_status,
-    a.flags as account_flags
+    COALESCE(a.flags, '{}') as account_flags
 FROM monitors m
 LEFT JOIN accounts a ON m.account_id = a.id
 WHERE m.status IN ('active', 'testing')
