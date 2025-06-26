@@ -123,7 +123,7 @@ func TestCheckAccountConstraints(t *testing.T) {
 			name: "active_limit_reached",
 			monitor: monitorCandidate{
 				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			server: serverInfo{
 				AccountID: &accountID2,
@@ -139,7 +139,7 @@ func TestCheckAccountConstraints(t *testing.T) {
 			name: "testing_limit_reached",
 			monitor: monitorCandidate{
 				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			server: serverInfo{
 				AccountID: &accountID2,
@@ -155,7 +155,7 @@ func TestCheckAccountConstraints(t *testing.T) {
 			name: "total_limit_reached",
 			monitor: monitorCandidate{
 				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			server: serverInfo{
 				AccountID: &accountID2,
@@ -171,7 +171,7 @@ func TestCheckAccountConstraints(t *testing.T) {
 			name: "no_limit_on_candidates",
 			monitor: monitorCandidate{
 				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			server: serverInfo{
 				AccountID: &accountID2,

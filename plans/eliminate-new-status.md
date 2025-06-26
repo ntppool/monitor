@@ -4,6 +4,8 @@
 
 This plan proposes a significant architectural simplification of the monitor selector system by eliminating the conceptual "new" status and relying entirely on existing production code that manages `server_scores` entries. This change will resolve the persistent constraint violation warnings and create a much cleaner, more maintainable architecture.
 
+**Last Updated**: 2025-01-26 - Incorporated implementation clarifications
+
 ## Problem Statement
 
 ### Current Issues
@@ -77,10 +79,10 @@ Server-Monitor Relationship (only if in server_scores):
 ## Implementation Plan
 
 ### Phase 1: Analysis and Preparation (1 day)
-1. **Document existing assignment code** - identify the production code that creates server_scores entries
-2. **Analyze current selector dependencies** - understand what calls findAvailableMonitors
-3. **Review GetAvailableMonitors usage** - ensure it's safe to remove
-4. **Create comprehensive test cases** - cover all current selection scenarios
+1. **Document existing assignment code** - The API system handles initial assignment via `InsertMonitorServerScores` query in `monitor_admin.sql`
+2. **Verify GetAvailableMonitors is not used elsewhere** - Confirmed it's only used in selector
+3. **Create comprehensive test cases** - cover bootstrap, constraint changes, and cascading scenarios
+4. **Review constraint checking requirements** - Constraints must be checked on every run as rules may change
 
 ### Phase 2: Remove Available Monitors Logic (2 days)
 
@@ -100,44 +102,68 @@ availableMonitors, err := sl.findAvailableMonitors(ctx, db, serverID)
 // ... entire section
 ```
 
-### Phase 3: Simplify Constraint Checking (1 day)
+### Phase 3: Update Constraint Checking (1 day)
 
-#### Remove Constraint Checks for Non-Promotions
-- Only check constraints in `canPromoteToActive()` and `canPromoteToTesting()`
-- Remove constraint checking for current state maintenance
-- Update `determineState()` to not handle "new" status
+#### Constraint Checking Strategy
+- **Check constraints on EVERY run** - Not just for promotions, as constraint rules may change
+- **Mark violations as `candidateOut`** - Triggers gradual demotion (active→testing→candidate)
+- **Support cascading demotions** - Monitor A demotion may trigger Monitor B demotion
+- **Keep existing constraint types** - Network, account limits, network diversity
 
 #### Update State Machine
 ```go
-// state.go - Simplified determineState function
+// state.go - Updated determineState function
 func (sl *Selector) determineState(
     monitor *monitorCandidate,
     violation *constraintViolation,
 ) candidateState {
-    // Only handle candidate, testing, active statuses
+    // Check global status first (pending, paused, deleted)
+    // Then check constraints for all states
+    // Mark violations as candidateOut for gradual demotion
     // Remove "new" status handling completely
 }
 ```
 
-### Phase 4: Update Database Queries (1 day)
+### Phase 4: Update Database Queries and Bootstrap Logic (1 day)
 
 #### Modified Queries:
-- **GetMonitorPriority**: Ensure it only returns monitors with server_scores entries
-- **Remove GetAvailableMonitors**: No longer needed
-- **Update metrics queries**: Remove "new" status from counts
+- **GetMonitorPriority**: Already only returns monitors with server_scores entries
+- **Remove GetAvailableMonitors**: Delete from query.sql (not used elsewhere)
+- **No metrics queries use "new" status** - Confirmed no updates needed
+
+#### Bootstrap Strategy:
+- **API ensures candidates exist** via `InsertMonitorServerScores` when monitor becomes active/testing
+- **Selector promotes candidates to testing** when all monitors are candidates
+- **Promote multiple at once during bootstrap** to reach configured testing count
+- **Empty server_scores is handled naturally** - Servers with no monitors drop in priority
 
 #### Schema Considerations:
 - No schema changes needed
 - Existing server_scores entries work as-is
-- May need to clean up orphaned "new" status tracking
 
-### Phase 5: Testing and Validation (2 days)
+### Phase 5: Update Change Limits and Testing (2 days)
+
+#### Change Limit Logic:
+```go
+// Dynamic change limits based on blocked monitors
+maxChanges := 1 // Normal case: optimizing best monitors
+if hasBlockedMonitors { // deleted, paused monitors exist
+    maxChanges = 2 // Expedite recalibration
+}
+```
 
 #### Test Scenarios:
 1. **Normal operation** - verify selection still works for assigned monitors
-2. **Constraint violations** - ensure proper demotion behavior
-3. **Bootstrap scenarios** - verify behavior when no candidates exist
-4. **Edge cases** - empty servers, all blocked monitors, etc.
+2. **Constraint violations** - ensure proper demotion behavior (active→testing→candidate)
+3. **Bootstrap scenarios** - all candidates get promoted to testing as needed
+4. **Cascading demotions** - Monitor A demotion triggers Monitor B demotion
+5. **Constraint rule changes** - Existing monitors violate new constraints
+6. **Edge cases** - empty servers, all blocked monitors, etc.
+
+#### Test Implementation:
+- **Create server_scores entries as needed** in test setup
+- **Test gradual demotion paths** for constraint violations
+- **Verify bootstrap promotes correctly** when all monitors are candidates
 
 #### Integration Testing:
 - Use existing CI tools (`./scripts/test-ci-local.sh`)
@@ -155,61 +181,80 @@ func (sl *Selector) determineState(
 ## External Assignment Code Integration
 
 ### Current Production Assignment Code
-The existing production code that creates server_scores entries needs to handle:
-1. **Initial candidate assignment** - which monitors should be considered for which servers
-2. **Network diversity** - ensure geographic and network distribution
-3. **Account balancing** - respect account limits across servers
-4. **Capacity management** - don't overload servers with too many candidates
+The API system creates server_scores entries via `InsertMonitorServerScores`:
+```sql
+-- From monitor_admin.sql
+INSERT IGNORE INTO server_scores
+  (monitor_id, status, server_id, score_raw, created_on)
+  SELECT m.id, 'candidate', s.id, s.score_raw, NOW()
+  FROM servers s, monitors m
+  WHERE
+    s.ip_version = m.ip_version
+    AND m.id = ?
+    AND m.status IN ('active', 'testing')
+    AND s.deletion_on IS NULL;
+```
+
+This query:
+1. **Creates candidate entries** for all servers matching the monitor's IP version
+2. **Triggers on monitor activation** - when monitor status becomes active/testing
+3. **Handles IP version matching** - IPv4 monitors only assigned to IPv4 servers
+4. **Respects server deletion** - skips servers marked for deletion
 
 ### Selector Responsibilities (Simplified)
 The selector will only handle:
 1. **Health-based promotions** - candidate→testing based on health
 2. **Performance-based promotions** - testing→active based on metrics
 3. **Constraint-based demotions** - active→testing→candidate when constraints violated
-4. **Global status changes** - handle pending/paused/deleted monitors
+4. **Constraint validation** - check all monitors on every run for rule changes
+5. **Global status changes** - handle pending/paused/deleted monitors
+6. **Bootstrap handling** - promote candidates when no testing monitors exist
 
 ### Interface Contract
 ```go
 // What the selector expects:
 // - server_scores entries exist for all monitors that should be considered
 // - Initial status is 'candidate' for new assignments
-// - External code handles constraint compliance for initial assignments
+// - API creates entries when monitors become active/testing
 
 // What the selector provides:
-// - Promotes healthy candidates to testing
+// - Promotes healthy candidates to testing (including bootstrap)
 // - Promotes good testing monitors to active
-// - Demotes violating monitors appropriately
+// - Demotes violating monitors gradually (candidateOut)
+// - Checks constraints on every run
 // - Respects global monitor status changes
 ```
 
 ## Risk Assessment
 
 ### High Risk
-- **Incomplete understanding of assignment code** - need to verify it handles all cases
-- **Bootstrap scenarios** - what happens when no server_scores entries exist?
-- **Performance impact** - removing available pool might reduce discovery
+- ~~**Incomplete understanding of assignment code**~~ - ✓ Verified: API uses `InsertMonitorServerScores`
+- ~~**Bootstrap scenarios**~~ - ✓ Resolved: Selector promotes candidates to testing as needed
+- ~~**Performance impact**~~ - ✓ Resolved: Actually improves performance (fewer queries)
 
 ### Medium Risk
-- **Gradual transitions** - pending monitors may not be properly handled
-- **Metrics compatibility** - dashboards may expect "new" status counts
-- **Testing coverage** - complex selection scenarios may not be tested
+- **Cascading demotions** - Multiple monitors may be demoted in one run
+- **Constraint rule changes** - May trigger many demotions if rules tighten
+- **Testing coverage** - Need comprehensive tests for new scenarios
 
 ### Low Risk
-- **Database performance** - fewer queries should improve performance
-- **Code maintainability** - simpler logic reduces bugs
-- **Constraint violations** - should be eliminated entirely
+- **Database performance** - Fewer queries should improve performance
+- **Code maintainability** - Simpler logic reduces bugs
+- **Constraint violations** - Will be eliminated entirely
+- ~~**Empty server_scores**~~ - ✓ Resolved: Natural priority drop, no special handling
 
 ## Mitigation Strategies
 
-### For High Risks:
-1. **Document assignment code thoroughly** before making changes
-2. **Add bootstrap detection** - if no server_scores exist, log warning but don't crash
-3. **Monitor assignment rate** - ensure external code keeps candidate pools full
-
 ### For Medium Risks:
-1. **Update metrics queries** to handle missing "new" status
-2. **Add comprehensive integration tests** for edge cases
-3. **Implement gradual rollout** with ability to revert
+1. **Test cascading scenarios thoroughly** - Ensure demotions work correctly
+2. **Monitor constraint changes in production** - Watch for mass demotions
+3. **Add comprehensive integration tests** for all edge cases
+4. **Log all state transitions** for debugging
+
+### Change Limit Protection:
+- Normal operations: 1 change per run
+- Blocked monitors present: 2 changes per run
+- Prevents mass changes while allowing recovery
 
 ## Success Metrics
 
@@ -243,12 +288,58 @@ If issues arise during deployment:
 3. **Maintain old constraint checking** as fallback option
 4. **Monitor assignment code** should be unaffected by selector changes
 
+## Key Implementation Details
+
+### Constraint Checking Changes
+```go
+// OLD: Only check constraints for promotions
+if isPromoting {
+    checkConstraints()
+}
+
+// NEW: Check constraints on every run
+for _, monitor := range allMonitors {
+    violation := checkConstraints(monitor)
+    if violation != nil && monitor.isActive() {
+        monitor.state = candidateOut // Gradual demotion
+    }
+}
+```
+
+### Bootstrap Handling
+```go
+// When all monitors are candidates
+if allCandidates && needMoreTesting {
+    // Promote up to targetTestingCount at once
+    promoteCount := min(targetTestingCount - currentTestingCount,
+                       len(healthyCandidates))
+    // Respect constraints during promotion
+}
+```
+
+### Demotion Cascade
+```go
+// Active monitor violates constraint
+monitorA.state = candidateOut // Will become testing
+
+// This may cause testing monitor to violate
+if monitorB.wouldViolate() {
+    monitorB.state = candidateOut // Will become candidate
+}
+```
+
 ## Conclusion
 
 This architectural simplification will:
-- **Eliminate the persistent constraint bug** by removing unnecessary constraint checks
-- **Simplify the codebase** by removing complex "available pool" logic
+- **Eliminate the persistent constraint bug** by removing unnecessary constraint checks for unassigned monitors
+- **Simplify the codebase** by removing complex "available pool" logic (~200+ lines of code)
 - **Improve maintainability** by clarifying responsibility boundaries
+- **Support dynamic constraint updates** with proper gradual demotion
+- **Handle all edge cases properly** including bootstrap and cascading scenarios
 - **Leverage existing production code** that already handles assignment policy
 
-The change is low-risk because it removes complexity rather than adding it, and the existing assignment code is already proven in production.
+The change is low-risk because:
+1. It removes complexity rather than adding it
+2. The existing assignment code (API) is already proven in production
+3. All clarifications have been addressed with specific solutions
+4. Comprehensive testing plan covers all scenarios

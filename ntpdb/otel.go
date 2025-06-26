@@ -126,30 +126,6 @@ func (_d QuerierTxWithTracing) DeleteServerScore(ctx context.Context, arg Delete
 	return _d.QuerierTx.DeleteServerScore(ctx, arg)
 }
 
-// GetAvailableMonitors implements QuerierTx
-func (_d QuerierTxWithTracing) GetAvailableMonitors(ctx context.Context, serverID uint32) (ga1 []GetAvailableMonitorsRow, err error) {
-	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetAvailableMonitors")
-	defer func() {
-		if _d._spanDecorator != nil {
-			_d._spanDecorator(_span, map[string]interface{}{
-				"ctx":      ctx,
-				"serverID": serverID}, map[string]interface{}{
-				"ga1": ga1,
-				"err": err})
-		} else if err != nil {
-			_span.RecordError(err)
-			_span.SetStatus(_codes.Error, err.Error())
-			_span.SetAttributes(
-				attribute.String("event", "error"),
-				attribute.String("message", err.Error()),
-			)
-		}
-
-		_span.End()
-	}()
-	return _d.QuerierTx.GetAvailableMonitors(ctx, serverID)
-}
-
 // GetMinLogScoreID implements QuerierTx
 func (_d QuerierTxWithTracing) GetMinLogScoreID(ctx context.Context) (u1 uint64, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMinLogScoreID")

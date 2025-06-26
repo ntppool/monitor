@@ -3,7 +3,6 @@ package selector
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -49,57 +48,6 @@ func (sl *Selector) loadServerInfo(
 	}, nil
 }
 
-// findAvailableMonitors finds globally active/testing monitors not assigned to this server
-func (sl *Selector) findAvailableMonitors(
-	ctx context.Context,
-	db *ntpdb.Queries,
-	serverID uint32,
-) ([]monitorCandidate, error) {
-	rows, err := db.GetAvailableMonitors(ctx, serverID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get available monitors: %w", err)
-	}
-
-	candidates := make([]monitorCandidate, 0, len(rows))
-	for _, row := range rows {
-		var accountID *uint32
-		if row.AccountID.Valid {
-			id := uint32(row.AccountID.Int32)
-			accountID = &id
-		}
-
-		var monitorIP string
-		if row.MonitorIp.Valid {
-			monitorIP = row.MonitorIp.String
-		}
-
-		var idToken, tlsName string
-		if row.IDToken.Valid {
-			idToken = row.IDToken.String
-		}
-		if row.TlsName.Valid {
-			tlsName = row.TlsName.String
-		}
-
-		candidate := monitorCandidate{
-			ID:           uint32(row.ID),
-			IDToken:      idToken,
-			TLSName:      tlsName,
-			AccountID:    accountID,
-			IP:           monitorIP,
-			GlobalStatus: row.GlobalStatus,
-			ServerStatus: ntpdb.ServerScoresStatusNew, // Not assigned to this server
-			HasMetrics:   false,                       // No metrics for unassigned monitors
-			IsHealthy:    false,                       // Can't determine health without metrics
-			RTT:          0,
-		}
-
-		candidates = append(candidates, candidate)
-	}
-
-	return candidates, nil
-}
-
 // applySelectionRules determines what status changes should be made
 func (sl *Selector) applySelectionRules(
 	ctx context.Context,
@@ -115,7 +63,6 @@ func (sl *Selector) applySelectionRules(
 		activeMonitors    []evaluatedMonitor
 		testingMonitors   []evaluatedMonitor
 		candidateMonitors []evaluatedMonitor
-		availablePool     []evaluatedMonitor
 	)
 
 	for _, em := range evaluatedMonitors {
@@ -126,10 +73,6 @@ func (sl *Selector) applySelectionRules(
 			testingMonitors = append(testingMonitors, em)
 		case ntpdb.ServerScoresStatusCandidate:
 			candidateMonitors = append(candidateMonitors, em)
-		case ntpdb.ServerScoresStatusNew:
-			if em.recommendedState != candidateBlock {
-				availablePool = append(availablePool, em)
-			}
 		}
 	}
 
@@ -189,7 +132,6 @@ func (sl *Selector) applySelectionRules(
 		"testing", len(testingMonitors),
 		"healthyTesting", healthyTesting,
 		"candidates", len(candidateMonitors),
-		"available", len(availablePool),
 		"blocked", blockedMonitors,
 		"allowedChanges", allowedChanges,
 		"maxRemovals", maxRemovals)
@@ -200,7 +142,7 @@ func (sl *Selector) applySelectionRules(
 			changes = append(changes, statusChange{
 				monitorID:  em.monitor.ID,
 				fromStatus: ntpdb.ServerScoresStatusActive,
-				toStatus:   ntpdb.ServerScoresStatusNew,
+				toStatus:   ntpdb.ServerScoresStatusCandidate,
 				reason:     "blocked by constraints or global status",
 			})
 		}
@@ -211,7 +153,7 @@ func (sl *Selector) applySelectionRules(
 			changes = append(changes, statusChange{
 				monitorID:  em.monitor.ID,
 				fromStatus: ntpdb.ServerScoresStatusTesting,
-				toStatus:   ntpdb.ServerScoresStatusNew,
+				toStatus:   ntpdb.ServerScoresStatusCandidate,
 				reason:     "blocked by constraints or global status",
 			})
 		}
@@ -336,27 +278,6 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 4: Add new monitors as candidates (respecting change limits)
-	changesRemaining = allowedChanges - len(changes)
-	if changesRemaining > 0 && len(availablePool) > 0 {
-		candidatesAdded := 0
-
-		for _, em := range availablePool {
-			if candidatesAdded >= changesRemaining {
-				break
-			}
-			if em.recommendedState == candidateIn {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusNew,
-					toStatus:   ntpdb.ServerScoresStatusCandidate,
-					reason:     "new candidate",
-				})
-				candidatesAdded++
-			}
-		}
-	}
-
 	// Rule 5: Promote candidates to testing (iterative constraint checking)
 	changesRemaining = allowedChanges - len(changes)
 	if changesRemaining > 0 && len(candidateMonitors) > 0 {
@@ -414,32 +335,72 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 6: Bootstrap case - if no testing monitors exist, promote candidates regardless of constraints
+	// Rule 6: Bootstrap case - if no testing monitors exist, promote candidates to reach target
 	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 {
-		changesRemaining = allowedChanges - len(changes)
-		if changesRemaining > 0 {
-			bootstrapPromotions := min(changesRemaining, 3) // Promote at least a few for bootstrap
-			promoted := 0
+		// In bootstrap scenario, we can promote up to targetTestingMonitors at once
+		bootstrapPromotions := targetTestingMonitors
+		promoted := 0
 
-			sl.log.Info("bootstrap: no testing monitors, promoting candidates to start monitoring",
-				"candidatesAvailable", len(candidateMonitors),
-				"bootstrapPromotions", bootstrapPromotions)
+		sl.log.Info("bootstrap: no testing monitors, promoting candidates to start monitoring",
+			"candidatesAvailable", len(candidateMonitors),
+			"targetTestingMonitors", targetTestingMonitors,
+			"bootstrapPromotions", bootstrapPromotions)
 
-			for _, em := range candidateMonitors {
-				if promoted >= bootstrapPromotions {
-					break
-				}
-				// Bootstrap: ignore recommendedState constraints, just check global status
-				if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-					changes = append(changes, statusChange{
-						monitorID:  em.monitor.ID,
-						fromStatus: ntpdb.ServerScoresStatusCandidate,
-						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     "bootstrap: no testing monitors available",
-					})
-					promoted++
-				}
+		// Sort candidates by health first, then by global status
+		healthyCandidates := make([]evaluatedMonitor, 0)
+		otherCandidates := make([]evaluatedMonitor, 0)
+
+		for _, em := range candidateMonitors {
+			if em.monitor.IsHealthy && (em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting) {
+				healthyCandidates = append(healthyCandidates, em)
+			} else if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
+				otherCandidates = append(otherCandidates, em)
 			}
+		}
+
+		// Promote healthy candidates first
+		for _, em := range healthyCandidates {
+			if promoted >= bootstrapPromotions {
+				break
+			}
+			// Bootstrap: respect basic constraints during promotion
+			if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusCandidate,
+					toStatus:   ntpdb.ServerScoresStatusTesting,
+					reason:     "bootstrap: promoting healthy candidate",
+				})
+				// Update working account limits
+				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
+					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+				promoted++
+			}
+		}
+
+		// If still need more, promote other candidates
+		for _, em := range otherCandidates {
+			if promoted >= bootstrapPromotions {
+				break
+			}
+			// Bootstrap: respect basic constraints during promotion
+			if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusCandidate,
+					toStatus:   ntpdb.ServerScoresStatusTesting,
+					reason:     "bootstrap: promoting candidate",
+				})
+				// Update working account limits
+				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
+					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+				promoted++
+			}
+		}
+
+		if promoted == 0 && len(candidateMonitors) > 0 {
+			sl.log.Warn("bootstrap: unable to promote any candidates due to constraints",
+				"candidatesAvailable", len(candidateMonitors))
 		}
 	}
 
@@ -459,49 +420,14 @@ func (sl *Selector) applyStatusChange(
 	change statusChange,
 	monitor *monitorCandidate,
 ) error {
-	// Handle different transition types
-	switch {
-	case change.fromStatus == ntpdb.ServerScoresStatusNew &&
-		change.toStatus == ntpdb.ServerScoresStatusCandidate:
-		// Insert new server_score record with candidate status
-		err := db.InsertServerScore(ctx, ntpdb.InsertServerScoreParams{
-			MonitorID: change.monitorID,
-			ServerID:  serverID,
-			ScoreRaw:  0,
-			CreatedOn: time.Now(),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert server score: %w", err)
-		}
-		err = db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
-			MonitorID: change.monitorID,
-			ServerID:  serverID,
-			Status:    ntpdb.ServerScoresStatusCandidate,
-		})
-		if err != nil {
-			return err
-		}
-
-	case change.toStatus == ntpdb.ServerScoresStatusNew:
-		// Remove from server_scores
-		err := db.DeleteServerScore(ctx, ntpdb.DeleteServerScoreParams{
-			ServerID:  serverID,
-			MonitorID: change.monitorID,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to delete server score: %w", err)
-		}
-
-	default:
-		// Update existing status
-		err := db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
-			MonitorID: change.monitorID,
-			ServerID:  serverID,
-			Status:    change.toStatus,
-		})
-		if err != nil {
-			return err
-		}
+	// All transitions now involve existing server_scores entries
+	err := db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
+		MonitorID: change.monitorID,
+		ServerID:  serverID,
+		Status:    change.toStatus,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update server score status: %w", err)
 	}
 
 	// Track successful status change in metrics
@@ -593,28 +519,6 @@ func (sl *Selector) selectMonitorsForPromotion(
 	}
 
 	// TODO: Sort by quality metrics (RTT, history length, etc.)
-
-	// Return up to count monitors
-	if len(eligible) <= count {
-		return eligible
-	}
-	return eligible[:count]
-}
-
-func (sl *Selector) selectMonitorsToAdd(
-	available []evaluatedMonitor,
-	count int,
-) []evaluatedMonitor {
-	var eligible []evaluatedMonitor
-
-	// Filter to only eligible monitors
-	for _, em := range available {
-		if em.recommendedState == candidateIn {
-			eligible = append(eligible, em)
-		}
-	}
-
-	// TODO: Sort by preference (globally active first, then network diversity)
 
 	// Return up to count monitors
 	if len(eligible) <= count {

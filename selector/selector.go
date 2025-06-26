@@ -159,16 +159,14 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 		return false, fmt.Errorf("failed to load server info: %w", err)
 	}
 
-	// Step 2: Get all monitors (assigned and available)
+	// Step 2: Get all assigned monitors
 	assignedMonitors, err := db.GetMonitorPriority(ctx, serverID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get monitor priority: %w", err)
 	}
 
-	availableMonitors, err := sl.findAvailableMonitors(ctx, db, serverID)
-	if err != nil {
-		return false, fmt.Errorf("failed to find available monitors: %w", err)
-	}
+	// No longer loading available monitors - only work with assigned monitors
+	availableMonitors := []monitorCandidate{}
 
 	// Step 3: Build account limits from assigned monitors
 	accountLimits := sl.buildAccountLimitsFromMonitors(assignedMonitors)
@@ -180,40 +178,10 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 	for _, row := range assignedMonitors {
 		monitor := convertMonitorPriorityToCandidate(row)
 
-		// Check constraints for current state (only for states that have constraints)
+		// Check constraints for ALL monitors on EVERY run
+		// This allows us to detect when constraint rules change
 		var currentViolation *constraintViolation
-		if monitor.ServerStatus == ntpdb.ServerScoresStatusActive || monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
-			// Only active and testing states have constraints that can be violated
-			currentViolation = sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
-		} else {
-			// Candidate and new states have no constraints
-			currentViolation = &constraintViolation{Type: violationNone}
-		}
-
-		if currentViolation.Type != violationNone {
-			currentViolation.IsGrandfathered = sl.isGrandfathered(&monitor, server, currentViolation)
-
-			// Track grandfathered violations in metrics
-			if currentViolation.IsGrandfathered && sl.metrics != nil {
-				sl.metrics.TrackConstraintViolation(&monitor, currentViolation.Type, serverID, true)
-			}
-		}
-
-		// Compute legacy recommendedState for backward compatibility
-		state := sl.determineState(&monitor, currentViolation)
-
-		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
-			monitor:          monitor,
-			currentViolation: currentViolation,
-			recommendedState: state,
-		})
-	}
-
-	// Process available monitors
-	for _, monitor := range availableMonitors {
-		// Check constraints for potential candidate assignment
-		targetState := ntpdb.ServerScoresStatusCandidate
-		currentViolation := sl.checkConstraints(&monitor, server, accountLimits, targetState, assignedMonitors)
+		currentViolation = sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
 
 		if currentViolation.Type != violationNone {
 			currentViolation.IsGrandfathered = sl.isGrandfathered(&monitor, server, currentViolation)

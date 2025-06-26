@@ -25,7 +25,7 @@ func (sl *Selector) trackConstraintViolations(
 		if violation.Type != violationNone {
 			// Defensive programming: only record violations for states that should have constraints
 			if monitor.ServerStatus != ntpdb.ServerScoresStatusActive && monitor.ServerStatus != ntpdb.ServerScoresStatusTesting {
-				// Candidate and new states should not have constraint violations
+				// Candidate state should not have constraint violations
 				sl.log.Warn("attempted to record constraint violation for state that should have no constraints",
 					"monitorID", monitor.ID,
 					"serverStatus", monitor.ServerStatus,
@@ -142,7 +142,8 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	if row.Status.Valid {
 		candidate.ServerStatus = row.Status.ServerScoresStatus
 	} else {
-		candidate.ServerStatus = ntpdb.ServerScoresStatusNew
+		// This should not happen - all monitors in GetMonitorPriority should have a status
+		candidate.ServerStatus = ntpdb.ServerScoresStatusCandidate
 	}
 
 	// Health status

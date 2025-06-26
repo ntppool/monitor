@@ -43,7 +43,7 @@ func TestDetermineState(t *testing.T) {
 			name: "globally_pending_monitor_should_phase_out_gradually",
 			monitor: monitorCandidate{
 				GlobalStatus: ntpdb.MonitorsStatusPending,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			violation: constraintViolation{Type: violationNone},
 			want:      candidateOut,
@@ -98,16 +98,16 @@ func TestDetermineState(t *testing.T) {
 			want:      candidatePending, // Stay in testing
 		},
 		{
-			name: "new_monitor_with_constraint_violation_is_blocked",
+			name: "candidate_monitor_with_constraint_violation_gets_gradual_removal",
 			monitor: monitorCandidate{
 				GlobalStatus: ntpdb.MonitorsStatusActive,
-				ServerStatus: ntpdb.ServerScoresStatusNew,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			violation: constraintViolation{
 				Type:            violationNetworkSameSubnet,
 				IsGrandfathered: false,
 			},
-			want: candidateBlock,
+			want: candidateOut,
 		},
 		{
 			name: "active_monitor_with_grandfathered_violation_is_candidate_out",

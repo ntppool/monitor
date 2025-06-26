@@ -108,12 +108,7 @@ func (sl *Selector) determineState(
 			return candidateOut
 		}
 
-		// New violations on unassigned monitors = block
-		if monitor.ServerStatus == ntpdb.ServerScoresStatusNew {
-			return candidateBlock
-		}
-
-		// New violations on assigned monitors = gradual removal
+		// All constraint violations trigger gradual removal
 		return candidateOut
 	}
 
