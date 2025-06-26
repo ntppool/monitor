@@ -60,8 +60,8 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 
 ```bash
 make tools          # Install required development tools (buf, sqlc, protoc-gen-*)
-make generate       # Generate code from protobuf and SQL definitions (required after schema/proto changes)
-make sqlc           # Generate type-safe SQL code from query.sql
+make generate       # Generate all code (runs sqlc then go generate ./...)
+make sqlc           # Generate type-safe SQL code from query.sql only
 ```
 
 ### Build and Test
@@ -71,6 +71,54 @@ make build          # Build all components
 make test           # Run comprehensive test suite
 gofumpt -w          # Format Go code (required before commits)
 ```
+
+## Code Generation
+
+### Overview
+
+The project uses several code generation tools to maintain type safety and reduce boilerplate. Generated files should **never be edited directly** as changes will be lost on regeneration.
+
+### Generated File Patterns
+
+- **`*.pb.go`** - Protocol buffer generated files (from .proto files)
+- **`*.sql.go`** - sqlc generated database code (from query.sql)
+- **`otel.go`** - OpenTelemetry instrumentation wrappers (gowrap)
+- **`*_string.go`** - Enum string methods (enumer tool)
+- Files in `api/pb/` and `gen/` directories
+
+### Generation Tools
+
+1. **sqlc** - Generates type-safe Go code from SQL queries
+   - Source: `query.sql` and `schema.sql`
+   - Output: `ntpdb/query.sql.go`
+   - Config: `sqlc.yaml`
+
+2. **buf** - Modern Protocol Buffer toolchain
+   - Source: `proto/` directory
+   - Output: `gen/` directory
+   - Directive: `//go:generate buf generate proto/`
+
+3. **gowrap** - Generates decorators and wrappers
+   - Used for OpenTelemetry instrumentation
+   - Example: `//go:generate go tool github.com/hexdigest/gowrap/cmd/gowrap gen -t ./opentelemetry.gowrap -g -i QuerierTx -p . -o otel.go`
+
+4. **enumer** - Generates String() methods for enums
+   - Example: `//go:generate go tool github.com/dmarkham/enumer -type=candidateState`
+
+### When to Regenerate
+
+Run `make generate` after:
+- Modifying `query.sql` (SQL queries)
+- Modifying `.proto` files (API definitions)
+- Adding or modifying `//go:generate` directives
+- Updating `schema.sql` (though schema changes are handled by deployment)
+
+### Testing SQL Queries
+
+SQL queries are tested through integration tests. After adding or modifying queries in `query.sql`:
+1. Run `make generate` to regenerate code
+2. Write integration tests to verify the query behavior
+3. Use `./scripts/test-db.sh start` to run tests with a real database
 
 ## Problem Analysis Framework
 
@@ -239,6 +287,12 @@ Never mark a task as completed if:
 - Avoid `testify/assert` or similar tools
 - Use mocks only when necessary
 - Follow existing test patterns in the codebase
+
+### SQL Query Testing
+- SQL queries are tested through integration tests, not unit tests
+- After modifying `query.sql`, write integration tests to verify behavior
+- Use the test database (`./scripts/test-db.sh start`) for realistic testing
+- Test both success cases and error conditions (e.g., constraint violations)
 
 ### Test Data Validation and Mathematical Correctness
 
@@ -417,6 +471,14 @@ if !ipc.IsLive() {
 - **MySQL** backend with **sqlc** for compile-time verified SQL
 - **ClickHouse** support for analytics and traceroute data
 
+### Database Schema Management
+
+- **Schema Changes**: Database schema changes are handled automatically by the deployment system
+- **Schema File**: `schema.sql` contains the current database schema
+- **Local Development**: Use MySQL 8 in Docker (available via `make test-db-start` or `./scripts/test-db.sh start`)
+- **No Manual Migrations**: The codebase handles schema updates automatically during deployment
+- **Version Tracking**: Schema versions always increment forward and are managed separately from the code
+
 ### Concurrent Operations and Race Conditions
 
 When implementing database operations that might be called concurrently:
@@ -511,8 +573,27 @@ For complex changes, break work into distinct phases:
 ## Generated Files
 
 - **Never edit generated files directly.**
-  - Treat files in `api/`, files with `.pb.go` or `.sql.go` extensions, and files in `ntpdb/` as generated unless they are known to be hand-written (ask if unsure).
-  - If a change is needed to a generated file, automatically run `go generate ./...`.
+  - Generated files will be overwritten when code generation is run
+  - If changes are needed, modify the source files and regenerate
+
+### Identifying Generated Files
+
+The following patterns indicate generated files:
+- **`*.pb.go`** - Protocol buffer generated Go code
+- **`*.sql.go`** - sqlc generated database code (e.g., `ntpdb/query.sql.go`)
+- **`otel.go`** in ntpdb/ - OpenTelemetry instrumentation wrapper
+- **`*_string.go`** - Enum string methods from enumer tool
+- Files in `api/pb/` directory (protocol buffer outputs)
+- Files in `gen/` directory (buf generated outputs)
+- Files in `ntpdb/` directory (except hand-written files like `dbconn.go`)
+
+### Regenerating Code
+
+If you need to modify functionality in a generated file:
+1. Find the source file (`.proto`, `query.sql`, or `//go:generate` directive)
+2. Make changes to the source
+3. Run `make generate` to regenerate all code
+4. Verify the generated code includes your changes
 
 ## Documentation
 
