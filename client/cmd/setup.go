@@ -31,7 +31,8 @@ type setupCmd struct {
 }
 
 func (cmd *setupCmd) Run(ctx context.Context, cli *ClientCmd) error {
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With("env", cli.DeployEnv.String())
+	ctx = logger.NewContext(ctx, log)
 	ctx, span := tracing.Start(ctx, "monitor.setup")
 	defer span.End()
 

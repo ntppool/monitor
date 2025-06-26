@@ -58,7 +58,8 @@ func (mqcfg *mqconfig) GetMQTTConfig() *checkconfig.MQTTConfig {
 }
 
 func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With("env", root.DeploymentMode)
+	ctx = logger.NewContext(ctx, log)
 
 	log.InfoContext(ctx, "starting monitor-api", "version", version.Version())
 

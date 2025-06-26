@@ -71,7 +71,8 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	ctx, stopMonitor := context.WithCancel(ctx)
 	defer stopMonitor()
 
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With("env", cli.DeployEnv.String())
+	ctx = logger.NewContext(ctx, log)
 
 	log.InfoContext(ctx, "starting ntppool-agent", "version", version.Version())
 

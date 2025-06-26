@@ -125,7 +125,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 	// update() is wrapped in a lock
 	cfg := l.cfg
-	log := logger.Setup()
+	log := logger.FromContext(ctx)
 
 	ipVersion := "v6"
 	if l.isv4 {

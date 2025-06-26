@@ -26,7 +26,8 @@ type apiCmd struct {
 type apiOkCmd struct{}
 
 func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
-	log := logger.SetupMultiLogger()
+	log := logger.SetupMultiLogger().With("env", cli.DeployEnv.String())
+	ctx = logger.NewContext(ctx, log)
 
 	timeout := time.Second * 40
 	ctx, cancel := context.WithTimeout(ctx, timeout)

@@ -69,7 +69,7 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 	if err != nil {
 		// Create a temporary context for logging
 		ctx := context.Background()
-		log := logger.Setup()
+		log := logger.Setup().With("env", ac.Env().String())
 		ctx = logger.NewContext(ctx, log)
 
 		log.DebugContext(ctx, "creating state directory",
@@ -206,7 +206,7 @@ func (ac *appConfig) save() error {
 
 	// Create a temporary context for logging (since save doesn't receive one)
 	ctx := context.Background()
-	log := logger.Setup()
+	log := logger.Setup().With("env", ac.Env().String())
 	ctx = logger.NewContext(ctx, log)
 
 	log.DebugContext(ctx, "saving state to disk",

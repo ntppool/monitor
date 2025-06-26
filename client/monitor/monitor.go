@@ -30,7 +30,7 @@ type response struct {
 
 // CheckHost runs the configured queries to the IP and returns one ServerStatus
 func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, traceAttributes ...attribute.KeyValue) (*apiv2.ServerStatus, *ntp.Response, error) {
-	log := logger.Setup()
+	log := logger.FromContext(ctx)
 
 	ipVersion := "ipv4"
 	if ip.Is6() {
