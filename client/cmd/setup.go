@@ -168,6 +168,9 @@ type registrationState struct {
 	tryIPv6  bool
 	wantIPv4 bool
 	wantIPv6 bool
+
+	// registrationURL stores the URL until both protocols complete
+	registrationURL string
 }
 
 func (rs *registrationState) registrationStep(ctx context.Context) (done bool, err error) {
@@ -272,16 +275,22 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 		return true, err
 	}
 	if data.URL != "" {
+		rs.registrationURL = data.URL
+		log.DebugContext(ctx, "received registration URL", "url", data.URL)
+	}
+
+	log.DebugContext(ctx, "status", "status", data.Status)
+
+	// Print registration URL only after both protocol requests complete (unless one is disabled)
+	if rs.registrationURL != "" && !rs.tryIPv4 && !rs.tryIPv6 {
 		fmt.Print(heredoc.Docf(`
 
 				Please visit the following URL to complete the monitor registration:
 
 					%s
 
-				`, data.URL))
+				`, rs.registrationURL))
 	}
-
-	log.DebugContext(ctx, "status", "status", data.Status)
 
 	if data.Status == "accepted" {
 		log.InfoContext(ctx, "monitor registration was accepted")
