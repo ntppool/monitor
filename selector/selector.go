@@ -147,272 +147,175 @@ func (sl *Selector) Run() (int, error) {
 }
 
 func (sl *Selector) processServer(db *ntpdb.Queries, serverID uint32) (bool, error) {
-	// target this many active servers
-	targetNumber := 5
+	start := time.Now()
+	sl.log.Debug("processing server", "serverID", serverID)
 
-	// if there are this or less active servers, add new ones faster
-	bootStrapModeLimit := (targetNumber / 2) + 1
-
-	log := sl.log.With("serverID", serverID)
-
-	log.Debug("processServer")
-
-	// the list comes sorted
-	prilist, err := db.GetMonitorPriority(sl.ctx, serverID)
+	// Step 1: Load server information
+	server, err := sl.loadServerInfo(sl.ctx, db, serverID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to load server info: %w", err)
 	}
 
-	// newStatusList
-	nsl := newStatusList{}
+	// Step 2: Get all monitors (assigned and available)
+	assignedMonitors, err := db.GetMonitorPriority(sl.ctx, serverID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get monitor priority: %w", err)
+	}
 
-	currentActiveMonitors := 0
-	currentTestingMonitors := 0
+	availableMonitors, err := sl.findAvailableMonitors(sl.ctx, db, serverID)
+	if err != nil {
+		return false, fmt.Errorf("failed to find available monitors: %w", err)
+	}
 
-	// first count how many active servers are there now
-	// as it changes the criteria for in/out
-	for _, candidate := range prilist {
-		switch candidate.Status.ServerScoresStatus {
-		case ntpdb.ServerScoresStatusActive:
-			currentActiveMonitors++
-		case ntpdb.ServerScoresStatusTesting:
-			currentTestingMonitors++
+	// Step 3: Build account limits from assigned monitors
+	accountLimits := sl.buildAccountLimitsFromMonitors(assignedMonitors)
+
+	// Step 4: Evaluate all monitors against constraints
+	evaluatedMonitors := make([]evaluatedMonitor, 0, len(assignedMonitors)+len(availableMonitors))
+
+	// Process assigned monitors
+	for _, row := range assignedMonitors {
+		monitor := convertMonitorPriorityToCandidate(row)
+
+		// Check constraints for current state
+		violation := sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
+
+		if violation.Type != violationNone {
+			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
+
+			// Track grandfathered violations in metrics
+			if violation.IsGrandfathered && sl.metrics != nil {
+				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
+			}
 		}
+
+		state := sl.determineState(&monitor, violation)
+
+		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
+			monitor:          monitor,
+			violation:        violation,
+			recommendedState: state,
+		})
 	}
 
-	for _, candidate := range prilist {
+	// Process available monitors
+	for _, monitor := range availableMonitors {
+		// Check constraints for potential candidate assignment
+		targetState := ntpdb.ServerScoresStatusCandidate
+		violation := sl.checkConstraints(&monitor, server, accountLimits, targetState, assignedMonitors)
 
-		var currentStatus ntpdb.ServerScoresStatus
+		if violation.Type != violationNone {
+			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
 
-		if candidate.Status.Valid {
-			currentStatus = candidate.Status.ServerScoresStatus
+			// Track grandfathered violations in metrics
+			if violation.IsGrandfathered && sl.metrics != nil {
+				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
+			}
+		}
+
+		state := sl.determineState(&monitor, violation)
+
+		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
+			monitor:          monitor,
+			violation:        violation,
+			recommendedState: state,
+		})
+	}
+
+	// Step 5: Apply selection rules
+	changes := sl.applySelectionRules(evaluatedMonitors)
+
+	// Step 6: Execute changes
+	// Create a map from monitor ID to monitor candidate for metrics tracking
+	monitorMap := make(map[uint32]*monitorCandidate)
+	for _, em := range evaluatedMonitors {
+		monitorMap[em.monitor.ID] = &em.monitor
+	}
+
+	changeCount := 0
+	failedChanges := 0
+	for _, change := range changes {
+		monitor := monitorMap[change.monitorID]
+		if err := sl.applyStatusChange(sl.ctx, db, serverID, change, monitor); err != nil {
+			failedChanges++
+			sl.log.Error("failed to apply status change",
+				"serverID", serverID,
+				"monitorID", change.monitorID,
+				"from", change.fromStatus,
+				"to", change.toStatus,
+				"error", err)
+			// Continue with other changes
 		} else {
-			currentStatus = ntpdb.ServerScoresStatusNew
+			changeCount++
+			sl.log.Info("applied status change",
+				"serverID", serverID,
+				"monitorID", change.monitorID,
+				"from", change.fromStatus,
+				"to", change.toStatus,
+				"reason", change.reason)
 		}
+	}
 
-		if currentStatus == ntpdb.ServerScoresStatusNew {
-			// insert if it's not there already, don't check errors
-			db.InsertServerScore(sl.ctx, ntpdb.InsertServerScoreParams{
-				MonitorID: candidate.ID,
-				ServerID:  serverID,
-				ScoreRaw:  0,
-				CreatedOn: time.Now(),
-			})
-			err := db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
-				MonitorID: candidate.ID,
-				ServerID:  serverID,
-				Status:    ntpdb.ServerScoresStatusTesting,
-			})
-			if err != nil {
-				return false, err
+	// Track constraint violations
+	if err := sl.trackConstraintViolations(db, serverID, evaluatedMonitors); err != nil {
+		sl.log.Error("failed to track constraint violations", "error", err)
+		// Don't fail the whole operation for tracking errors
+	}
+
+	// Track performance metrics
+	if sl.metrics != nil {
+		duration := time.Since(start).Seconds()
+
+		// Count globally active monitors
+		globallyActiveCount := 0
+		for _, em := range evaluatedMonitors {
+			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
+				globallyActiveCount++
 			}
-			// don't consider this monitor a candidate now as there'll be no monitoring data
-			continue
 		}
 
-		healthy := candidate.Healthy.(int64)
-
-		rtt := 0.0
-		if avgUint, ok := candidate.AvgRtt.([]uint8); ok {
-			x := sql.NullFloat64{}
-			err := x.Scan(avgUint)
-			if err != nil {
-				return false, err
+		// Track monitor pool sizes
+		activeCount := 0
+		testingCount := 0
+		candidateCount := 0
+		for _, em := range evaluatedMonitors {
+			switch em.monitor.ServerStatus {
+			case ntpdb.ServerScoresStatusActive:
+				activeCount++
+			case ntpdb.ServerScoresStatusTesting:
+				testingCount++
+			case ntpdb.ServerScoresStatusCandidate:
+				candidateCount++
 			}
-			rtt = x.Float64
-		} else {
-			return false, fmt.Errorf("could not decode avg_rtt type %T", candidate.AvgRtt)
 		}
 
-		newStatus := newStatus{
-			MonitorID:     candidate.ID,
-			MonitorStatus: candidate.MonitorStatus,
-			CurrentStatus: currentStatus,
-			RTT:           rtt,
-		}
+		sl.metrics.RecordProcessingMetrics(
+			serverID,
+			duration,
+			len(evaluatedMonitors),
+			changeCount,
+			failedChanges,
+			globallyActiveCount,
+		)
 
-		switch candidate.MonitorStatus {
-		case ntpdb.MonitorsStatusActive:
-			var s candidateState
-
-			switch {
-
-			case healthy == 0:
-				s = candidateOut
-
-			case currentActiveMonitors >= targetNumber && candidate.Count <= 6:
-				// we have enough monitors, so only consider monitors with more history
-				s = candidateOut
-
-			case currentActiveMonitors > bootStrapModeLimit && candidate.Count <= 3:
-				// if we have a minimal amount of monitors, only choose servers
-				// with a few checks. If we have bootStrapLimit or less monitors
-				// then 1-3 checks is enough
-				s = candidateOut
-
-			default: // must be healthy == 1
-				s = candidateIn
-			}
-
-			newStatus.NewState = s
-			nsl = append(nsl, newStatus)
-
-			continue
-
-		case ntpdb.MonitorsStatusTesting:
-			newStatus.NewState = candidateOut
-			nsl = append(nsl, newStatus)
-			continue
-
-		default:
-			newStatus.NewState = candidateBlock
-			nsl = append(nsl, newStatus)
-			continue
-		}
-	}
-
-	healthyMonitors := 0
-	okMonitors := 0
-	blockedMonitors := 0
-	for _, ns := range nsl {
-		switch ns.NewState {
-		case candidateIn:
-			healthyMonitors++
-			okMonitors++
-
-		case candidateOut:
-			// "out" counts for "is an option to keep", blocked is not
-			okMonitors++
-
-		case candidateBlock:
-			blockedMonitors++
-		}
-	}
-
-	log.Info("monitor status", "ok", okMonitors, "healthy", healthyMonitors, "active", currentActiveMonitors, "blocked", blockedMonitors)
-
-	allowedChanges := 1
-	toAdd := targetNumber - currentActiveMonitors
-
-	if blockedMonitors > 1 {
-		allowedChanges = 2
-	}
-
-	if currentActiveMonitors == 0 {
-		allowedChanges = bootStrapModeLimit
-	}
-
-	if targetNumber > okMonitors && healthyMonitors < currentActiveMonitors {
-		return false, fmt.Errorf("not enough healthy and active monitors")
-	}
-
-	for _, ns := range nsl {
-		log.Debug("nsl",
-			"monitorID", ns.MonitorID,
-			"monitorStatus", ns.MonitorStatus,
-			"currentStatus", ns.CurrentStatus,
-			"newState", ns.NewState,
-			"rtt", ns.RTT,
+		sl.metrics.TrackMonitorPoolSizes(
+			serverID,
+			activeCount,
+			testingCount,
+			candidateCount,
+			len(availableMonitors),
 		)
 	}
 
-	maxRemovals := allowedChanges
+	// Log summary
+	sl.log.Info("server processing complete",
+		"serverID", serverID,
+		"assignedMonitors", len(assignedMonitors),
+		"availableMonitors", len(availableMonitors),
+		"evaluatedMonitors", len(evaluatedMonitors),
+		"plannedChanges", len(changes),
+		"appliedChanges", changeCount,
+		"failedChanges", failedChanges)
 
-	// don't remove monitors if we are at or below the target number
-	// and there aren't enough healthy monitors.
-	// (this should be caught by the "enough healthy monitors" check above, too)
-	if currentActiveMonitors <= targetNumber && healthyMonitors < targetNumber {
-		maxRemovals = 0
-	}
-
-	log.Debug("changes allowed", "toAdd", toAdd, "maxRemovals", maxRemovals)
-
-	changed := false
-
-	// remove candidates for removal
-	for _, stateToRemove := range []candidateState{candidateBlock, candidateOut} {
-		for i := len(nsl) - 1; i >= 0; i-- {
-			if maxRemovals <= 0 {
-				break
-			}
-			if nsl[i].CurrentStatus != ntpdb.ServerScoresStatusActive {
-				continue
-			}
-			if nsl[i].NewState == stateToRemove {
-				log.Info("removing", "monitorID", nsl[i].MonitorID)
-				db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
-					MonitorID: nsl[i].MonitorID,
-					ServerID:  serverID,
-					Status:    ntpdb.ServerScoresStatusTesting,
-				})
-				nsl[i].CurrentStatus = ntpdb.ServerScoresStatusTesting
-				changed = true
-				currentActiveMonitors--
-				maxRemovals--
-				toAdd++
-			}
-		}
-	}
-
-	log.Debug("work after removals", "toAdd", toAdd)
-
-	// replace removed monitors
-	for _, ns := range nsl {
-		if ns.NewState != candidateIn || ns.CurrentStatus == ntpdb.ServerScoresStatusActive {
-			// not a candidate or already active
-			continue
-		}
-		log.Debug("add loop", "toAdd", toAdd, "allowedChanges", allowedChanges)
-		if allowedChanges <= 0 || toAdd <= 0 {
-			break
-		}
-		log.Info("adding", "monitorID", ns.MonitorID)
-		db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
-			MonitorID: ns.MonitorID,
-			ServerID:  serverID,
-			Status:    ntpdb.ServerScoresStatusActive,
-		})
-		changed = true
-		ns.CurrentStatus = ntpdb.ServerScoresStatusActive
-		currentActiveMonitors++
-		allowedChanges--
-		toAdd--
-	}
-
-	for allowedChanges > 0 {
-		better, replace, ok := nsl.IsOutOfOrder()
-		if !ok {
-			break
-		}
-
-		err = db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
-			MonitorID: replace,
-			ServerID:  serverID,
-			Status:    ntpdb.ServerScoresStatusTesting,
-		})
-		if err != nil {
-			return changed, err
-		}
-		toAdd++
-
-		if toAdd > 0 {
-			err = db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
-				MonitorID: better,
-				ServerID:  serverID,
-				Status:    ntpdb.ServerScoresStatusActive,
-			})
-			if err != nil {
-				return changed, err
-			}
-			toAdd--
-			log.Info("replaced", "replacedMonitorID", replace, "monitorID", better)
-		} else {
-			log.Info("removed", "monitorID", replace)
-		}
-
-		changed = true
-		allowedChanges--
-	}
-
-	return changed, nil
+	return changeCount > 0, nil
 }

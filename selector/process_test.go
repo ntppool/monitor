@@ -8,8 +8,8 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-func TestProcessServerNew(t *testing.T) {
-	// This is a compilation test to ensure the new processServer implementation
+func TestProcessServerTypes(t *testing.T) {
+	// This is a compilation test to ensure the processServer implementation
 	// compiles correctly with all its dependencies
 
 	sl := &Selector{

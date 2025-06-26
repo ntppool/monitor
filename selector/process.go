@@ -24,186 +24,6 @@ type statusChange struct {
 	reason     string
 }
 
-// processServerNew implements the main selection algorithm for a single server
-// This is the new implementation that will replace the existing processServer
-func (sl *Selector) processServerNew(
-	ctx context.Context,
-	db *ntpdb.Queries,
-	serverID uint32,
-) (bool, error) {
-	start := time.Now()
-	sl.log.Debug("processing server", "serverID", serverID)
-
-	// Step 1: Load server information
-	server, err := sl.loadServerInfo(ctx, db, serverID)
-	if err != nil {
-		return false, fmt.Errorf("failed to load server info: %w", err)
-	}
-
-	// Step 2: Get all monitors (assigned and available)
-	assignedMonitors, err := db.GetMonitorPriority(ctx, serverID)
-	if err != nil {
-		return false, fmt.Errorf("failed to get monitor priority: %w", err)
-	}
-
-	availableMonitors, err := sl.findAvailableMonitors(ctx, db, serverID)
-	if err != nil {
-		return false, fmt.Errorf("failed to find available monitors: %w", err)
-	}
-
-	// Step 3: Build account limits from assigned monitors
-	accountLimits := sl.buildAccountLimitsFromMonitors(assignedMonitors)
-
-	// Step 4: Evaluate all monitors against constraints
-	evaluatedMonitors := make([]evaluatedMonitor, 0, len(assignedMonitors)+len(availableMonitors))
-
-	// Process assigned monitors
-	for _, row := range assignedMonitors {
-		monitor := convertMonitorPriorityToCandidate(row)
-
-		// Check constraints for current state
-		violation := sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
-
-		if violation.Type != violationNone {
-			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
-
-			// Track grandfathered violations in metrics
-			if violation.IsGrandfathered && sl.metrics != nil {
-				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
-			}
-		}
-
-		state := sl.determineState(&monitor, violation)
-
-		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
-			monitor:          monitor,
-			violation:        violation,
-			recommendedState: state,
-		})
-	}
-
-	// Process available monitors
-	for _, monitor := range availableMonitors {
-		// Check constraints for potential candidate assignment
-		targetState := ntpdb.ServerScoresStatusCandidate
-		violation := sl.checkConstraints(&monitor, server, accountLimits, targetState, assignedMonitors)
-
-		if violation.Type != violationNone {
-			violation.IsGrandfathered = sl.isGrandfathered(&monitor, server, violation)
-
-			// Track grandfathered violations in metrics
-			if violation.IsGrandfathered && sl.metrics != nil {
-				sl.metrics.TrackConstraintViolation(&monitor, violation.Type, serverID, true)
-			}
-		}
-
-		state := sl.determineState(&monitor, violation)
-
-		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
-			monitor:          monitor,
-			violation:        violation,
-			recommendedState: state,
-		})
-	}
-
-	// Step 5: Apply selection rules
-	changes := sl.applySelectionRules(evaluatedMonitors)
-
-	// Step 6: Execute changes
-	// Create a map from monitor ID to monitor candidate for metrics tracking
-	monitorMap := make(map[uint32]*monitorCandidate)
-	for _, em := range evaluatedMonitors {
-		monitorMap[em.monitor.ID] = &em.monitor
-	}
-
-	changeCount := 0
-	failedChanges := 0
-	for _, change := range changes {
-		monitor := monitorMap[change.monitorID]
-		if err := sl.applyStatusChange(ctx, db, serverID, change, monitor); err != nil {
-			failedChanges++
-			sl.log.Error("failed to apply status change",
-				"serverID", serverID,
-				"monitorID", change.monitorID,
-				"from", change.fromStatus,
-				"to", change.toStatus,
-				"error", err)
-			// Continue with other changes
-		} else {
-			changeCount++
-			sl.log.Info("applied status change",
-				"serverID", serverID,
-				"monitorID", change.monitorID,
-				"from", change.fromStatus,
-				"to", change.toStatus,
-				"reason", change.reason)
-		}
-	}
-
-	// Track constraint violations
-	if err := sl.trackConstraintViolations(db, serverID, evaluatedMonitors); err != nil {
-		sl.log.Error("failed to track constraint violations", "error", err)
-		// Don't fail the whole operation for tracking errors
-	}
-
-	// Track performance metrics
-	if sl.metrics != nil {
-		duration := time.Since(start).Seconds()
-
-		// Count globally active monitors
-		globallyActiveCount := 0
-		for _, em := range evaluatedMonitors {
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-				globallyActiveCount++
-			}
-		}
-
-		// Track monitor pool sizes
-		activeCount := 0
-		testingCount := 0
-		candidateCount := 0
-		for _, em := range evaluatedMonitors {
-			switch em.monitor.ServerStatus {
-			case ntpdb.ServerScoresStatusActive:
-				activeCount++
-			case ntpdb.ServerScoresStatusTesting:
-				testingCount++
-			case ntpdb.ServerScoresStatusCandidate:
-				candidateCount++
-			}
-		}
-
-		sl.metrics.RecordProcessingMetrics(
-			serverID,
-			duration,
-			len(evaluatedMonitors),
-			changeCount,
-			failedChanges,
-			globallyActiveCount,
-		)
-
-		sl.metrics.TrackMonitorPoolSizes(
-			serverID,
-			activeCount,
-			testingCount,
-			candidateCount,
-			len(availableMonitors),
-		)
-	}
-
-	// Log summary
-	sl.log.Info("server processing complete",
-		"serverID", serverID,
-		"assignedMonitors", len(assignedMonitors),
-		"availableMonitors", len(availableMonitors),
-		"evaluatedMonitors", len(evaluatedMonitors),
-		"plannedChanges", len(changes),
-		"appliedChanges", changeCount,
-		"failedChanges", failedChanges)
-
-	return changeCount > 0, nil
-}
-
 // loadServerInfo loads server details including IP and account
 func (sl *Selector) loadServerInfo(
 	ctx context.Context,
@@ -448,11 +268,13 @@ func (sl *Selector) applyStatusChange(
 
 	case change.toStatus == ntpdb.ServerScoresStatusNew:
 		// Remove from server_scores
-		// TODO: This needs a DeleteServerScore query to be added
-		sl.log.Warn("DeleteServerScore not implemented yet",
-			"serverID", serverID,
-			"monitorID", change.monitorID)
-		return nil
+		err := db.DeleteServerScore(ctx, ntpdb.DeleteServerScoreParams{
+			ServerID:  serverID,
+			MonitorID: change.monitorID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete server score: %w", err)
+		}
 
 	default:
 		// Update existing status
