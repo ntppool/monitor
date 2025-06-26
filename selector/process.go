@@ -330,7 +330,36 @@ func (sl *Selector) applySelectionRules(evaluatedMonitors []evaluatedMonitor) []
 		}
 	}
 
-	// Rule 6: Handle out-of-order situations (disabled for now to respect change limits)
+	// Rule 6: Bootstrap case - if no testing monitors exist, promote candidates regardless of constraints
+	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 {
+		changesRemaining = allowedChanges - len(changes)
+		if changesRemaining > 0 {
+			bootstrapPromotions := min(changesRemaining, 3) // Promote at least a few for bootstrap
+			promoted := 0
+
+			sl.log.Info("bootstrap: no testing monitors, promoting candidates to start monitoring",
+				"candidatesAvailable", len(candidateMonitors),
+				"bootstrapPromotions", bootstrapPromotions)
+
+			for _, em := range candidateMonitors {
+				if promoted >= bootstrapPromotions {
+					break
+				}
+				// Bootstrap: ignore recommendedState constraints, just check global status
+				if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
+					changes = append(changes, statusChange{
+						monitorID:  em.monitor.ID,
+						fromStatus: ntpdb.ServerScoresStatusCandidate,
+						toStatus:   ntpdb.ServerScoresStatusTesting,
+						reason:     "bootstrap: no testing monitors available",
+					})
+					promoted++
+				}
+			}
+		}
+	}
+
+	// Rule 7: Handle out-of-order situations (disabled for now to respect change limits)
 	// TODO: Implement out-of-order logic that respects allowedChanges limits
 
 	sl.log.Debug("planned changes", "totalChanges", len(changes), "allowedChanges", allowedChanges)

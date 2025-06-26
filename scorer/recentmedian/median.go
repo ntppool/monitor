@@ -56,6 +56,17 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 		}
 	}
 
+	// If still no scores, also include candidate monitors (they should still be monitoring)
+	if len(recent) == 0 {
+		arg.TimeLookback = 7200 // Extend lookback to 2 hours
+		arg.MonitorStatus = ntpdb.ServerScoresStatusCandidate
+		arg.MonitorStatus2 = ntpdb.ServerScoresStatusTesting
+		recent, err = db.GetScorerRecentScores(ctx, arg)
+		if err != nil {
+			return score.Score{}, err
+		}
+	}
+
 	if len(recent) == 0 {
 		return score.Score{}, fmt.Errorf("no recent scores found for %d", serverScore.ServerID)
 	}
