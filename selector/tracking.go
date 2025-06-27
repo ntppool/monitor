@@ -23,10 +23,11 @@ func (sl *Selector) trackConstraintViolations(
 		var newViolationSince sql.NullTime
 
 		if violation.Type != violationNone {
-			// Defensive programming: only record violations for states that should have constraints
-			if monitor.ServerStatus != ntpdb.ServerScoresStatusActive && monitor.ServerStatus != ntpdb.ServerScoresStatusTesting {
-				// Candidate state should not have constraint violations
-				sl.log.Warn("attempted to record constraint violation for state that should have no constraints",
+			// Defensive programming: candidates should not have limit violations,
+			// but can have account/network violations that prevent promotion
+			if monitor.ServerStatus == ntpdb.ServerScoresStatusCandidate && violation.Type == violationLimit {
+				// Candidate monitors should not have limit violations
+				sl.log.Warn("attempted to record limit violation for candidate monitor",
 					"monitorID", monitor.ID,
 					"serverStatus", monitor.ServerStatus,
 					"violationType", violation.Type)
