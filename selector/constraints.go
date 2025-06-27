@@ -383,6 +383,203 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 	return limits
 }
 
+// checkAccountConstraintsIterative performs iterative per-category account constraint checking
+// This determines which specific monitors exceed the account limits by sorting them by priority
+// and only flagging the worst-performing monitors that exceed the per-category limits.
+func (sl *Selector) checkAccountConstraintsIterative(
+	monitors []ntpdb.GetMonitorPriorityRow,
+	server *serverInfo,
+) map[uint32]*constraintViolation {
+	violations := make(map[uint32]*constraintViolation)
+
+	// Group monitors by account and category
+	type monitorInfo struct {
+		row      ntpdb.GetMonitorPriorityRow
+		priority float64
+	}
+
+	accountGroups := make(map[uint32]map[ntpdb.ServerScoresStatus][]monitorInfo)
+
+	for _, monitor := range monitors {
+		// Skip monitors without accounts or status
+		if !monitor.AccountID.Valid || !monitor.Status.Valid {
+			continue
+		}
+
+		accountID := uint32(monitor.AccountID.Int32)
+		status := monitor.Status.ServerScoresStatus
+
+		// Only check active and testing monitors (candidates are exempt)
+		if status != ntpdb.ServerScoresStatusActive && status != ntpdb.ServerScoresStatusTesting {
+			continue
+		}
+
+		// Initialize account group if needed
+		if accountGroups[accountID] == nil {
+			accountGroups[accountID] = make(map[ntpdb.ServerScoresStatus][]monitorInfo)
+		}
+
+		// Add monitor to appropriate category
+		accountGroups[accountID][status] = append(accountGroups[accountID][status], monitorInfo{
+			row:      monitor,
+			priority: monitor.MonitorPriority,
+		})
+	}
+
+	// Check each account's limits per category
+	for accountID, statusGroups := range accountGroups {
+		// Get account limit from any monitor in this account
+		var accountLimit int = defaultAccountLimitPerServer
+
+		// Find a monitor from this account to get the flags
+		for _, statusList := range statusGroups {
+			if len(statusList) > 0 {
+				monitor := statusList[0].row
+				if monitor.AccountID.Valid && uint32(monitor.AccountID.Int32) == accountID && len(monitor.AccountFlags) > 0 {
+					var flags accountFlags
+					if err := json.Unmarshal(monitor.AccountFlags, &flags); err == nil && flags.MonitorsPerServerLimit > 0 {
+						accountLimit = flags.MonitorsPerServerLimit
+					}
+				}
+				break
+			}
+		}
+
+		// Check each category separately
+		for status, monitorList := range statusGroups {
+			var categoryLimit int
+			switch status {
+			case ntpdb.ServerScoresStatusActive:
+				categoryLimit = accountLimit // Max X active monitors
+			case ntpdb.ServerScoresStatusTesting:
+				categoryLimit = accountLimit + 1 // Max X+1 testing monitors
+			default:
+				continue // Skip other statuses
+			}
+
+			// If we're over the limit, flag the worst performers
+			if len(monitorList) > categoryLimit {
+				// Sort by priority (worst priority = highest number = worst performance)
+				// We want to flag the worst performers first
+				for i := 0; i < len(monitorList)-1; i++ {
+					for j := i + 1; j < len(monitorList); j++ {
+						if monitorList[i].priority < monitorList[j].priority {
+							monitorList[i], monitorList[j] = monitorList[j], monitorList[i]
+						}
+					}
+				}
+
+				// Flag the excess monitors (worst performers)
+				excess := len(monitorList) - categoryLimit
+				for i := 0; i < excess; i++ {
+					monitorID := monitorList[i].row.ID
+
+					violation := &constraintViolation{
+						Type:    violationLimit,
+						Details: fmt.Sprintf("account %d exceeds %s limit (%d/%d)", accountID, status, len(monitorList), categoryLimit),
+					}
+
+					// Preserve existing violation timestamp if it exists
+					if monitorList[i].row.ConstraintViolationType.Valid &&
+						monitorList[i].row.ConstraintViolationType.String == string(violationLimit) &&
+						monitorList[i].row.ConstraintViolationSince.Valid {
+						violation.Since = monitorList[i].row.ConstraintViolationSince.Time
+					} else {
+						violation.Since = time.Now()
+					}
+
+					violations[monitorID] = violation
+				}
+			}
+		}
+	}
+
+	return violations
+}
+
+// checkNonAccountConstraints performs constraint validation excluding account limit checks
+// This is used in conjunction with checkAccountConstraintsIterative to avoid double-checking account limits
+func (sl *Selector) checkNonAccountConstraints(
+	monitor *monitorCandidate,
+	server *serverInfo,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+) *constraintViolation {
+	// Check network constraint (same subnet)
+	if err := sl.checkNetworkConstraint(monitor.IP, server.IP); err != nil {
+		violation := &constraintViolation{
+			Type:    violationNetworkSameSubnet,
+			Details: err.Error(),
+		}
+		// If we have a stored violation of the same type, preserve the timestamp
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationNetworkSameSubnet) &&
+			monitor.ConstraintViolationSince != nil {
+			violation.Since = *monitor.ConstraintViolationSince
+		} else {
+			violation.Since = time.Now()
+		}
+
+		// Track constraint violation in metrics
+		if sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+		}
+
+		return violation
+	}
+
+	// Check same account constraint (not account limits)
+	if monitor.AccountID != nil && server.AccountID != nil {
+		if *monitor.AccountID == *server.AccountID {
+			violation := &constraintViolation{
+				Type:    violationAccount,
+				Details: "monitor from same account as server",
+			}
+			// If we have a stored violation of the same type, preserve the timestamp
+			if monitor.ConstraintViolationType != nil &&
+				*monitor.ConstraintViolationType == string(violationAccount) &&
+				monitor.ConstraintViolationSince != nil {
+				violation.Since = *monitor.ConstraintViolationSince
+			} else {
+				violation.Since = time.Now()
+			}
+
+			// Track constraint violation in metrics
+			if sl.metrics != nil {
+				sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+			}
+
+			return violation
+		}
+	}
+
+	// Check network diversity constraints
+	if err := sl.checkNetworkDiversityConstraint(monitor.ID, monitor.IP, existingMonitors, monitor.ServerStatus); err != nil {
+		violation := &constraintViolation{
+			Type:    violationNetworkDiversity,
+			Details: err.Error(),
+		}
+		// If we have a stored violation of the same type, preserve the timestamp
+		if monitor.ConstraintViolationType != nil &&
+			*monitor.ConstraintViolationType == string(violationNetworkDiversity) &&
+			monitor.ConstraintViolationSince != nil {
+			violation.Since = *monitor.ConstraintViolationSince
+		} else {
+			violation.Since = time.Now()
+		}
+
+		// Track constraint violation in metrics
+		if sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
+		}
+
+		return violation
+	}
+
+	return &constraintViolation{
+		Type: violationNone,
+	}
+}
+
 // canPromoteToActive checks if a monitor can be promoted to active status
 func (sl *Selector) canPromoteToActive(
 	monitor *monitorCandidate,

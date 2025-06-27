@@ -168,20 +168,32 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 	// No longer loading available monitors - only work with assigned monitors
 	availableMonitors := []monitorCandidate{}
 
-	// Step 3: Build account limits from assigned monitors
+	// Step 3: Build account limits from assigned monitors (still needed for promotion logic)
 	accountLimits := sl.buildAccountLimitsFromMonitors(assignedMonitors)
 
-	// Step 4: Evaluate all monitors against constraints
+	// Step 4: Use iterative constraint checking for account limits
+	// This identifies which specific monitors exceed the per-category limits
+	accountLimitViolations := sl.checkAccountConstraintsIterative(assignedMonitors, server)
+
+	// Step 5: Evaluate all monitors against constraints
 	evaluatedMonitors := make([]evaluatedMonitor, 0, len(assignedMonitors)+len(availableMonitors))
 
 	// Process assigned monitors
 	for _, row := range assignedMonitors {
 		monitor := convertMonitorPriorityToCandidate(row)
 
-		// Check constraints for ALL monitors on EVERY run
+		// Check non-account constraints for ALL monitors on EVERY run
 		// This allows us to detect when constraint rules change
 		var currentViolation *constraintViolation
-		currentViolation = sl.checkConstraints(&monitor, server, accountLimits, monitor.ServerStatus, assignedMonitors)
+
+		// First check if this monitor has an account limit violation from iterative checking
+		if violation, hasAccountViolation := accountLimitViolations[monitor.ID]; hasAccountViolation {
+			currentViolation = violation
+		} else {
+			// Check other constraints (network, same account) but skip account limits
+			// since those are handled iteratively
+			currentViolation = sl.checkNonAccountConstraints(&monitor, server, assignedMonitors)
+		}
 
 		if currentViolation.Type != violationNone {
 			currentViolation.IsGrandfathered = sl.isGrandfathered(&monitor, server, currentViolation)
@@ -202,10 +214,10 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 		})
 	}
 
-	// Step 5: Apply selection rules
+	// Step 6: Apply selection rules
 	changes := sl.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, assignedMonitors)
 
-	// Step 6: Execute changes
+	// Step 7: Execute changes
 	// Create a map from monitor ID to monitor candidate for metrics tracking
 	monitorMap := make(map[uint32]*monitorCandidate)
 	for _, em := range evaluatedMonitors {
