@@ -10,7 +10,7 @@ import (
 // Constants for monitor selection
 const (
 	targetActiveMonitors       = 7 // Target number of active monitors per server
-	targetTestingMonitors      = 5 // Target number of testing monitors
+	baseTestingTarget          = 5 // Base number of testing monitors
 	minGloballyActiveInTesting = 4 // Minimum globally active monitors in testing pool
 	bootStrapModeLimit         = 4 // If active monitors <= this, add new ones faster
 )
@@ -214,6 +214,44 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
+	// Rule 2.5: Demote excess testing monitors based on dynamic target
+	// Calculate dynamic testing target based on active monitor gap
+	activeGap := max(0, targetActiveMonitors-len(activeMonitors))
+	dynamicTestingTarget := baseTestingTarget + activeGap
+
+	testingCount := len(testingMonitors)
+	if testingCount > dynamicTestingTarget {
+		excessTesting := testingCount - dynamicTestingTarget
+		testingRemovalsRemaining := allowedChanges - len(changes)
+		demotionsNeeded := min(excessTesting, testingRemovalsRemaining)
+
+		if demotionsNeeded > 0 {
+			sl.log.Debug("demoting excess testing monitors",
+				"currentTesting", testingCount,
+				"dynamicTarget", dynamicTestingTarget,
+				"activeGap", activeGap,
+				"excessTesting", excessTesting,
+				"demotionsNeeded", demotionsNeeded)
+		}
+
+		// Demote worst-performing healthy testing monitors
+		demoted := 0
+		for i := len(testingMonitors) - 1; i >= 0 && demoted < demotionsNeeded; i-- {
+			em := testingMonitors[i]
+			// Skip if already marked for demotion or has violations
+			if em.recommendedState != candidateOut && em.currentViolation.Type == violationNone {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusTesting,
+					toStatus:   ntpdb.ServerScoresStatusCandidate,
+					reason:     fmt.Sprintf("excess testing monitors (%d > target %d)", testingCount, dynamicTestingTarget),
+				})
+				demoted++
+				testingCount--
+			}
+		}
+	}
+
 	// Create a working copy of account limits for iterative constraint checking
 	// This will be updated as we make promotion decisions
 	workingAccountLimits := make(map[uint32]*accountLimit)
@@ -337,13 +375,13 @@ func (sl *Selector) applySelectionRules(
 
 	// Rule 6: Bootstrap case - if no testing monitors exist, promote candidates to reach target
 	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 {
-		// In bootstrap scenario, we can promote up to targetTestingMonitors at once
-		bootstrapPromotions := targetTestingMonitors
+		// In bootstrap scenario, we can promote up to baseTestingTarget at once
+		bootstrapPromotions := baseTestingTarget
 		promoted := 0
 
 		sl.log.Info("bootstrap: no testing monitors, promoting candidates to start monitoring",
 			"candidatesAvailable", len(candidateMonitors),
-			"targetTestingMonitors", targetTestingMonitors,
+			"baseTestingTarget", baseTestingTarget,
 			"bootstrapPromotions", bootstrapPromotions)
 
 		// Sort candidates by health first, then by global status
@@ -558,8 +596,8 @@ func (sl *Selector) selectCandidatesForTesting(
 
 func (sl *Selector) calculateNeededCandidates(active, testing, candidates int) int {
 	// We want a buffer of candidates ready to be promoted
-	// Target: enough to replace both active and testing pools
-	targetCandidates := targetActiveMonitors + targetTestingMonitors
+	// Target: enough to replace both active and testing pools (using base testing target)
+	targetCandidates := targetActiveMonitors + baseTestingTarget
 	current := candidates
 
 	if current < targetCandidates {
