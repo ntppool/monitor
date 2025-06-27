@@ -226,11 +226,11 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		}
 	}
 
-	// With change limits (allowedChanges=1 with 3 active monitors),
-	// should only promote 1 monitor per cycle
-	if promotionCount != 1 {
-		t.Errorf("Expected 1 promotion (change limit), got %d", promotionCount)
-		t.Logf("Note: Account limit would allow 2, but change limit restricts to 1")
+	// With per-status change limits (promotions=2 with 3 active monitors),
+	// should promote up to 2 monitors per cycle (account limit also allows 2)
+	if promotionCount != 2 {
+		t.Errorf("Expected 2 promotions (promotion limit), got %d", promotionCount)
+		t.Logf("Note: Both account limit and promotion limit allow 2")
 	}
 }
 

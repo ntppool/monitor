@@ -23,6 +23,13 @@ type statusChange struct {
 	reason     string
 }
 
+// changeLimits defines separate limits for different types of status changes
+type changeLimits struct {
+	activeRemovals  int // active → testing demotions
+	testingRemovals int // testing → candidate demotions
+	promotions      int // testing → active, candidate → testing
+}
+
 // loadServerInfo loads server details including IP and account
 func (sl *Selector) loadServerInfo(
 	ctx context.Context,
@@ -81,18 +88,14 @@ func (sl *Selector) applySelectionRules(
 	healthyTesting := sl.countHealthy(testingMonitors)
 	blockedMonitors := sl.countBlocked(evaluatedMonitors)
 
-	// Calculate change limits based on old selector logic
-	targetNumber := targetActiveMonitors         // 7 from constants
-	bootStrapModeLimit := (targetNumber / 2) + 1 // 4
+	// Calculate per-status change limits
+	targetNumber := targetActiveMonitors // 7 from constants
 	currentActiveMonitors := len(activeMonitors)
 
-	allowedChanges := 1
-	if blockedMonitors > 1 {
-		allowedChanges = 2
-	}
-	if currentActiveMonitors == 0 {
-		allowedChanges = bootStrapModeLimit
-	}
+	limits := calculateChangeLimits(currentActiveMonitors, blockedMonitors)
+
+	// Legacy allowedChanges for backward compatibility in logging
+	allowedChanges := limits.activeRemovals
 
 	// Emergency safeguards
 	if targetNumber > len(evaluatedMonitors) && healthyActive < currentActiveMonitors {
@@ -161,9 +164,9 @@ func (sl *Selector) applySelectionRules(
 
 	// Rule 2: Gradual removal of candidateOut monitors (with limits)
 
-	// First remove active monitors (demote to testing, not new) - use maxRemovals limit
+	// First remove active monitors (demote to testing, not new) - use activeRemovals limit
 	// Iterate backwards to demote worst performers first (bottom-up)
-	activeRemovalsRemaining := maxRemovals
+	activeRemovalsRemaining := limits.activeRemovals
 	for i := len(activeMonitors) - 1; i >= 0; i-- {
 		if activeRemovalsRemaining <= 0 {
 			break
@@ -181,8 +184,8 @@ func (sl *Selector) applySelectionRules(
 	}
 
 	// Then remove testing monitors (demote to candidate, not new)
-	// Use separate limit calculation for testing demotions
-	testingRemovalsRemaining := allowedChanges - len(changes)
+	// Use separate limit for testing demotions
+	testingRemovalsRemaining := limits.testingRemovals
 
 	// When zero active monitors, allow more aggressive cleanup of testing violations
 	if currentActiveMonitors == 0 {
@@ -193,8 +196,8 @@ func (sl *Selector) applySelectionRules(
 				testingViolationCount++
 			}
 		}
-		// Allow demoting all testing monitors with violations, but respect change limits
-		testingRemovalsRemaining = min(testingViolationCount, allowedChanges-len(changes))
+		// Allow demoting all testing monitors with violations, but respect testing removal limits
+		testingRemovalsRemaining = min(testingViolationCount, limits.testingRemovals)
 	}
 
 	// Iterate backwards to demote worst performers first (bottom-up)
@@ -222,8 +225,17 @@ func (sl *Selector) applySelectionRules(
 	testingCount := len(testingMonitors)
 	if testingCount > dynamicTestingTarget {
 		excessTesting := testingCount - dynamicTestingTarget
-		testingRemovalsRemaining := allowedChanges - len(changes)
-		demotionsNeeded := min(excessTesting, testingRemovalsRemaining)
+
+		// Count how many testing demotions have already been made
+		testingDemotionsSoFar := 0
+		for _, change := range changes {
+			if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusCandidate {
+				testingDemotionsSoFar++
+			}
+		}
+
+		dynamicTestingRemovalsRemaining := max(0, limits.testingRemovals-testingDemotionsSoFar)
+		demotionsNeeded := min(excessTesting, dynamicTestingRemovalsRemaining)
 
 		if demotionsNeeded > 0 {
 			sl.log.Debug("demoting excess testing monitors",
@@ -265,7 +277,7 @@ func (sl *Selector) applySelectionRules(
 	}
 
 	// Rule 3: Promote from testing to active (iterative constraint checking)
-	changesRemaining := allowedChanges - len(changes)
+	changesRemaining := limits.promotions
 	toAdd := targetNumber - currentActiveMonitors
 
 	// Account for demotions (active->testing increases toAdd)
@@ -317,7 +329,7 @@ func (sl *Selector) applySelectionRules(
 	}
 
 	// Rule 5: Promote candidates to testing (iterative constraint checking)
-	changesRemaining = allowedChanges - len(changes)
+	changesRemaining = limits.promotions
 	if changesRemaining > 0 && len(candidateMonitors) > 0 {
 		promotionsNeeded := min(changesRemaining, 2) // Limit candidate promotions
 		promoted := 0
@@ -448,6 +460,24 @@ func (sl *Selector) applySelectionRules(
 	sl.log.Debug("planned changes", "totalChanges", len(changes), "allowedChanges", allowedChanges)
 
 	return changes
+}
+
+// calculateChangeLimits determines separate limits for different status change types
+func calculateChangeLimits(currentActiveMonitors, blockedMonitors int) changeLimits {
+	// Per-status limits can be more generous since they don't compete with each other
+	base := 2 // Increased from 1 to allow more efficient processing
+	if blockedMonitors > 1 {
+		base = 3 // Increased from 2
+	}
+	if currentActiveMonitors == 0 {
+		base = 4 // bootstrap mode (unchanged)
+	}
+
+	return changeLimits{
+		activeRemovals:  base,
+		testingRemovals: base,
+		promotions:      base,
+	}
 }
 
 // applyStatusChange executes a single status change
