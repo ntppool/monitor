@@ -30,21 +30,23 @@ type MonitorSettings struct {
 	BatchSize       int32             `json:"batch_size"`
 }
 
-func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor, context.Context, error) {
+func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor, *ntpdb.Account, context.Context, error) {
 	log := logger.FromContext(ctx)
 
 	if mon, ok := ctx.Value(sctx.MonitorKey).(*ntpdb.Monitor); ok {
 		if mon == nil {
 			log.Error("got cached nil mon")
 		}
-		return mon, ctx, nil
+		// Also get cached account if available
+		acc, _ := ctx.Value(sctx.AccountKey).(*ntpdb.Account)
+		return mon, acc, ctx, nil
 	}
 
 	cn := getCertificateName(ctx)
 
 	log.DebugContext(ctx, "getMonitor", "cn", cn, "monIP", monIP)
 
-	monitor, err := srv.db.GetMonitorTLSNameIP(ctx, ntpdb.GetMonitorTLSNameIPParams{
+	row, err := srv.db.GetMonitorTLSNameIP(ctx, ntpdb.GetMonitorTLSNameIPParams{
 		TlsName: sql.NullString{String: cn, Valid: true},
 		Ip:      sql.NullString{String: monIP, Valid: true},
 	})
@@ -53,14 +55,15 @@ func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor
 			err = twirp.NotFoundError("no such monitor")
 		}
 		ctx = context.WithValue(ctx, sctx.MonitorKey, nil)
-		return nil, ctx, err
+		return nil, nil, ctx, err
 	}
 
 	// log.Printf("cn: %+v, got monitor %s (%T), storing in context", cn, monitor.TlsName.String, monitor)
 
-	ctx = context.WithValue(ctx, sctx.MonitorKey, &monitor)
+	ctx = context.WithValue(ctx, sctx.MonitorKey, &row.Monitor)
+	ctx = context.WithValue(ctx, sctx.AccountKey, &row.Account)
 
-	return &monitor, ctx, nil
+	return &row.Monitor, &row.Account, ctx, nil
 }
 
 func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor) (*ntpdb.MonitorConfig, error) {
@@ -95,7 +98,7 @@ func (srv *Server) GetConfig(ctx context.Context, monIP string) (*ntpdb.MonitorC
 	ua := ctx.Value(sctx.ClientVersionKey).(string)
 	log.DebugContext(ctx, "GetConfig", "user-agent", ua)
 
-	monitor, ctx, err := srv.getMonitor(ctx, monIP)
+	monitor, _, ctx, err := srv.getMonitor(ctx, monIP)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +186,7 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
 
-	monitor, ctx, err := srv.getMonitor(ctx, monID)
+	monitor, _, ctx, err := srv.getMonitor(ctx, monID)
 	if err != nil {
 		return nil, err
 	}

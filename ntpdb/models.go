@@ -7,6 +7,7 @@ package ntpdb
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -224,6 +225,20 @@ func (ns NullServersIpVersion) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.ServersIpVersion), nil
+}
+
+type Account struct {
+	ID               uint32          `json:"id"`
+	IDToken          sql.NullString  `json:"id_token"`
+	Name             sql.NullString  `json:"name"`
+	OrganizationName sql.NullString  `json:"organization_name"`
+	OrganizationUrl  sql.NullString  `json:"organization_url"`
+	PublicProfile    bool            `json:"public_profile"`
+	UrlSlug          sql.NullString  `json:"url_slug"`
+	Flags            json.RawMessage `json:"flags"`
+	CreatedOn        time.Time       `json:"created_on"`
+	ModifiedOn       time.Time       `json:"modified_on"`
+	StripeCustomerID sql.NullString  `json:"stripe_customer_id"`
 }
 
 type LogScore struct {

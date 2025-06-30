@@ -1,6 +1,6 @@
 package selector
 
-//go:generate go tool github.com/dmarkham/enumer -type=candidateState
+//go:generate go tool github.com/dmarkham/enumer -type=candidateState -json -yaml -text
 
 import (
 	"go.ntppool.org/monitor/ntpdb"

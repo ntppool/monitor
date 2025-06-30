@@ -24,7 +24,7 @@ func New(r prometheus.Registerer) *Metrics {
 
 		labels := []string{"monitor", "ip_version"}
 		if k == "tests_completed_total" {
-			labels = append(labels, "result", "version")
+			labels = append(labels, "result", "version", "account", "account_id")
 		}
 
 		counter := prometheus.NewCounterVec(

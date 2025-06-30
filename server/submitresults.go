@@ -46,7 +46,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	now := time.Now()
 	log := logger.FromContext(ctx)
 
-	monitor, ctx, err := srv.getMonitor(ctx, monIP)
+	monitor, account, ctx, err := srv.getMonitor(ctx, monIP)
 	if err != nil {
 		log.Error("get monitor error", "err", err)
 		return false, err
@@ -84,11 +84,19 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 			counters.Timeout, counters.Sig,
 			counters.BatchOrder,
 		} {
+			accountIDToken := ""
+			accountID := "0"
+			if account != nil {
+				accountIDToken = account.IDToken.String
+				accountID = strconv.Itoa(int(account.ID))
+			}
 			srv.m.TestsCompleted.WithLabelValues(
 				monitor.TlsName.String,
 				monitor.IpVersion.MonitorsIpVersion.String(),
 				c.Name,
 				strconv.Itoa(int(in.Version)),
+				accountIDToken,
+				accountID,
 			).Add(float64(c.Counter))
 		}
 	}()

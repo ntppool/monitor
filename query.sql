@@ -5,12 +5,16 @@ WHERE tls_name = ?
   AND deleted_on is null;
 
 -- name: GetMonitorTLSNameIP :one
-SELECT * FROM monitors
-WHERE tls_name = ?
+SELECT
+  sqlc.embed(monitors),
+  sqlc.embed(accounts)
+FROM monitors
+LEFT JOIN accounts ON monitors.account_id = accounts.id
+WHERE monitors.tls_name = ?
   -- todo: remove this when v3 monitors are gone
-  and (ip = sqlc.arg('ip') OR "" = sqlc.arg('ip'))
-  AND is_current = 1
-  AND deleted_on is null
+  and (monitors.ip = sqlc.arg('ip') OR "" = sqlc.arg('ip'))
+  AND monitors.is_current = 1
+  AND monitors.deleted_on is null
 LIMIT 1;
 
 -- name: GetServer :one

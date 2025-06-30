@@ -141,12 +141,16 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 }
 
 const getMonitorTLSNameIP = `-- name: GetMonitorTLSNameIP :one
-SELECT id, id_token, type, user_id, account_id, hostname, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
-WHERE tls_name = ?
+SELECT
+  monitors.id, monitors.id_token, monitors.type, monitors.user_id, monitors.account_id, monitors.hostname, monitors.location, monitors.ip, monitors.ip_version, monitors.tls_name, monitors.api_key, monitors.status, monitors.config, monitors.client_version, monitors.last_seen, monitors.last_submit, monitors.created_on, monitors.deleted_on, monitors.is_current,
+  accounts.id, accounts.id_token, accounts.name, accounts.organization_name, accounts.organization_url, accounts.public_profile, accounts.url_slug, accounts.flags, accounts.created_on, accounts.modified_on, accounts.stripe_customer_id
+FROM monitors
+LEFT JOIN accounts ON monitors.account_id = accounts.id
+WHERE monitors.tls_name = ?
   -- todo: remove this when v3 monitors are gone
-  and (ip = ? OR "" = ?)
-  AND is_current = 1
-  AND deleted_on is null
+  and (monitors.ip = ? OR "" = ?)
+  AND monitors.is_current = 1
+  AND monitors.deleted_on is null
 LIMIT 1
 `
 
@@ -155,29 +159,45 @@ type GetMonitorTLSNameIPParams struct {
 	Ip      sql.NullString `json:"ip"`
 }
 
-func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (Monitor, error) {
+type GetMonitorTLSNameIPRow struct {
+	Monitor Monitor `json:"monitor"`
+	Account Account `json:"account"`
+}
+
+func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error) {
 	row := q.db.QueryRowContext(ctx, getMonitorTLSNameIP, arg.TlsName, arg.Ip, arg.Ip)
-	var i Monitor
+	var i GetMonitorTLSNameIPRow
 	err := row.Scan(
-		&i.ID,
-		&i.IDToken,
-		&i.Type,
-		&i.UserID,
-		&i.AccountID,
-		&i.Hostname,
-		&i.Location,
-		&i.Ip,
-		&i.IpVersion,
-		&i.TlsName,
-		&i.ApiKey,
-		&i.Status,
-		&i.Config,
-		&i.ClientVersion,
-		&i.LastSeen,
-		&i.LastSubmit,
-		&i.CreatedOn,
-		&i.DeletedOn,
-		&i.IsCurrent,
+		&i.Monitor.ID,
+		&i.Monitor.IDToken,
+		&i.Monitor.Type,
+		&i.Monitor.UserID,
+		&i.Monitor.AccountID,
+		&i.Monitor.Hostname,
+		&i.Monitor.Location,
+		&i.Monitor.Ip,
+		&i.Monitor.IpVersion,
+		&i.Monitor.TlsName,
+		&i.Monitor.ApiKey,
+		&i.Monitor.Status,
+		&i.Monitor.Config,
+		&i.Monitor.ClientVersion,
+		&i.Monitor.LastSeen,
+		&i.Monitor.LastSubmit,
+		&i.Monitor.CreatedOn,
+		&i.Monitor.DeletedOn,
+		&i.Monitor.IsCurrent,
+		&i.Account.ID,
+		&i.Account.IDToken,
+		&i.Account.Name,
+		&i.Account.OrganizationName,
+		&i.Account.OrganizationUrl,
+		&i.Account.PublicProfile,
+		&i.Account.UrlSlug,
+		&i.Account.Flags,
+		&i.Account.CreatedOn,
+		&i.Account.ModifiedOn,
+		&i.Account.StripeCustomerID,
 	)
 	return i, err
 }

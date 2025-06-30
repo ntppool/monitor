@@ -174,14 +174,14 @@ func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID 
 }
 
 // GetMonitorTLSNameIP implements QuerierTx
-func (_d QuerierTxWithTracing) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (m1 Monitor, err error) {
+func (_d QuerierTxWithTracing) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (g1 GetMonitorTLSNameIPRow, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorTLSNameIP")
 	defer func() {
 		if _d._spanDecorator != nil {
 			_d._spanDecorator(_span, map[string]interface{}{
 				"ctx": ctx,
 				"arg": arg}, map[string]interface{}{
-				"m1":  m1,
+				"g1":  g1,
 				"err": err})
 		} else if err != nil {
 			_span.RecordError(err)

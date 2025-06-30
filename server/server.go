@@ -134,11 +134,11 @@ func (srv *Server) Run() error {
 			twirptrace.WithTags(twirptrace.TraceTag{Key: "ottwirp", Value: true}),
 			twirptrace.IncludeClientErrors(true),
 			twirptrace.WithContextTags(func(ctx context.Context) (context.Context, []twirptrace.TraceTag) {
-				mon, ctx, err := srv.getMonitor(ctx, "")
+				mon, acc, ctx, err := srv.getMonitor(ctx, "")
 				if err != nil {
 					return ctx, nil
 				}
-				return ctx, []twirptrace.TraceTag{
+				tags := []twirptrace.TraceTag{
 					{
 						Key:   "monitor_id",
 						Value: mon.ID,
@@ -152,6 +152,13 @@ func (srv *Server) Run() error {
 						Value: mon.AccountID.Int32,
 					},
 				}
+				if acc != nil && acc.IDToken.Valid {
+					tags = append(tags, twirptrace.TraceTag{
+						Key:   "account_id_token",
+						Value: acc.IDToken.String,
+					})
+				}
+				return ctx, tags
 			}),
 		),
 		NewLoggingServerHooks(),
