@@ -186,7 +186,7 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	log := logger.FromContext(ctx)
 	span := otrace.SpanFromContext(ctx)
 
-	monitor, _, ctx, err := srv.getMonitor(ctx, monID)
+	monitor, acc, ctx, err := srv.getMonitor(ctx, monID)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,18 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	}
 
 	if count := len(servers); count > 0 {
-		srv.m.TestsRequested.WithLabelValues(monitor.TlsName.String, monitor.IpVersion.MonitorsIpVersion.String()).Add(float64(count))
+		accountIDToken := ""
+		accountID := "0"
+		if acc != nil {
+			accountIDToken = acc.IDToken.String
+			accountID = strconv.Itoa(int(acc.ID))
+		}
+		srv.m.TestsRequested.WithLabelValues(
+			monitor.TlsName.String,
+			monitor.IpVersion.MonitorsIpVersion.String(),
+			accountIDToken,
+			accountID,
+		).Add(float64(count))
 
 		now := sql.NullTime{Time: time.Now(), Valid: true}
 

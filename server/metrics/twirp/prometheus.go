@@ -17,8 +17,10 @@ package prometheus
 
 import (
 	"context"
+	"strconv"
 	"time"
 
+	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,7 +33,7 @@ var (
 			Name: "rpc_requests_total",
 			Help: "Number of RPC requests received.",
 		},
-		[]string{"method", "client"},
+		[]string{"method", "client", "account", "account_id"},
 	)
 
 	responsesSent = prometheus.NewCounterVec(
@@ -39,7 +41,7 @@ var (
 			Name: "rpc_responses_total",
 			Help: "Number of RPC responses sent.",
 		},
-		[]string{"method", "status", "client"},
+		[]string{"method", "status", "client", "account", "account_id"},
 	)
 
 	rpcDurations = prometheus.NewSummaryVec(
@@ -48,7 +50,7 @@ var (
 			Help:       "RPC latency distributions.",
 			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		},
-		[]string{"method", "status", "client"},
+		[]string{"method", "status", "client", "account", "account_id"},
 	)
 )
 
@@ -83,7 +85,8 @@ func NewServerHooks(registerer prometheus.Registerer) *twirp.ServerHooks {
 			return ctx, nil
 		}
 		client, _ := getReqClient(ctx)
-		requestsReceived.WithLabelValues(method, client).Inc()
+		accountIDToken, accountID := getReqAccount(ctx)
+		requestsReceived.WithLabelValues(method, client, accountIDToken, accountID).Inc()
 		return ctx, nil
 	}
 
@@ -91,12 +94,13 @@ func NewServerHooks(registerer prometheus.Registerer) *twirp.ServerHooks {
 		method, _ := twirp.MethodName(ctx)
 		status, _ := twirp.StatusCode(ctx)
 		client, _ := getReqClient(ctx)
+		accountIDToken, accountID := getReqAccount(ctx)
 
-		responsesSent.WithLabelValues(method, status, client).Inc()
+		responsesSent.WithLabelValues(method, status, client, accountIDToken, accountID).Inc()
 
 		if start, ok := getReqStart(ctx); ok {
 			dur := time.Since(start).Seconds()
-			rpcDurations.WithLabelValues(method, status, client).Observe(dur)
+			rpcDurations.WithLabelValues(method, status, client, accountIDToken, accountID).Observe(dur)
 		}
 	}
 	return hooks
@@ -116,4 +120,11 @@ func getReqStart(ctx context.Context) (time.Time, bool) {
 func getReqClient(ctx context.Context) (string, bool) {
 	c, ok := ctx.Value(sctx.CertificateKey).(string)
 	return c, ok
+}
+
+func getReqAccount(ctx context.Context) (string, string) {
+	if acc, ok := ctx.Value(sctx.AccountKey).(*ntpdb.Account); ok && acc != nil {
+		return acc.IDToken.String, strconv.Itoa(int(acc.ID))
+	}
+	return "", "0"
 }

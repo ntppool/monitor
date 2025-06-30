@@ -79,7 +79,7 @@ func Setup(log *slog.Logger, dbconn *sql.DB, promRegistry prometheus.Registerer)
 	monitorsConnected := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "monitors_connected",
 		Help: "monitors connected via mqtt",
-	}, []string{"client", "version", "ip_version"})
+	}, []string{"client", "version", "ip_version", "account", "account_id"})
 	err := promRegistry.Register(monitorsConnected)
 	if err != nil {
 		return nil, err
@@ -203,10 +203,16 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 					continue
 				}
 
+				accountID := "0"
+				if m.AccountID.Valid {
+					accountID = strconv.Itoa(int(m.AccountID.Int32))
+				}
 				mqs.promGauge.WithLabelValues(
 					m.Hostname,
 					c.Version.Version,
 					m.IpVersion.MonitorsIpVersion.String(),
+					"", // account id_token not available in MQTT context
+					accountID,
 				).Add(1.0)
 			}
 		}
