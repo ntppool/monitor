@@ -56,6 +56,16 @@ func (sl *Selector) loadServerInfo(
 }
 
 // applySelectionRules determines what status changes should be made
+//
+// Selection Rules (executed in order):
+//   Rule 1 (Immediate Blocking): Remove monitors that should be blocked immediately
+//   Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors (with limits)
+//   Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors when over target
+//   Rule 3 (Testing to Active Promotion): Promote from testing to active (iterative constraint checking)
+//   Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
+//   Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target
+//   Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
+//   Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
 func (sl *Selector) applySelectionRules(
 	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
@@ -140,7 +150,7 @@ func (sl *Selector) applySelectionRules(
 		"allowedChanges", allowedChanges,
 		"maxRemovals", maxRemovals)
 
-	// Rule 1: Remove monitors that should be blocked immediately
+	// Rule 1 (Immediate Blocking): Remove monitors that should be blocked immediately
 	for _, em := range activeMonitors {
 		if em.recommendedState == candidateBlock {
 			changes = append(changes, statusChange{
@@ -163,7 +173,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 2: Gradual removal of candidateOut monitors (with limits)
+	// Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors (with limits)
 
 	// First remove active monitors (demote to testing, not new) - use activeRemovals limit
 	// Iterate backwards to demote worst performers first (bottom-up)
@@ -218,7 +228,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 1.5: Demote excess healthy active monitors when over target
+	// Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors when over target
 	// SAFETY CHECKS: Emergency override, minimum active count, bootstrap scenarios
 	workingActiveCount := len(activeMonitors)
 	workingTestingCount := len(testingMonitors)
@@ -247,7 +257,7 @@ func (sl *Selector) applySelectionRules(
 
 		excessActive := workingActiveCount - targetActiveMonitors
 
-		// Reserve demotion budget for constraint violations (Rule 1/2)
+		// Reserve demotion budget for constraint violations (Rule 1 Immediate Blocking/Rule 2 Gradual Removal)
 		// Count actual monitors that need constraint-based demotions
 		constraintDemotionsNeeded := 0
 		for _, em := range activeMonitors {
@@ -300,7 +310,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 3: Promote from testing to active (iterative constraint checking)
+	// Rule 3 (Testing to Active Promotion): Promote from testing to active (iterative constraint checking)
 	changesRemaining := limits.promotions
 	// Fixed math: Calculate promotions needed based on working count
 	toAdd := max(0, targetNumber-workingActiveCount)
@@ -349,10 +359,15 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 5: Promote candidates to testing (iterative constraint checking)
+	// Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
 	changesRemaining = limits.promotions
 	if changesRemaining > 0 && len(candidateMonitors) > 0 {
-		promotionsNeeded := min(changesRemaining, 2) // Limit candidate promotions
+		// Calculate dynamic testing target to avoid over-promoting
+		activeGap := max(0, targetActiveMonitors-workingActiveCount)
+		dynamicTestingTarget := baseTestingTarget + activeGap
+		testingCapacity := max(0, dynamicTestingTarget-workingTestingCount)
+
+		promotionsNeeded := min(min(changesRemaining, 2), testingCapacity) // Respect testing capacity
 		promoted := 0
 
 		// Note: workingAccountLimits are already updated from testing→active promotions above
@@ -410,7 +425,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 2.5: Demote excess testing monitors based on dynamic target (moved after promotions)
+	// Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target (moved after promotions)
 	// Calculate dynamic testing target based on working active monitor gap
 	activeGap := max(0, targetActiveMonitors-workingActiveCount)
 	dynamicTestingTarget := baseTestingTarget + activeGap
@@ -456,7 +471,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 6: Bootstrap case - if no testing monitors exist, promote candidates to reach target
+	// Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
 	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 {
 		// In bootstrap scenario, we can promote up to baseTestingTarget at once
 		bootstrapPromotions := baseTestingTarget
@@ -529,7 +544,7 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 7: Handle out-of-order situations (disabled for now to respect change limits)
+	// Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now to respect change limits)
 	// TODO: Implement out-of-order logic that respects allowedChanges limits
 
 	// Final safety validation

@@ -767,6 +767,115 @@ To avoid conflicts, different test scenarios use specific ports:
 - Added account parameter to setup command
 - Improved hot-reloading system with better error recovery
 
+### Per-Status-Group Change Limits (June 2025)
+
+**Problem Solved**: Global `allowedChanges` was limiting selector efficiency by applying a single limit to all status changes.
+
+**Solution**: Implemented separate limits for each status transition type:
+```go
+type changeLimits struct {
+    activeRemovals  int // active → testing demotions
+    testingRemovals int // testing → candidate demotions
+    promotions      int // testing → active, candidate → testing
+}
+```
+
+**Benefits**:
+- Independent processing per status group without competition
+- Increased base limits (2 vs 1) for better throughput
+- Dynamic testing pool sizing works correctly
+- Maintained safety with per-group limits
+
+**Location**: `selector/process.go:calculateChangeLimits()`
+**Documentation**: See `plans/per-status-group-change-limits.md`
+
+### Dynamic Testing Pool Sizing (June 2025)
+
+**Problem Solved**: Fixed testing monitor pool size should adjust based on active monitor gap.
+
+**Solution**: Implemented dynamic testing target calculation:
+```go
+baseTestingTarget := 5
+activeGap := max(0, targetActiveMonitors - len(activeMonitors))
+dynamicTestingTarget := baseTestingTarget + activeGap
+```
+
+**Benefits**:
+- Maintains larger testing pool when below target active monitors
+- Automatically adjusts as active monitors increase
+- Prevents premature demotion of monitors that might be needed
+
+**Location**: `selector/process.go` Rule 2.5
+**Documentation**: See `plans/dynamic-testing-pool-size.md`
+
+### Iterative Account Constraint Checking (June 2025)
+
+**Problem Solved**: All monitors from an account were getting constraint violations instead of just those exceeding limits.
+
+**Solution**: Implemented per-category iterative checking:
+- Sort monitors by priority within each status category (active, testing)
+- Only flag worst-performing monitors that exceed account limits
+- Different limits for active vs testing monitors per account
+
+**Benefits**:
+- Prevents mass constraint violations for accounts at limits
+- Maintains account diversity while being fair to monitor performance
+- Proper constraint application based on monitor status
+
+**Location**: `selector/constraints.go:checkAccountConstraintsIterative()`
+**Documentation**: Account limits are 2 active + 3 testing per account per server (default)
+
+### Candidate Monitor Constraint Handling (June 2025)
+
+**Problem Solved**: Candidates were incorrectly blocked from all constraint violations, preventing proper promotion paths.
+
+**Solution**: Differentiated constraint checking by monitor status:
+- Candidates exempt from **limit violations** (they can be promoted to testing)
+- Candidates still subject to **account/network violations** (shouldn't be promoted if same account)
+- Proper distinction between recording constraints vs checking for promotions
+
+**Location**: `selector/tracking.go` and constraint checking logic
+
+### Monitor Limit Enforcement (July 2025)
+
+**Problem Solved**: Servers exceeded monitor targets (e.g., 9 active vs 7 target, 6 testing vs 5 target).
+
+**Solutions Implemented**:
+
+1. **Rule 1.5 - Active Excess Demotion**:
+   - Demotes excess healthy active monitors when count > target
+   - Safety: never reduce to 0, respects emergency override
+   - Smart budget reservation for constraint violations
+
+2. **Working Count Tracking**:
+   - Fixed missing `workingTestingCount++` in Rules 5 and 6
+   - Ensures mathematical consistency throughout selection
+   - Prevents counting errors that led to excess monitors
+
+3. **Rule Execution Order Fix**:
+   - Moved Rule 2.5 to run **after** Rule 5 (candidate promotions)
+   - Prevents Rule 2.5 from missing pending promotions
+   - New order: Rule 1→2→1.5→3→5→2.5→6
+
+4. **Rule 5 Testing Capacity Limit**:
+   - Added capacity check: `testingCapacity = max(0, dynamicTestingTarget - workingTestingCount)`
+   - Prevents over-promotion requiring immediate cleanup
+   - Eliminates unnecessary status change churn
+
+**Commits**: 8902a05, 6e5b4e8, 5d4403a
+**Location**: `selector/process.go`
+**Documentation**: See `plans/monitor-limit-enforcement.md`
+
+**Rule Naming Convention**: All selector rules now have descriptive names:
+- Rule 1 (Immediate Blocking): Remove monitors that should be blocked immediately
+- Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors
+- Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors
+- Rule 3 (Testing to Active Promotion): Promote from testing to active
+- Rule 5 (Candidate to Testing Promotion): Promote candidates to testing
+- Rule 2.5 (Testing Pool Management): Demote excess testing monitors
+- Rule 6 (Bootstrap Promotion): Bootstrap case promotions
+- Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled)
+
 ## Pre-Commit Best Practices
 
 - **Before committing code:**

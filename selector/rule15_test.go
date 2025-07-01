@@ -8,7 +8,7 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-// TestRule15_ActiveExcessDemotion tests that Rule 1.5 demotes excess active monitors
+// TestRule15_ActiveExcessDemotion tests that Rule 1.5 (Active Excess Demotion) demotes excess active monitors
 func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	ctx := context.Background()
 	s := &Selector{
@@ -78,7 +78,7 @@ func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	}
 }
 
-// TestRule15_EmergencyOverrideBlocked tests that Rule 1.5 is blocked during emergency override
+// TestRule15_EmergencyOverrideBlocked tests that Rule 1.5 (Active Excess Demotion) is blocked during emergency override
 func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 	ctx := context.Background()
 	s := &Selector{
@@ -103,7 +103,7 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 
 	changes := s.applySelectionRules(ctx, testingMonitors, server, accountLimits, nil)
 
-	// Should have promotions (emergency override) but no active→testing demotions from Rule 1.5
+	// Should have promotions (emergency override) but no active→testing demotions from Rule 1.5 (Active Excess Demotion)
 	promotions := 0
 	activeDemotions := 0
 	for _, change := range changes {
@@ -121,11 +121,11 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 	}
 
 	if activeDemotions > 0 {
-		t.Errorf("Rule 1.5 should be blocked during emergency override, but got %d demotions", activeDemotions)
+		t.Errorf("Rule 1.5 (Active Excess Demotion) should be blocked during emergency override, but got %d demotions", activeDemotions)
 	}
 }
 
-// TestRule15_SafetyCheck tests that Rule 1.5 never reduces active count to 0
+// TestRule15_SafetyCheck tests that Rule 1.5 (Active Excess Demotion) never reduces active count to 0
 func TestRule15_SafetyCheck(t *testing.T) {
 	ctx := context.Background()
 	s := &Selector{
@@ -159,7 +159,7 @@ func TestRule15_SafetyCheck(t *testing.T) {
 	}
 
 	if activeDemotions > 0 {
-		t.Errorf("Rule 1.5 should not reduce active count to 0, but got %d demotions", activeDemotions)
+		t.Errorf("Rule 1.5 (Active Excess Demotion) should not reduce active count to 0, but got %d demotions", activeDemotions)
 	}
 }
 
@@ -254,5 +254,99 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	finalTestingCount := 4 + activeDemotions + candidatePromotions - testingDemotions
 	if finalTestingCount > 5 {
 		t.Errorf("Final testing count %d exceeds dynamic target of 5", finalTestingCount)
+	}
+}
+
+// TestRule5_TestingCapacityLimit tests the Server 1065 scenario
+func TestRule5_TestingCapacityLimit(t *testing.T) {
+	ctx := context.Background()
+	s := &Selector{
+		log: slog.Default(),
+	}
+
+	// Create scenario: 7 active, 4 testing (after gradual removal), many candidates
+	activeMonitors := make([]evaluatedMonitor, 7)
+	for i := 0; i < 7; i++ {
+		activeMonitors[i] = evaluatedMonitor{
+			monitor: monitorCandidate{
+				ID:           uint32(i + 1),
+				ServerStatus: ntpdb.ServerScoresStatusActive,
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				IsHealthy:    true,
+			},
+			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
+		}
+	}
+
+	// 4 testing monitors (after 1 was removed via gradual removal)
+	testingMonitors := make([]evaluatedMonitor, 4)
+	for i := 0; i < 4; i++ {
+		testingMonitors[i] = evaluatedMonitor{
+			monitor: monitorCandidate{
+				ID:           uint32(i + 10),
+				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				IsHealthy:    true,
+			},
+			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
+		}
+	}
+
+	// 5 candidates available for promotion
+	candidateMonitors := make([]evaluatedMonitor, 5)
+	for i := 0; i < 5; i++ {
+		candidateMonitors[i] = evaluatedMonitor{
+			monitor: monitorCandidate{
+				ID:           uint32(i + 20),
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				IsHealthy:    true,
+			},
+			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
+		}
+	}
+
+	allMonitors := append(append(activeMonitors, testingMonitors...), candidateMonitors...)
+	server := &serverInfo{ID: 1065}
+	accountLimits := make(map[uint32]*accountLimit)
+
+	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil)
+
+	// Count changes by type
+	candidatePromotions := 0
+	testingDemotions := 0
+
+	for _, change := range changes {
+		t.Logf("Change: monitor %d from %s to %s, reason: %s",
+			change.monitorID, change.fromStatus, change.toStatus, change.reason)
+
+		if change.fromStatus == ntpdb.ServerScoresStatusCandidate && change.toStatus == ntpdb.ServerScoresStatusTesting {
+			candidatePromotions++
+		}
+		if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusCandidate {
+			testingDemotions++
+		}
+	}
+
+	// Expected behavior:
+	// - Dynamic testing target = 5 base + 0 active gap = 5
+	// - Current testing = 4, so capacity = 5 - 4 = 1
+	// - Should promote exactly 1 candidate (not 2)
+	// - Should not need Rule 2.5 (Testing Pool Management) demotions
+
+	if candidatePromotions != 1 {
+		t.Errorf("Expected 1 candidate promotion (testing capacity=1), got %d", candidatePromotions)
+	}
+
+	if testingDemotions > 0 {
+		t.Errorf("Expected 0 testing demotions (Rule 2.5 Testing Pool Management shouldn't run), got %d", testingDemotions)
+	}
+
+	finalTestingCount := 4 + candidatePromotions - testingDemotions
+	if finalTestingCount != 5 {
+		t.Errorf("Final testing count should be exactly 5, got %d", finalTestingCount)
 	}
 }
