@@ -192,7 +192,7 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 		} else {
 			// Check other constraints (network, same account) but skip account limits
 			// since those are handled iteratively
-			currentViolation = sl.checkNonAccountConstraints(&monitor, server, assignedMonitors)
+			currentViolation = sl.checkNonAccountConstraints(&monitor, server, assignedMonitors, monitor.ServerStatus)
 		}
 
 		if currentViolation.Type != violationNone {

@@ -503,6 +503,7 @@ func (sl *Selector) checkNonAccountConstraints(
 	monitor *monitorCandidate,
 	server *serverInfo,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
+	targetState ntpdb.ServerScoresStatus,
 ) *constraintViolation {
 	// Check network constraint (same subnet)
 	if err := sl.checkNetworkConstraint(monitor.IP, server.IP); err != nil {
@@ -553,7 +554,7 @@ func (sl *Selector) checkNonAccountConstraints(
 	}
 
 	// Check network diversity constraints
-	if err := sl.checkNetworkDiversityConstraint(monitor.ID, monitor.IP, existingMonitors, monitor.ServerStatus); err != nil {
+	if err := sl.checkNetworkDiversityConstraint(monitor.ID, monitor.IP, existingMonitors, targetState); err != nil {
 		violation := &constraintViolation{
 			Type:    violationNetworkDiversity,
 			Details: err.Error(),
