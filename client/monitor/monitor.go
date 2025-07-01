@@ -199,9 +199,34 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 			continue
 		}
 
-		// todo: ... and it's otherwise a valid response?
-		if (r.Error == nil && best.Error != nil) || (r.Status.Rtt.AsDuration() < best.Status.Rtt.AsDuration()) {
+		// Priority 1: Always prefer responses without errors
+		if r.Error == nil && best.Error != nil {
 			best = r
+			continue
+		}
+
+		// Priority 2: Among responses with errors, prefer partial responses over complete timeouts
+		if r.Error != nil && best.Error != nil {
+			if !r.Status.NoResponse && best.Status.NoResponse {
+				best = r
+				continue
+			}
+		}
+
+		// Priority 3: Among equivalent response types, compare RTT (only if both have valid RTT)
+		if r.Error == nil && best.Error == nil {
+			// Both are valid responses - compare RTT
+			if r.Status.Rtt != nil && best.Status.Rtt != nil &&
+				r.Status.Rtt.AsDuration() < best.Status.Rtt.AsDuration() {
+				best = r
+			}
+		} else if r.Error != nil && best.Error != nil &&
+			r.Status.NoResponse == best.Status.NoResponse {
+			// Both have same error type - compare RTT if available
+			if r.Status.Rtt != nil && best.Status.Rtt != nil &&
+				r.Status.Rtt.AsDuration() < best.Status.Rtt.AsDuration() {
+				best = r
+			}
 		}
 	}
 
