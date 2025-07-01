@@ -97,6 +97,7 @@ func (sl *Selector) applySelectionRules(
 	// Legacy allowedChanges for backward compatibility in logging
 	allowedChanges := limits.activeRemovals
 
+
 	// Emergency safeguards
 	if targetNumber > len(evaluatedMonitors) && healthyActive < currentActiveMonitors {
 		sl.log.Warn("emergency: not enough healthy monitors available",
@@ -217,50 +218,73 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Rule 2.5: Demote excess testing monitors based on dynamic target
-	// Calculate dynamic testing target based on active monitor gap
-	activeGap := max(0, targetActiveMonitors-len(activeMonitors))
-	dynamicTestingTarget := baseTestingTarget + activeGap
+	// Rule 1.5: Demote excess healthy active monitors when over target
+	// SAFETY CHECKS: Emergency override, minimum active count, bootstrap scenarios
+	workingActiveCount := len(activeMonitors)
+	workingTestingCount := len(testingMonitors)
+	emergencyOverride := (len(activeMonitors) == 0)
 
-	testingCount := len(testingMonitors)
-	if testingCount > dynamicTestingTarget {
-		excessTesting := testingCount - dynamicTestingTarget
+	// Apply existing demotions to working counts first
+	demotionsSoFar := 0
+	for _, change := range changes {
+		if change.fromStatus == ntpdb.ServerScoresStatusActive && change.toStatus != ntpdb.ServerScoresStatusActive {
+			workingActiveCount--
+			demotionsSoFar++
+		}
+		if change.toStatus == ntpdb.ServerScoresStatusTesting {
+			workingTestingCount++
+		}
+		if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus != ntpdb.ServerScoresStatusTesting {
+			workingTestingCount--
+		}
+	}
 
-		// Count how many testing demotions have already been made
-		testingDemotionsSoFar := 0
-		for _, change := range changes {
-			if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusCandidate {
-				testingDemotionsSoFar++
+
+	if workingActiveCount > targetActiveMonitors &&
+		workingActiveCount > 1 && // Never reduce to 0
+		!emergencyOverride &&
+		limits.activeRemovals > demotionsSoFar {
+
+		excessActive := workingActiveCount - targetActiveMonitors
+
+		// Reserve demotion budget for constraint violations (Rule 1/2)
+		// Count actual monitors that need constraint-based demotions
+		constraintDemotionsNeeded := 0
+		for _, em := range activeMonitors {
+			if em.recommendedState == candidateOut {
+				constraintDemotionsNeeded++
 			}
 		}
+		reservedDemotions := min(constraintDemotionsNeeded, limits.activeRemovals-demotionsSoFar)
+		availableDemotions := max(0, limits.activeRemovals-demotionsSoFar-reservedDemotions)
+		demotionsNeeded := min(excessActive, availableDemotions)
 
-		dynamicTestingRemovalsRemaining := max(0, limits.testingRemovals-testingDemotionsSoFar)
-		demotionsNeeded := min(excessTesting, dynamicTestingRemovalsRemaining)
 
 		if demotionsNeeded > 0 {
-			sl.log.Debug("demoting excess testing monitors",
-				"currentTesting", testingCount,
-				"dynamicTarget", dynamicTestingTarget,
-				"activeGap", activeGap,
-				"excessTesting", excessTesting,
-				"demotionsNeeded", demotionsNeeded)
-		}
+			// Use existing sort order - take worst performers from end of list
+			startIndex := len(activeMonitors) - demotionsNeeded
+			actualDemotions := 0
 
-		// Demote worst-performing healthy testing monitors
-		demoted := 0
-		for i := len(testingMonitors) - 1; i >= 0 && demoted < demotionsNeeded; i-- {
-			em := testingMonitors[i]
-			// Skip if already marked for demotion or has violations
-			if em.recommendedState != candidateOut && em.currentViolation.Type == violationNone {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusTesting,
-					toStatus:   ntpdb.ServerScoresStatusCandidate,
-					reason:     fmt.Sprintf("excess testing monitors (%d > target %d)", testingCount, dynamicTestingTarget),
-				})
-				demoted++
-				testingCount--
+			for i := startIndex; i < len(activeMonitors) && actualDemotions < demotionsNeeded; i++ {
+				em := activeMonitors[i]
+				// Only demote healthy monitors (not ones already marked for demotion)
+				if em.recommendedState != candidateOut {
+					changes = append(changes, statusChange{
+						monitorID:  em.monitor.ID,
+						fromStatus: ntpdb.ServerScoresStatusActive,
+						toStatus:   ntpdb.ServerScoresStatusTesting,
+						reason:     "excess active demotion",
+					})
+					workingActiveCount--
+					workingTestingCount++
+					actualDemotions++
+				}
 			}
+
+			sl.log.InfoContext(ctx, "demoted excess active monitors",
+				"count", actualDemotions,
+				"newActiveCount", workingActiveCount,
+				"newTestingCount", workingTestingCount)
 		}
 	}
 
@@ -278,21 +302,15 @@ func (sl *Selector) applySelectionRules(
 
 	// Rule 3: Promote from testing to active (iterative constraint checking)
 	changesRemaining := limits.promotions
-	toAdd := targetNumber - currentActiveMonitors
-
-	// Account for demotions (active->testing increases toAdd)
-	for _, change := range changes {
-		if change.fromStatus == ntpdb.ServerScoresStatusActive && change.toStatus == ntpdb.ServerScoresStatusTesting {
-			toAdd++
-		}
-	}
+	// Fixed math: Calculate promotions needed based on working count
+	toAdd := max(0, targetNumber-workingActiveCount)
 
 	if toAdd > 0 && changesRemaining > 0 {
 		promotionsNeeded := min(toAdd, changesRemaining)
 		promoted := 0
 
 		// Emergency override: if zero active monitors, ignore constraint violations
-		emergencyOverride := (currentActiveMonitors == 0)
+		// Note: emergencyOverride already calculated above
 		if emergencyOverride {
 			sl.log.WarnContext(ctx, "emergency override: zero active monitors, ignoring constraints for promotion",
 				"testingMonitors", len(testingMonitors))
@@ -323,6 +341,9 @@ func (sl *Selector) applySelectionRules(
 				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
 					ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive)
 
+				// Update working counts
+				workingActiveCount++
+				workingTestingCount--
 				promoted++
 			}
 		}
@@ -355,6 +376,8 @@ func (sl *Selector) applySelectionRules(
 					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
 						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
 
+					// Update working counts
+					workingTestingCount++
 					promoted++
 				}
 			}
@@ -379,8 +402,56 @@ func (sl *Selector) applySelectionRules(
 					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
 						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
 
+					// Update working counts
+					workingTestingCount++
 					promoted++
 				}
+			}
+		}
+	}
+
+	// Rule 2.5: Demote excess testing monitors based on dynamic target (moved after promotions)
+	// Calculate dynamic testing target based on working active monitor gap
+	activeGap := max(0, targetActiveMonitors-workingActiveCount)
+	dynamicTestingTarget := baseTestingTarget + activeGap
+
+	if workingTestingCount > dynamicTestingTarget {
+		excessTesting := workingTestingCount - dynamicTestingTarget
+
+		// Count how many testing demotions have already been made
+		testingDemotionsSoFar := 0
+		for _, change := range changes {
+			if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusCandidate {
+				testingDemotionsSoFar++
+			}
+		}
+
+		dynamicTestingRemovalsRemaining := max(0, limits.testingRemovals-testingDemotionsSoFar)
+		demotionsNeeded := min(excessTesting, dynamicTestingRemovalsRemaining)
+
+		if demotionsNeeded > 0 {
+			sl.log.InfoContext(ctx, "demoting excess testing monitors",
+				"currentTesting", workingTestingCount,
+				"dynamicTarget", dynamicTestingTarget,
+				"activeGap", activeGap,
+				"excessTesting", excessTesting,
+				"demotionsNeeded", demotionsNeeded)
+		}
+
+		// Demote worst-performing healthy testing monitors
+		demoted := 0
+		for i := len(testingMonitors) - 1; i >= 0 && demoted < demotionsNeeded; i-- {
+			em := testingMonitors[i]
+			// Skip if already marked for demotion or has violations
+			if em.recommendedState != candidateOut && em.currentViolation.Type == violationNone {
+				changes = append(changes, statusChange{
+					monitorID:  em.monitor.ID,
+					fromStatus: ntpdb.ServerScoresStatusTesting,
+					toStatus:   ntpdb.ServerScoresStatusCandidate,
+					reason:     fmt.Sprintf("excess testing monitors (%d > target %d)", workingTestingCount, dynamicTestingTarget),
+				})
+				demoted++
+				workingTestingCount--
 			}
 		}
 	}
@@ -424,6 +495,8 @@ func (sl *Selector) applySelectionRules(
 				// Update working account limits
 				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
 					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+				// Update working counts
+				workingTestingCount++
 				promoted++
 			}
 		}
@@ -444,6 +517,8 @@ func (sl *Selector) applySelectionRules(
 				// Update working account limits
 				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
 					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
+				// Update working counts
+				workingTestingCount++
 				promoted++
 			}
 		}
@@ -457,7 +532,27 @@ func (sl *Selector) applySelectionRules(
 	// Rule 7: Handle out-of-order situations (disabled for now to respect change limits)
 	// TODO: Implement out-of-order logic that respects allowedChanges limits
 
-	sl.log.Debug("planned changes", "totalChanges", len(changes), "allowedChanges", allowedChanges)
+	// Final safety validation
+	if workingActiveCount > targetActiveMonitors {
+		sl.log.ErrorContext(ctx, "CRITICAL: active monitor count exceeds target after selection",
+			"finalActiveCount", workingActiveCount,
+			"target", targetActiveMonitors,
+			"serverID", server.ID)
+	}
+
+	finalTestingTarget := baseTestingTarget + max(0, targetActiveMonitors-workingActiveCount)
+	if workingTestingCount > finalTestingTarget {
+		sl.log.ErrorContext(ctx, "CRITICAL: testing monitor count exceeds target after selection",
+			"finalTestingCount", workingTestingCount,
+			"target", finalTestingTarget,
+			"serverID", server.ID)
+	}
+
+	sl.log.Debug("planned changes",
+		"totalChanges", len(changes),
+		"allowedChanges", allowedChanges,
+		"finalActiveCount", workingActiveCount,
+		"finalTestingCount", workingTestingCount)
 
 	return changes
 }
@@ -541,6 +636,14 @@ func (sl *Selector) countBlocked(monitors []evaluatedMonitor) int {
 // min returns the smaller of two integers
 func min(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+// max returns the larger of two integers
+func max(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
