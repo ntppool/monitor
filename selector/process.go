@@ -58,14 +58,15 @@ func (sl *Selector) loadServerInfo(
 // applySelectionRules determines what status changes should be made
 //
 // Selection Rules (executed in order):
-//   Rule 1 (Immediate Blocking): Remove monitors that should be blocked immediately
-//   Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors (with limits)
-//   Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors when over target
-//   Rule 3 (Testing to Active Promotion): Promote from testing to active (iterative constraint checking)
-//   Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
-//   Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target
-//   Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
-//   Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
+//
+//	Rule 1 (Immediate Blocking): Remove monitors that should be blocked immediately
+//	Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors (with limits)
+//	Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors when over target
+//	Rule 3 (Testing to Active Promotion): Promote from testing to active (iterative constraint checking)
+//	Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
+//	Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target
+//	Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
+//	Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
 func (sl *Selector) applySelectionRules(
 	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
@@ -106,7 +107,6 @@ func (sl *Selector) applySelectionRules(
 
 	// Legacy allowedChanges for backward compatibility in logging
 	allowedChanges := limits.activeRemovals
-
 
 	// Emergency safeguards
 	if targetNumber > len(evaluatedMonitors) && healthyActive < currentActiveMonitors {
@@ -249,7 +249,6 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-
 	if workingActiveCount > targetActiveMonitors &&
 		workingActiveCount > 1 && // Never reduce to 0
 		!emergencyOverride &&
@@ -268,7 +267,6 @@ func (sl *Selector) applySelectionRules(
 		reservedDemotions := min(constraintDemotionsNeeded, limits.activeRemovals-demotionsSoFar)
 		availableDemotions := max(0, limits.activeRemovals-demotionsSoFar-reservedDemotions)
 		demotionsNeeded := min(excessActive, availableDemotions)
-
 
 		if demotionsNeeded > 0 {
 			// Use existing sort order - take worst performers from end of list
@@ -379,12 +377,18 @@ func (sl *Selector) applySelectionRules(
 			}
 			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
 				// Check if can promote to testing using current constraint state
-				if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+				canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
+				reason := "candidate to testing"
+				if emergencyOverride && canPromote {
+					reason = "emergency promotion to testing: zero active monitors"
+				}
+
+				if canPromote {
 					changes = append(changes, statusChange{
 						monitorID:  em.monitor.ID,
 						fromStatus: ntpdb.ServerScoresStatusCandidate,
 						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     "candidate to testing",
+						reason:     reason,
 					})
 
 					// Update working account limits for next iteration
@@ -405,12 +409,18 @@ func (sl *Selector) applySelectionRules(
 			}
 			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
 				// Check if can promote to testing using current constraint state
-				if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+				canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
+				reason := "candidate to testing"
+				if emergencyOverride && canPromote {
+					reason = "emergency promotion to testing: zero active monitors"
+				}
+
+				if canPromote {
 					changes = append(changes, statusChange{
 						monitorID:  em.monitor.ID,
 						fromStatus: ntpdb.ServerScoresStatusCandidate,
 						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     "candidate to testing",
+						reason:     reason,
 					})
 
 					// Update working account limits for next iteration
@@ -500,12 +510,18 @@ func (sl *Selector) applySelectionRules(
 				break
 			}
 			// Bootstrap: respect basic constraints during promotion
-			if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+			canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
+			reason := "bootstrap: promoting healthy candidate"
+			if emergencyOverride && canPromote {
+				reason = "bootstrap emergency promotion to testing: zero active monitors"
+			}
+
+			if canPromote {
 				changes = append(changes, statusChange{
 					monitorID:  em.monitor.ID,
 					fromStatus: ntpdb.ServerScoresStatusCandidate,
 					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     "bootstrap: promoting healthy candidate",
+					reason:     reason,
 				})
 				// Update working account limits
 				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
@@ -522,12 +538,18 @@ func (sl *Selector) applySelectionRules(
 				break
 			}
 			// Bootstrap: respect basic constraints during promotion
-			if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
+			canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
+			reason := "bootstrap: promoting candidate"
+			if emergencyOverride && canPromote {
+				reason = "bootstrap emergency promotion to testing: zero active monitors"
+			}
+
+			if canPromote {
 				changes = append(changes, statusChange{
 					monitorID:  em.monitor.ID,
 					fromStatus: ntpdb.ServerScoresStatusCandidate,
 					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     "bootstrap: promoting candidate",
+					reason:     reason,
 				})
 				// Update working account limits
 				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,

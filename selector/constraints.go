@@ -615,11 +615,17 @@ func (sl *Selector) canPromoteToTesting(
 	server *serverInfo,
 	accountLimits map[uint32]*accountLimit,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
+	emergencyOverride bool,
 ) bool {
 	// Must be globally active or testing
 	if monitor.GlobalStatus != ntpdb.MonitorsStatusActive &&
 		monitor.GlobalStatus != ntpdb.MonitorsStatusTesting {
 		return false
+	}
+
+	// In emergency mode, skip constraint checking
+	if emergencyOverride {
+		return true
 	}
 
 	// Check constraints against testing state specifically

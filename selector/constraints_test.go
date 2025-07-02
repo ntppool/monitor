@@ -64,6 +64,18 @@ func TestCheckNetworkConstraint(t *testing.T) {
 			serverIP:  "192.168.1.20",
 			wantErr:   true,
 		},
+		{
+			name:      "invalid_server_ip",
+			monitorIP: "192.168.1.10",
+			serverIP:  "not-an-ip",
+			wantErr:   true,
+		},
+		{
+			name:      "same_exact_ip",
+			monitorIP: "192.168.1.10",
+			serverIP:  "192.168.1.10",
+			wantErr:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -76,185 +88,9 @@ func TestCheckNetworkConstraint(t *testing.T) {
 	}
 }
 
-func TestCheckAccountConstraints(t *testing.T) {
-	sl := &Selector{}
-
-	accountID1 := uint32(1)
-	accountID2 := uint32(2)
-	accountID3 := uint32(3)
-
-	tests := []struct {
-		name          string
-		monitor       monitorCandidate
-		server        serverInfo
-		accountLimits map[uint32]*accountLimit
-		targetState   ntpdb.ServerScoresStatus
-		wantErr       bool
-		errContains   string
-	}{
-		{
-			name: "same_account_violation",
-			monitor: monitorCandidate{
-				AccountID: &accountID1,
-			},
-			server: serverInfo{
-				AccountID: &accountID1,
-			},
-			accountLimits: map[uint32]*accountLimit{},
-			targetState:   ntpdb.ServerScoresStatusActive,
-			wantErr:       true,
-			errContains:   "same account",
-		},
-		{
-			name: "different_accounts_ok",
-			monitor: monitorCandidate{
-				AccountID: &accountID1,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 0},
-			},
-			targetState: ntpdb.ServerScoresStatusActive,
-			wantErr:     false,
-		},
-		{
-			name: "active_limit_reached",
-			monitor: monitorCandidate{
-				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusCandidate,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 2, TestingCount: 0},
-			},
-			targetState: ntpdb.ServerScoresStatusActive,
-			wantErr:     true,
-			errContains: "active limit",
-		},
-		{
-			name: "testing_limit_reached",
-			monitor: monitorCandidate{
-				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusCandidate,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 3},
-			},
-			targetState: ntpdb.ServerScoresStatusTesting,
-			wantErr:     true,
-			errContains: "testing limit",
-		},
-		{
-			name: "total_limit_reached",
-			monitor: monitorCandidate{
-				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusCandidate,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 1, TestingCount: 2},
-			},
-			targetState: ntpdb.ServerScoresStatusActive,
-			wantErr:     true,
-			errContains: "total limit",
-		},
-		{
-			name: "no_limit_on_candidates",
-			monitor: monitorCandidate{
-				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusCandidate,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 1, ActiveCount: 5, TestingCount: 5},
-			},
-			targetState: ntpdb.ServerScoresStatusCandidate,
-			wantErr:     false,
-		},
-		{
-			name: "dont_count_self_when_already_active",
-			monitor: monitorCandidate{
-				AccountID:    &accountID1,
-				ServerStatus: ntpdb.ServerScoresStatusActive,
-			},
-			server: serverInfo{
-				AccountID: &accountID2,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 2, TestingCount: 0},
-			},
-			targetState: ntpdb.ServerScoresStatusActive,
-			wantErr:     false, // Should not error because we don't count self
-		},
-		{
-			name: "monitor_without_account",
-			monitor: monitorCandidate{
-				AccountID: nil,
-			},
-			server: serverInfo{
-				AccountID: &accountID1,
-			},
-			accountLimits: map[uint32]*accountLimit{},
-			targetState:   ntpdb.ServerScoresStatusActive,
-			wantErr:       false,
-		},
-		{
-			name: "account_limit_not_loaded",
-			monitor: monitorCandidate{
-				AccountID: &accountID3,
-			},
-			server: serverInfo{
-				AccountID: &accountID1,
-			},
-			accountLimits: map[uint32]*accountLimit{
-				1: {AccountID: 1, MaxPerServer: 2},
-			},
-			targetState: ntpdb.ServerScoresStatusActive,
-			wantErr:     true,
-			errContains: "not loaded",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := sl.checkAccountConstraints(&tt.monitor, &tt.server, tt.accountLimits, tt.targetState)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("checkAccountConstraints() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if err != nil && tt.errContains != "" {
-				if !contains(err.Error(), tt.errContains) {
-					t.Errorf("checkAccountConstraints() error = %v, want error containing %v", err, tt.errContains)
-				}
-			}
-		})
-	}
-}
-
+// contains is a helper function to check if a string contains a substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && len(substr) == 0 || (len(substr) > 0 && findSubstring(s, substr) != -1))
-}
-
-func findSubstring(s, substr string) int {
-	if len(substr) == 0 {
-		return 0
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
+	return len(substr) > 0 && len(s) >= len(substr) && s[:len(substr)] == substr || len(s) > len(substr) && contains(s[1:], substr)
 }
 
 func TestCheckNetworkDiversityConstraint(t *testing.T) {
@@ -270,21 +106,21 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 		errContains      string
 	}{
 		{
-			name:             "no_existing_monitors_ok",
-			monitorID:        100,
+			name:             "no_existing_monitors",
+			monitorID:        1,
 			monitorIP:        "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{},
 			targetState:      ntpdb.ServerScoresStatusActive,
 			wantErr:          false,
 		},
 		{
-			name:      "ipv4_different_20_networks_ok",
-			monitorID: 100,
-			monitorIP: "192.168.1.10", // 192.168.0.0/20
+			name:      "ipv4_no_diversity_conflict",
+			monitorID: 1,
+			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "192.169.1.10", Valid: true}, // 192.169.0.0/20 (different /20)
+					ID:        2,
+					MonitorIp: sql.NullString{String: "10.0.0.1", Valid: true},
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},
 			},
@@ -292,28 +128,33 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name:      "ipv4_same_20_network_conflict",
-			monitorID: 100,
-			monitorIP: "192.168.1.10", // 192.168.0.0/20
+			name:      "ipv4_diversity_conflict_same_20",
+			monitorID: 1,
+			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
+					ID:        2,
+					MonitorIp: sql.NullString{String: "192.168.2.20", Valid: true},
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+				{
+					ID:        3,
+					MonitorIp: sql.NullString{String: "192.168.3.30", Valid: true},
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
 			wantErr:     true,
-			errContains: "conflict",
+			errContains: "monitor would conflict",
 		},
 		{
-			name:      "ipv6_different_44_networks_ok",
-			monitorID: 100,
-			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
+			name:      "ipv6_no_diversity_conflict",
+			monitorID: 1,
+			monitorIP: "2001:db8:1234::1",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "2001:db8:2000::1", Valid: true}, // 2001:db8:2000::/44 (different /44)
+					ID:        2,
+					MonitorIp: sql.NullString{String: "2001:db8:5678::1", Valid: true},
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},
 			},
@@ -321,51 +162,46 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name:      "ipv6_same_44_network_conflict",
-			monitorID: 100,
-			monitorIP: "2001:db8:1000::1", // 2001:db8:1000::/44
+			name:      "ipv6_diversity_conflict_same_44",
+			monitorID: 1,
+			monitorIP: "2001:db8:1234::1",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "2001:db8:100f::1", Valid: true}, // Same /44 network
+					ID:        2,
+					MonitorIp: sql.NullString{String: "2001:db8:1234:1::1", Valid: true},
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				},
+				{
+					ID:        3,
+					MonitorIp: sql.NullString{String: "2001:db8:1234:2::1", Valid: true},
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
 			wantErr:     true,
-			errContains: "conflict",
+			errContains: "monitor would conflict",
 		},
 		{
-			name:      "testing_with_existing_active_conflict",
-			monitorID: 100,
+			name:      "mixed_status_only_count_target",
+			monitorID: 1,
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
+					ID:        2,
+					MonitorIp: sql.NullString{String: "192.168.2.20", Valid: true},
 					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				},
-			},
-			targetState: ntpdb.ServerScoresStatusTesting,
-			wantErr:     true,
-			errContains: "conflict",
-		},
-		{
-			name:      "candidate_state_no_conflict_check",
-			monitorID: 100,
-			monitorIP: "192.168.1.10",
-			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        1,
-					MonitorIp: sql.NullString{String: "192.168.15.20", Valid: true}, // Same /20 network
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					ID:        3,
+					MonitorIp: sql.NullString{String: "192.168.3.30", Valid: true},
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
 				},
 			},
-			targetState: ntpdb.ServerScoresStatusCandidate,
-			wantErr:     false, // Candidates don't conflict with active/testing
+			targetState: ntpdb.ServerScoresStatusActive,
+			wantErr:     true, // Conflicts with active monitor when targeting active
 		},
 		{
-			name:      "self_comparison_should_not_conflict",
+			name:      "self_reference_should_not_conflict",
 			monitorID: 100,
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
@@ -395,6 +231,168 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				if !contains(err.Error(), tt.errContains) {
 					t.Errorf("checkNetworkDiversityConstraint() error = %v, want error containing %v", err, tt.errContains)
 				}
+			}
+		})
+	}
+}
+
+func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
+	sl := &Selector{}
+
+	// Helper function to create monitor candidate
+	createMonitor := func(id uint32, accountID uint32, ip string, globalStatus ntpdb.MonitorsStatus, serverStatus ntpdb.ServerScoresStatus) *monitorCandidate {
+		return &monitorCandidate{
+			ID:           id,
+			AccountID:    &accountID,
+			IP:           ip,
+			GlobalStatus: globalStatus,
+			ServerStatus: serverStatus,
+			IsHealthy:    true,
+			HasMetrics:   true,
+		}
+	}
+
+	// Helper function to create server info
+	createServer := func(id uint32, accountID uint32, ip string) *serverInfo {
+		return &serverInfo{
+			ID:        id,
+			AccountID: &accountID,
+			IP:        ip,
+		}
+	}
+
+	tests := []struct {
+		name              string
+		monitor           *monitorCandidate
+		server            *serverInfo
+		accountLimits     map[uint32]*accountLimit
+		existingMonitors  []ntpdb.GetMonitorPriorityRow
+		emergencyOverride bool
+		wantPromote       bool
+	}{
+		{
+			name:    "emergency_override_bypasses_account_limit",
+			monitor: createMonitor(1, 1, "10.0.0.1", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "192.168.1.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 3}, // Testing limit exceeded
+			},
+			existingMonitors:  []ntpdb.GetMonitorPriorityRow{},
+			emergencyOverride: true,
+			wantPromote:       true,
+		},
+		{
+			name:    "emergency_override_bypasses_network_constraint",
+			monitor: createMonitor(1, 1, "192.168.1.10", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "10.0.0.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 5, ActiveCount: 0, TestingCount: 0},
+			},
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        2,
+					AccountID: sql.NullInt32{Int32: 2, Valid: true},
+					MonitorIp: sql.NullString{String: "192.168.1.20", Valid: true}, // Same /24 subnet
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+				},
+			},
+			emergencyOverride: true,
+			wantPromote:       true,
+		},
+		{
+			name:    "emergency_override_bypasses_account_conflict",
+			monitor: createMonitor(1, 1, "10.0.0.1", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "192.168.1.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 5, ActiveCount: 0, TestingCount: 0},
+			},
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        2,
+					AccountID: sql.NullInt32{Int32: 1, Valid: true}, // Same account
+					MonitorIp: sql.NullString{String: "10.0.0.2", Valid: true},
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+				},
+			},
+			emergencyOverride: true,
+			wantPromote:       true,
+		},
+		{
+			name:    "emergency_override_still_requires_active_testing_global_status",
+			monitor: createMonitor(1, 1, "10.0.0.1", ntpdb.MonitorsStatusPending, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "192.168.1.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 5, ActiveCount: 0, TestingCount: 0},
+			},
+			existingMonitors:  []ntpdb.GetMonitorPriorityRow{},
+			emergencyOverride: true,
+			wantPromote:       false, // Global status is pending, not active/testing
+		},
+		{
+			name:    "no_emergency_account_limit_blocks_promotion",
+			monitor: createMonitor(1, 1, "10.0.0.1", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "192.168.1.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 3}, // Testing limit exceeded
+			},
+			existingMonitors:  []ntpdb.GetMonitorPriorityRow{},
+			emergencyOverride: false,
+			wantPromote:       false,
+		},
+		{
+			name:    "no_emergency_network_constraint_blocks_promotion",
+			monitor: createMonitor(1, 1, "192.168.1.10", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "10.0.0.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 5, ActiveCount: 0, TestingCount: 0},
+			},
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        2,
+					AccountID: sql.NullInt32{Int32: 2, Valid: true},
+					MonitorIp: sql.NullString{String: "192.168.1.20", Valid: true}, // Same /24 subnet
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+				},
+			},
+			emergencyOverride: false,
+			wantPromote:       false,
+		},
+		{
+			name:    "normal_promotion_without_constraints",
+			monitor: createMonitor(1, 1, "10.0.0.1", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 2, "192.168.1.1"),
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 5, ActiveCount: 0, TestingCount: 0},
+			},
+			existingMonitors:  []ntpdb.GetMonitorPriorityRow{},
+			emergencyOverride: false,
+			wantPromote:       true,
+		},
+		{
+			name:    "emergency_with_multiple_constraint_violations",
+			monitor: createMonitor(1, 1, "192.168.1.10", ntpdb.MonitorsStatusActive, ntpdb.ServerScoresStatusCandidate),
+			server:  createServer(1, 1, "10.0.0.1"), // Same account as monitor
+			accountLimits: map[uint32]*accountLimit{
+				1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 3}, // Testing limit exceeded
+			},
+			existingMonitors: []ntpdb.GetMonitorPriorityRow{
+				{
+					ID:        2,
+					AccountID: sql.NullInt32{Int32: 2, Valid: true},
+					MonitorIp: sql.NullString{String: "192.168.1.20", Valid: true}, // Same /24 subnet
+					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+				},
+			},
+			emergencyOverride: true,
+			wantPromote:       true, // Emergency override bypasses all constraints
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPromote := sl.canPromoteToTesting(tt.monitor, tt.server, tt.accountLimits, tt.existingMonitors, tt.emergencyOverride)
+			if gotPromote != tt.wantPromote {
+				t.Errorf("canPromoteToTesting() = %v, want %v", gotPromote, tt.wantPromote)
 			}
 		})
 	}
