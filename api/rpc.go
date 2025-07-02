@@ -50,8 +50,8 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 		TLSClientConfig:       tlsConfig,
 		MaxIdleConns:          10,
 		IdleConnTimeout:       120 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 40 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
 	}
 
 	// Wrap transport with pool flusher to handle certificate errors
@@ -59,6 +59,7 @@ func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
 
 	client := &http.Client{
 		Transport: poolFlusherTransport,
+		Timeout:   30 * time.Second,
 	}
 
 	return client, nil

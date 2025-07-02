@@ -453,7 +453,7 @@ runLoop:
 }
 
 func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient) (*apiv2.GetConfigResponse, error) {
-	cfgctx, cfgcancel := context.WithTimeout(ctx, 5*time.Second)
+	cfgctx, cfgcancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cfgcancel()
 	log := logger.FromContext(ctx)
 
