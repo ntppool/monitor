@@ -167,3 +167,261 @@ func TestHandleOutOfOrder(t *testing.T) {
 	// But since we need IsOutOfOrder to work, this is just a compilation test
 	_ = result
 }
+
+// TestCalculateSafetyLimits tests the critical safety logic functions
+// Based on Phase 1 of the selector testing plan
+func TestCalculateSafetyLimits_EmergencyConditions(t *testing.T) {
+	sl := &Selector{
+		log: slog.Default(),
+	}
+
+	tests := []struct {
+		name                string
+		targetNumber        int
+		totalMonitors       int
+		healthyActive       int
+		activeCount         int
+		limits              changeLimits
+		expectedMaxRemovals int
+		expectEmergency     bool
+		description         string
+	}{
+		{
+			name:                "emergency_not_enough_monitors",
+			targetNumber:        7,
+			totalMonitors:       4,
+			healthyActive:       2,
+			activeCount:         3,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 0,
+			expectEmergency:     true,
+			description:         "Emergency condition: target > total monitors AND healthy < active",
+		},
+		{
+			name:                "safety_below_target_unhealthy",
+			targetNumber:        7,
+			totalMonitors:       10,
+			healthyActive:       2,
+			activeCount:         3,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 0,
+			expectEmergency:     false,
+			description:         "Safety condition: at/below target with insufficient healthy monitors",
+		},
+		{
+			name:                "normal_operation_above_target",
+			targetNumber:        7,
+			totalMonitors:       10,
+			healthyActive:       8,
+			activeCount:         8,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 2,
+			expectEmergency:     false,
+			description:         "Normal operation: above target with sufficient healthy monitors",
+		},
+		{
+			name:                "emergency_never_remove_all_active",
+			targetNumber:        5,
+			totalMonitors:       8,
+			healthyActive:       6, // More than target to avoid safety limit
+			activeCount:         3,
+			limits:              changeLimits{activeRemovals: 5}, // Would remove all
+			expectedMaxRemovals: 2,                               // activeCount - 1
+			expectEmergency:     false,
+			description:         "Emergency safeguard: never remove all active monitors",
+		},
+		{
+			name:                "edge_case_zero_active_count",
+			targetNumber:        7,
+			totalMonitors:       10,
+			healthyActive:       0,
+			activeCount:         0,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 2,
+			expectEmergency:     false,
+			description:         "Edge case: zero active monitors should not trigger safety limits",
+		},
+		{
+			name:                "edge_case_single_active_monitor",
+			targetNumber:        7,
+			totalMonitors:       10,
+			healthyActive:       1,
+			activeCount:         1,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 0, // Would remove the single active monitor
+			expectEmergency:     false,
+			description:         "Edge case: single active monitor should be protected",
+		},
+		{
+			name:                "boundary_exact_target_sufficient_healthy",
+			targetNumber:        5,
+			totalMonitors:       8,
+			healthyActive:       5,
+			activeCount:         5,
+			limits:              changeLimits{activeRemovals: 1},
+			expectedMaxRemovals: 1,
+			expectEmergency:     false,
+			description:         "Boundary: exactly at target with sufficient healthy monitors",
+		},
+		{
+			name:                "boundary_exact_target_insufficient_healthy",
+			targetNumber:        5,
+			totalMonitors:       8,
+			healthyActive:       3,
+			activeCount:         5,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 0,
+			expectEmergency:     false,
+			description:         "Boundary: exactly at target but insufficient healthy monitors",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create initial working state
+			state := workingState{
+				healthyActive:  tt.healthyActive,
+				activeCount:    tt.activeCount,
+				testingCount:   0,
+				healthyTesting: 0,
+				blockedCount:   0,
+				maxRemovals:    0,
+			}
+
+			// Create mock evaluated monitors with the specified count
+			evaluatedMonitors := make([]evaluatedMonitor, tt.totalMonitors)
+			for i := 0; i < tt.totalMonitors; i++ {
+				evaluatedMonitors[i] = evaluatedMonitor{
+					monitor: monitorCandidate{
+						ID:           uint32(i + 1),
+						GlobalStatus: ntpdb.MonitorsStatusActive,
+						IsHealthy:    i < tt.healthyActive, // First N monitors are healthy
+					},
+				}
+			}
+
+			// Call calculateSafetyLimits
+			result := sl.calculateSafetyLimits(
+				context.Background(),
+				state,
+				tt.targetNumber,
+				tt.limits,
+				evaluatedMonitors,
+			)
+
+			// Verify maxRemovals
+			if result.maxRemovals != tt.expectedMaxRemovals {
+				t.Errorf("Expected maxRemovals=%d, got %d. %s",
+					tt.expectedMaxRemovals, result.maxRemovals, tt.description)
+			}
+
+			// Verify other state fields are preserved
+			if result.healthyActive != tt.healthyActive {
+				t.Errorf("healthyActive should be preserved: expected %d, got %d",
+					tt.healthyActive, result.healthyActive)
+			}
+			if result.activeCount != tt.activeCount {
+				t.Errorf("activeCount should be preserved: expected %d, got %d",
+					tt.activeCount, result.activeCount)
+			}
+		})
+	}
+}
+
+// TestCalculateSafetyLimits_ConstraintInteractions tests that safety limits
+// don't interfere with constraint processing
+func TestCalculateSafetyLimits_ConstraintInteractions(t *testing.T) {
+	sl := &Selector{
+		log: slog.Default(),
+	}
+
+	tests := []struct {
+		name                string
+		scenario            string
+		targetNumber        int
+		totalMonitors       int
+		healthyActive       int
+		activeCount         int
+		limits              changeLimits
+		expectedMaxRemovals int
+		shouldAllowChanges  bool
+	}{
+		{
+			name:                "constraint_cleanup_allowed_in_emergency",
+			scenario:            "Emergency condition should not block constraint demotions",
+			targetNumber:        7,
+			totalMonitors:       4, // Emergency: target > total
+			healthyActive:       2,
+			activeCount:         3,
+			limits:              changeLimits{activeRemovals: 1},
+			expectedMaxRemovals: 0, // Emergency sets maxRemovals to 0
+			shouldAllowChanges:  false,
+		},
+		{
+			name:                "normal_constraint_processing",
+			scenario:            "Normal operations should allow constraint processing",
+			targetNumber:        5,
+			totalMonitors:       10,
+			healthyActive:       6,
+			activeCount:         7,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 2,
+			shouldAllowChanges:  true,
+		},
+		{
+			name:                "safety_preserves_minimum_monitors",
+			scenario:            "Safety limits should prevent removing too many monitors",
+			targetNumber:        3,
+			totalMonitors:       5,
+			healthyActive:       2,
+			activeCount:         3,
+			limits:              changeLimits{activeRemovals: 2},
+			expectedMaxRemovals: 0, // Safety: healthyActive < targetNumber
+			shouldAllowChanges:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := workingState{
+				healthyActive:  tt.healthyActive,
+				activeCount:    tt.activeCount,
+				testingCount:   0,
+				healthyTesting: 0,
+				blockedCount:   0,
+				maxRemovals:    0,
+			}
+
+			evaluatedMonitors := make([]evaluatedMonitor, tt.totalMonitors)
+			for i := 0; i < tt.totalMonitors; i++ {
+				evaluatedMonitors[i] = evaluatedMonitor{
+					monitor: monitorCandidate{
+						ID:           uint32(i + 1),
+						GlobalStatus: ntpdb.MonitorsStatusActive,
+						IsHealthy:    i < tt.healthyActive,
+					},
+				}
+			}
+
+			result := sl.calculateSafetyLimits(
+				context.Background(),
+				state,
+				tt.targetNumber,
+				tt.limits,
+				evaluatedMonitors,
+			)
+
+			if result.maxRemovals != tt.expectedMaxRemovals {
+				t.Errorf("Expected maxRemovals=%d, got %d for scenario: %s",
+					tt.expectedMaxRemovals, result.maxRemovals, tt.scenario)
+			}
+
+			// Test interpretation: maxRemovals > 0 means changes are allowed
+			actualAllowsChanges := result.maxRemovals > 0
+			if actualAllowsChanges != tt.shouldAllowChanges {
+				t.Errorf("Expected shouldAllowChanges=%v, got %v for scenario: %s",
+					tt.shouldAllowChanges, actualAllowsChanges, tt.scenario)
+			}
+		})
+	}
+}
