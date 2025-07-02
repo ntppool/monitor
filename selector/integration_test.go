@@ -67,7 +67,6 @@ func int32Ptr(v int32) *int32 {
 	return &v
 }
 
-
 func TestSelectorIntegration_CompleteFlow(t *testing.T) {
 	t.Skip("Integration tests require database setup")
 
@@ -321,9 +320,9 @@ func TestPromotionHelperIntegration(t *testing.T) {
 				createTestServer(t, db, 1, "192.168.1.1", "4", uint32Ptr(100))
 
 				// Create globally active and testing monitors with different accounts
-				createTestMonitor(t, db, 1, "active", "10.0.1.1", uint32Ptr(200))    // Globally active
-				createTestMonitor(t, db, 2, "testing", "10.0.1.2", uint32Ptr(201))   // Globally testing
-				createTestMonitor(t, db, 3, "active", "10.0.1.3", uint32Ptr(202))    // Globally active
+				createTestMonitor(t, db, 1, "active", "10.0.1.1", uint32Ptr(200))  // Globally active
+				createTestMonitor(t, db, 2, "testing", "10.0.1.2", uint32Ptr(201)) // Globally testing
+				createTestMonitor(t, db, 3, "active", "10.0.1.3", uint32Ptr(202))  // Globally active
 
 				// All as candidates for promotion
 				createTestServerScore(t, db, 1, 1, "candidate", 95.0)
@@ -371,9 +370,9 @@ func TestPromotionHelperIntegration(t *testing.T) {
 				createTestServer(t, db, 2, "192.168.2.1", "4", uint32Ptr(300))
 
 				// Create healthy and unhealthy monitors
-				createTestMonitor(t, db, 10, "active", "10.0.2.1", uint32Ptr(400))   // Healthy, globally active
-				createTestMonitor(t, db, 11, "active", "10.0.2.2", uint32Ptr(401))   // Unhealthy, globally active
-				createTestMonitor(t, db, 12, "testing", "10.0.2.3", uint32Ptr(402))  // Healthy, globally testing
+				createTestMonitor(t, db, 10, "active", "10.0.2.1", uint32Ptr(400))  // Healthy, globally active
+				createTestMonitor(t, db, 11, "active", "10.0.2.2", uint32Ptr(401))  // Unhealthy, globally active
+				createTestMonitor(t, db, 12, "testing", "10.0.2.3", uint32Ptr(402)) // Healthy, globally testing
 
 				// All as candidates, simulate no testing monitors scenario
 				createTestServerScore(t, db, 2, 10, "candidate", 95.0)
@@ -382,9 +381,9 @@ func TestPromotionHelperIntegration(t *testing.T) {
 
 				// Add log scores to determine health status
 				now := time.Now()
-				createTestLogScore(t, db, 2, 10, 0.1, 0.05, int32Ptr(10), now.Add(-5*time.Minute))  // Healthy
-				createTestLogScore(t, db, 2, 11, 1.0, 0.5, int32Ptr(100), now.Add(-5*time.Minute))   // Unhealthy
-				createTestLogScore(t, db, 2, 12, 0.2, 0.1, int32Ptr(15), now.Add(-5*time.Minute))    // Healthy
+				createTestLogScore(t, db, 2, 10, 0.1, 0.05, int32Ptr(10), now.Add(-5*time.Minute)) // Healthy
+				createTestLogScore(t, db, 2, 11, 1.0, 0.5, int32Ptr(100), now.Add(-5*time.Minute)) // Unhealthy
+				createTestLogScore(t, db, 2, 12, 0.2, 0.1, int32Ptr(15), now.Add(-5*time.Minute))  // Healthy
 			},
 			expectFunc: func(t *testing.T, changes []statusChange) {
 				bootstrapPromotions := 0
