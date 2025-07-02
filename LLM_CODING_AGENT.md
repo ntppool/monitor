@@ -54,6 +54,16 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 
 **Never commit changes unless explicitly asked by the user.**
 
+## Development Guidelines
+
+### Critical Development Warnings
+
+- **NEVER USE `git add -A`**
+  - Always use explicit, targeted git staging
+  - Prevents accidentally committing unintended files
+  - Ensures precise control over what is committed
+  - Use `git add [specific files]` instead
+
 ## Development Commands
 
 ### Setup and Code Generation
