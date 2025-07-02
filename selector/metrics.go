@@ -153,21 +153,6 @@ func getMonitorLabels(monitor *monitorCandidate) (string, string) {
 	return idToken, tlsName
 }
 
-// getMonitorLabelsFromRow extracts monitor labels from database row
-func getMonitorLabelsFromRow(row ntpdb.GetMonitorPriorityRow) (string, string) {
-	idToken := "unknown"
-	tlsName := "unknown"
-
-	if row.IDToken.Valid && row.IDToken.String != "" {
-		idToken = row.IDToken.String
-	}
-	if row.TlsName.Valid && row.TlsName.String != "" {
-		tlsName = row.TlsName.String
-	}
-
-	return idToken, tlsName
-}
-
 // Metric tracking helper methods
 
 // TrackStatusChange records a monitor status change

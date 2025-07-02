@@ -429,7 +429,7 @@ func (sl *Selector) checkAccountConstraintsIterative(
 	// Check each account's limits per category
 	for accountID, statusGroups := range accountGroups {
 		// Get account limit from any monitor in this account
-		var accountLimit int = defaultAccountLimitPerServer
+		accountLimit := defaultAccountLimitPerServer
 
 		// Find a monitor from this account to get the flags
 		for _, statusList := range statusGroups {

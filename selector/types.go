@@ -67,13 +67,3 @@ type evaluatedMonitor struct {
 	currentViolation *constraintViolation // Constraints for current state
 	recommendedState candidateState       // Legacy field for backward compatibility
 }
-
-// monitorCategories groups monitors by their current status
-type monitorCategories struct {
-	active              []evaluatedMonitor
-	testing             []evaluatedMonitor
-	candidate           []evaluatedMonitor
-	available           []evaluatedMonitor // Not assigned to this server
-	blocked             []evaluatedMonitor // Constraint violations
-	globallyActiveCount int                // Count of globally active monitors
-}

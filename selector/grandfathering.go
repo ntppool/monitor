@@ -53,16 +53,3 @@ func (sl *Selector) isGrandfathered(
 
 	return false
 }
-
-// prioritizeGrandfatheredRemovals determines which grandfathered monitors to remove first
-// when we need to free up slots. Returns monitors sorted by removal priority.
-func (sl *Selector) prioritizeGrandfatheredRemovals(monitors []evaluatedMonitor) []evaluatedMonitor {
-	// Sort by multiple criteria:
-	// 1. Performance (unhealthy first)
-	// 2. Assignment duration (newer assignments first)
-	// 3. RTT (higher latency first)
-
-	// For now, just return as-is
-	// TODO: Implement sorting logic when we have the full monitor data structure
-	return monitors
-}

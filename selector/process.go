@@ -330,28 +330,22 @@ func (sl *Selector) applySelectionRules(
 				break
 			}
 
-			// Check if this monitor can be promoted to active using current state
-			canPromote := sl.canPromoteToActive(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
-			reason := "promotion to active"
-			if emergencyOverride && canPromote {
-				reason = "emergency promotion: zero active monitors"
+			req := promotionRequest{
+				monitor:           &em.monitor,
+				server:            server,
+				workingLimits:     workingAccountLimits,
+				assignedMonitors:  assignedMonitors,
+				emergencyOverride: emergencyOverride,
+				fromStatus:        ntpdb.ServerScoresStatusTesting,
+				toStatus:          ntpdb.ServerScoresStatusActive,
+				baseReason:        "promotion to active",
+				emergencyReason:   getEmergencyReason("promotion to active", ntpdb.ServerScoresStatusActive, false),
 			}
 
-			if canPromote {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusTesting,
-					toStatus:   ntpdb.ServerScoresStatusActive,
-					reason:     reason,
-				})
-
-				// Update working account limits for next iteration
-				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
-					ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive)
-
-				// Update working counts
-				workingActiveCount++
-				workingTestingCount--
+			if result := sl.attemptPromotion(req); result.success {
+				changes = append(changes, *result.change)
+				workingActiveCount += result.activeIncrement
+				workingTestingCount += result.testingIncrement
 				promoted++
 			}
 		}
@@ -370,65 +364,30 @@ func (sl *Selector) applySelectionRules(
 
 		// Note: workingAccountLimits are already updated from testing→active promotions above
 
-		// Prefer globally active monitors - check constraints dynamically
-		for _, em := range candidateMonitors {
-			if promoted >= promotionsNeeded {
-				break
-			}
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-				// Check if can promote to testing using current constraint state
-				canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
-				reason := "candidate to testing"
-				if emergencyOverride && canPromote {
-					reason = "emergency promotion to testing: zero active monitors"
+		// Try globally active monitors first, then globally testing
+		candidateGroups := createCandidateGroups(candidateMonitors)
+
+		for _, group := range candidateGroups {
+			for _, em := range group.monitors {
+				if promoted >= promotionsNeeded {
+					break
 				}
 
-				if canPromote {
-					changes = append(changes, statusChange{
-						monitorID:  em.monitor.ID,
-						fromStatus: ntpdb.ServerScoresStatusCandidate,
-						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     reason,
-					})
-
-					// Update working account limits for next iteration
-					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
-						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
-
-					// Update working counts
-					workingTestingCount++
-					promoted++
-				}
-			}
-		}
-
-		// Fill remaining with globally testing monitors if needed
-		for _, em := range candidateMonitors {
-			if promoted >= promotionsNeeded {
-				break
-			}
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-				// Check if can promote to testing using current constraint state
-				canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
-				reason := "candidate to testing"
-				if emergencyOverride && canPromote {
-					reason = "emergency promotion to testing: zero active monitors"
+				req := promotionRequest{
+					monitor:           &em.monitor,
+					server:            server,
+					workingLimits:     workingAccountLimits,
+					assignedMonitors:  assignedMonitors,
+					emergencyOverride: emergencyOverride,
+					fromStatus:        ntpdb.ServerScoresStatusCandidate,
+					toStatus:          ntpdb.ServerScoresStatusTesting,
+					baseReason:        "candidate to testing",
+					emergencyReason:   getEmergencyReason("candidate to testing", ntpdb.ServerScoresStatusTesting, false),
 				}
 
-				if canPromote {
-					changes = append(changes, statusChange{
-						monitorID:  em.monitor.ID,
-						fromStatus: ntpdb.ServerScoresStatusCandidate,
-						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     reason,
-					})
-
-					// Update working account limits for next iteration
-					sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
-						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
-
-					// Update working counts
-					workingTestingCount++
+				if result := sl.attemptPromotion(req); result.success {
+					changes = append(changes, *result.change)
+					workingTestingCount += result.testingIncrement
 					promoted++
 				}
 			}
@@ -493,70 +452,45 @@ func (sl *Selector) applySelectionRules(
 			"bootstrapPromotions", bootstrapPromotions)
 
 		// Sort candidates by health first, then by global status
-		healthyCandidates := make([]evaluatedMonitor, 0)
-		otherCandidates := make([]evaluatedMonitor, 0)
+		healthyCandidates, otherCandidates := filterBootstrapCandidates(candidateMonitors)
 
-		for _, em := range candidateMonitors {
-			if em.monitor.IsHealthy && (em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting) {
-				healthyCandidates = append(healthyCandidates, em)
-			} else if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-				otherCandidates = append(otherCandidates, em)
-			}
+		// Bootstrap candidate groups: healthy first, then others
+		bootstrapGroups := []struct {
+			monitors []evaluatedMonitor
+			name     string
+		}{
+			{healthyCandidates, "healthy"},
+			{otherCandidates, "other"},
 		}
 
-		// Promote healthy candidates first
-		for _, em := range healthyCandidates {
-			if promoted >= bootstrapPromotions {
-				break
-			}
-			// Bootstrap: respect basic constraints during promotion
-			canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
-			reason := "bootstrap: promoting healthy candidate"
-			if emergencyOverride && canPromote {
-				reason = "bootstrap emergency promotion to testing: zero active monitors"
-			}
+		for _, group := range bootstrapGroups {
+			for _, em := range group.monitors {
+				if promoted >= bootstrapPromotions {
+					break
+				}
 
-			if canPromote {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusCandidate,
-					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     reason,
-				})
-				// Update working account limits
-				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
-					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
-				// Update working counts
-				workingTestingCount++
-				promoted++
-			}
-		}
+				baseReason := "bootstrap: promoting candidate"
+				if group.name == "healthy" {
+					baseReason = "bootstrap: promoting healthy candidate"
+				}
 
-		// If still need more, promote other candidates
-		for _, em := range otherCandidates {
-			if promoted >= bootstrapPromotions {
-				break
-			}
-			// Bootstrap: respect basic constraints during promotion
-			canPromote := sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride)
-			reason := "bootstrap: promoting candidate"
-			if emergencyOverride && canPromote {
-				reason = "bootstrap emergency promotion to testing: zero active monitors"
-			}
+				req := promotionRequest{
+					monitor:           &em.monitor,
+					server:            server,
+					workingLimits:     workingAccountLimits,
+					assignedMonitors:  assignedMonitors,
+					emergencyOverride: emergencyOverride,
+					fromStatus:        ntpdb.ServerScoresStatusCandidate,
+					toStatus:          ntpdb.ServerScoresStatusTesting,
+					baseReason:        baseReason,
+					emergencyReason:   getEmergencyReason(baseReason, ntpdb.ServerScoresStatusTesting, true),
+				}
 
-			if canPromote {
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusCandidate,
-					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     reason,
-				})
-				// Update working account limits
-				sl.updateAccountLimitsForPromotion(workingAccountLimits, &em.monitor,
-					ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
-				// Update working counts
-				workingTestingCount++
-				promoted++
+				if result := sl.attemptPromotion(req); result.success {
+					changes = append(changes, *result.change)
+					workingTestingCount += result.testingIncrement
+					promoted++
+				}
 			}
 		}
 
@@ -684,84 +618,6 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func (sl *Selector) selectMonitorsForRemoval(
-	active []evaluatedMonitor,
-	testing []evaluatedMonitor,
-) []evaluatedMonitor {
-	var toRemove []evaluatedMonitor
-
-	// Select from active monitors marked for removal
-	for _, em := range active {
-		if em.recommendedState == candidateOut {
-			toRemove = append(toRemove, em)
-		}
-	}
-
-	// Select from testing monitors marked for removal
-	for _, em := range testing {
-		if em.recommendedState == candidateOut {
-			toRemove = append(toRemove, em)
-		}
-	}
-
-	// TODO: Sort by priority (oldest grandfathered violations first)
-
-	return toRemove
-}
-
-func (sl *Selector) selectMonitorsForPromotion(
-	candidates []evaluatedMonitor,
-	count int,
-) []evaluatedMonitor {
-	var eligible []evaluatedMonitor
-
-	// Filter to only eligible monitors
-	for _, em := range candidates {
-		if em.recommendedState == candidateIn &&
-			em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive &&
-			em.monitor.IsHealthy {
-			eligible = append(eligible, em)
-		}
-	}
-
-	// TODO: Sort by quality metrics (RTT, history length, etc.)
-
-	// Return up to count monitors
-	if len(eligible) <= count {
-		return eligible
-	}
-	return eligible[:count]
-}
-
-func (sl *Selector) selectCandidatesForTesting(
-	candidates []evaluatedMonitor,
-	count int,
-) []evaluatedMonitor {
-	var eligible []evaluatedMonitor
-
-	// Prefer globally active monitors
-	for _, em := range candidates {
-		if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-			eligible = append(eligible, em)
-		}
-	}
-
-	// If not enough, add globally testing monitors
-	if len(eligible) < count {
-		for _, em := range candidates {
-			if em.recommendedState == candidateIn && em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-				eligible = append(eligible, em)
-			}
-		}
-	}
-
-	// Return up to count monitors
-	if len(eligible) <= count {
-		return eligible
-	}
-	return eligible[:count]
 }
 
 func (sl *Selector) calculateNeededCandidates(active, testing, candidates int) int {

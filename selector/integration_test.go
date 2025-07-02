@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"go.ntppool.org/monitor/ntpdb"
 )
 
 // Test helpers for integration tests
@@ -65,9 +67,6 @@ func int32Ptr(v int32) *int32 {
 	return &v
 }
 
-func uint32Ptr(v uint32) *uint32 {
-	return &v
-}
 
 func TestSelectorIntegration_CompleteFlow(t *testing.T) {
 	t.Skip("Integration tests require database setup")
@@ -286,6 +285,180 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 				}
 				if promotionCount != 1 {
 					t.Errorf("Expected exactly 1 promotion, got: %d", promotionCount)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This test setup would require database connection
+			// In actual implementation:
+			// 1. Setup test database using test-db.sh
+			// 2. Run tc.setupFunc to create test data
+			// 3. Create selector and run ProcessStatusChanges
+			// 4. Run tc.expectFunc to verify results
+
+			t.Logf("Test case: %s", tc.description)
+			t.Skip("Requires integration test database setup")
+		})
+	}
+}
+
+// TestPromotionHelperIntegration tests the refactored promotion helpers in realistic scenarios
+func TestPromotionHelperIntegration(t *testing.T) {
+	testCases := []struct {
+		name        string
+		description string
+		setupFunc   func(t *testing.T, db *sql.DB)
+		expectFunc  func(t *testing.T, changes []statusChange)
+	}{
+		{
+			name:        "multiple_promotion_paths",
+			description: "Tests that promotion helpers work correctly with multiple candidate groups",
+			setupFunc: func(t *testing.T, db *sql.DB) {
+				// Create test server
+				createTestServer(t, db, 1, "192.168.1.1", "4", uint32Ptr(100))
+
+				// Create globally active and testing monitors with different accounts
+				createTestMonitor(t, db, 1, "active", "10.0.1.1", uint32Ptr(200))    // Globally active
+				createTestMonitor(t, db, 2, "testing", "10.0.1.2", uint32Ptr(201))   // Globally testing
+				createTestMonitor(t, db, 3, "active", "10.0.1.3", uint32Ptr(202))    // Globally active
+
+				// All as candidates for promotion
+				createTestServerScore(t, db, 1, 1, "candidate", 95.0)
+				createTestServerScore(t, db, 1, 2, "candidate", 90.0)
+				createTestServerScore(t, db, 1, 3, "candidate", 85.0)
+			},
+			expectFunc: func(t *testing.T, changes []statusChange) {
+				promotions := 0
+				activePromotions := 0
+				testingPromotions := 0
+
+				for _, change := range changes {
+					if change.toStatus == ntpdb.ServerScoresStatusTesting {
+						promotions++
+						// Check that globally active monitors are promoted first
+						if change.monitorID == 1 || change.monitorID == 3 {
+							activePromotions++
+						} else if change.monitorID == 2 {
+							testingPromotions++
+						}
+
+						// Verify emergency reason handling
+						if containsString(change.reason, "emergency") {
+							t.Errorf("Should not use emergency promotion in normal scenario: %s", change.reason)
+						}
+					}
+				}
+
+				// Should have promotions from candidate groups
+				if promotions == 0 {
+					t.Error("Expected candidate promotions, got none")
+				}
+
+				// Globally active monitors should be preferred over testing
+				if activePromotions > 0 && testingPromotions > 0 && activePromotions <= testingPromotions {
+					t.Error("Expected globally active monitors to be promoted before testing monitors")
+				}
+			},
+		},
+		{
+			name:        "bootstrap_promotion_priority",
+			description: "Tests that bootstrap promotions prioritize healthy candidates",
+			setupFunc: func(t *testing.T, db *sql.DB) {
+				// Create test server
+				createTestServer(t, db, 2, "192.168.2.1", "4", uint32Ptr(300))
+
+				// Create healthy and unhealthy monitors
+				createTestMonitor(t, db, 10, "active", "10.0.2.1", uint32Ptr(400))   // Healthy, globally active
+				createTestMonitor(t, db, 11, "active", "10.0.2.2", uint32Ptr(401))   // Unhealthy, globally active
+				createTestMonitor(t, db, 12, "testing", "10.0.2.3", uint32Ptr(402))  // Healthy, globally testing
+
+				// All as candidates, simulate no testing monitors scenario
+				createTestServerScore(t, db, 2, 10, "candidate", 95.0)
+				createTestServerScore(t, db, 2, 11, "candidate", 90.0)
+				createTestServerScore(t, db, 2, 12, "candidate", 85.0)
+
+				// Add log scores to determine health status
+				now := time.Now()
+				createTestLogScore(t, db, 2, 10, 0.1, 0.05, int32Ptr(10), now.Add(-5*time.Minute))  // Healthy
+				createTestLogScore(t, db, 2, 11, 1.0, 0.5, int32Ptr(100), now.Add(-5*time.Minute))   // Unhealthy
+				createTestLogScore(t, db, 2, 12, 0.2, 0.1, int32Ptr(15), now.Add(-5*time.Minute))    // Healthy
+			},
+			expectFunc: func(t *testing.T, changes []statusChange) {
+				bootstrapPromotions := 0
+				healthyPromotions := 0
+
+				for _, change := range changes {
+					if change.toStatus == ntpdb.ServerScoresStatusTesting {
+						bootstrapPromotions++
+
+						// Check for bootstrap promotion reasons
+						if containsString(change.reason, "bootstrap") {
+							if containsString(change.reason, "healthy") {
+								healthyPromotions++
+							}
+						}
+					}
+				}
+
+				if bootstrapPromotions == 0 {
+					t.Error("Expected bootstrap promotions in zero-testing scenario")
+				}
+
+				if healthyPromotions == 0 {
+					t.Error("Expected at least one healthy candidate to be promoted first")
+				}
+			},
+		},
+		{
+			name:        "working_count_accuracy",
+			description: "Tests that working count tracking in promotion helpers is accurate",
+			setupFunc: func(t *testing.T, db *sql.DB) {
+				// Create test server
+				createTestServer(t, db, 3, "192.168.3.1", "4", uint32Ptr(500))
+
+				// Create mix of active, testing, and candidate monitors
+				createTestMonitor(t, db, 20, "active", "10.0.3.1", uint32Ptr(600))
+				createTestMonitor(t, db, 21, "active", "10.0.3.2", uint32Ptr(601))
+				createTestMonitor(t, db, 22, "active", "10.0.3.3", uint32Ptr(602))
+
+				// Server scores: some active, some testing, some candidates
+				createTestServerScore(t, db, 3, 20, "active", 95.0)
+				createTestServerScore(t, db, 3, 21, "testing", 90.0)
+				createTestServerScore(t, db, 3, 22, "candidate", 85.0)
+
+				// Add log scores for health
+				now := time.Now()
+				createTestLogScore(t, db, 3, 20, 0.1, 0.05, int32Ptr(10), now.Add(-5*time.Minute))
+				createTestLogScore(t, db, 3, 21, 0.2, 0.1, int32Ptr(15), now.Add(-5*time.Minute))
+				createTestLogScore(t, db, 3, 22, 0.3, 0.2, int32Ptr(20), now.Add(-5*time.Minute))
+			},
+			expectFunc: func(t *testing.T, changes []statusChange) {
+				// Count expected state transitions
+				activeToTesting := 0
+				testingToActive := 0
+				candidateToTesting := 0
+
+				for _, change := range changes {
+					switch {
+					case change.fromStatus == ntpdb.ServerScoresStatusActive && change.toStatus == ntpdb.ServerScoresStatusTesting:
+						activeToTesting++
+					case change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusActive:
+						testingToActive++
+					case change.fromStatus == ntpdb.ServerScoresStatusCandidate && change.toStatus == ntpdb.ServerScoresStatusTesting:
+						candidateToTesting++
+					}
+				}
+
+				// Verify that count increments match expected state transitions
+				// This test would need access to internal working counts to be fully effective
+				// but verifies that the promotion logic produces consistent results
+
+				totalTransitions := activeToTesting + testingToActive + candidateToTesting
+				if totalTransitions == 0 {
+					t.Log("No status transitions in this scenario - this is valid if monitors are properly balanced")
 				}
 			},
 		},

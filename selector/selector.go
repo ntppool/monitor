@@ -104,7 +104,9 @@ func (sl *Selector) Run() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback() // Rollback is expected to fail on successful commit
+	}()
 
 	db := ntpdb.New(sl.dbconn).WithTx(tx)
 
