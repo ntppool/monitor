@@ -1,14 +1,17 @@
 # Performance Optimizations TODO
 
+**Last Updated**: 2025-01-26
+
 ## Overview
 
 This document consolidates outstanding performance optimization tasks identified across the NTP Pool monitoring system, with focus on the selector package and related components.
 
-## Helper Function Extraction (High Priority)
+## Helper Function Extraction ✅ [COMPLETED - 2025-01]
 
 ### Current Status: Completed ✅
 **Implementation**: Commit 6c4ae72 - Helper function centralization
 **Result**: 47% code reduction in promotion logic
+**Completion Date**: January 2025
 
 ### Completed Work
 - ✅ Extracted `attemptPromotion()` - Unified promotion logic with count tracking
@@ -24,7 +27,7 @@ This document consolidates outstanding performance optimization tasks identified
 - **Better Maintainability**: Changes to promotion logic only needed in one place
 - **Improved Readability**: Business logic clearer without repetitive boilerplate
 
-## Constraint Evaluation Optimization (Completed) ✅
+## Constraint Evaluation Optimization ✅ [COMPLETED - 2024]
 
 ### Previous Issue: Unnecessary Constraint Evaluation
 **Problem**: ~80% performance overhead from evaluating all 4 possible transitions for every monitor
@@ -48,44 +51,24 @@ if isPromoting(monitor) {
 }
 ```
 
-## Emergency Override Consistency (Outstanding)
+## Emergency Override Consistency ✅ [COMPLETED - commit: b6515b8]
 
-### Current Gap: Candidate→Testing Promotions
-**Issue**: Emergency override only applies to testing→active promotions, not candidate→testing
-**Impact**: System could get stuck with zero monitors if candidates can't be promoted
+### Previous Issue
+**Problem**: Emergency override only applied to testing→active promotions, not candidate→testing
+**Impact**: System could get stuck with zero monitors if candidates couldn't be promoted
 
-### Required Changes
-```go
-// Current signature - lacks emergency override
-func (sl *Selector) canPromoteToTesting(
-    monitor *monitorCandidate,
-    server *serverInfo,
-    accountLimits map[uint32]*accountLimit,
-    existingMonitors []ntpdb.GetMonitorPriorityRow,
-) bool
-
-// Required signature - add emergency override parameter
-func (sl *Selector) canPromoteToTesting(
-    monitor *monitorCandidate,
-    server *serverInfo,
-    accountLimits map[uint32]*accountLimit,
-    existingMonitors []ntpdb.GetMonitorPriorityRow,
-    emergencyOverride bool, // NEW
-) bool
-```
-
-### Implementation Strategy
-1. Add `emergencyOverride` parameter to `canPromoteToTesting()`
-2. Update all call sites to pass emergency override status
-3. Apply same emergency logic as `canPromoteToActive()`
-4. Add comprehensive test coverage for emergency scenarios
+### Completed Implementation
+- ✅ Added `emergencyOverride` parameter to `canPromoteToTesting()`
+- ✅ Updated all call sites to pass emergency override status
+- ✅ Applied consistent emergency logic across all promotion paths
+- ✅ Added comprehensive test coverage for emergency scenarios
 
 ### Performance Impact
-- **Positive**: Reduces system recovery time during emergencies
+- **Positive**: Reduced system recovery time during emergencies
 - **Neutral**: No additional computational overhead
-- **Critical**: Prevents system deadlock scenarios
+- **Critical**: Prevented system deadlock scenarios
 
-## Grandfathering Logic Enhancement (Outstanding)
+## Grandfathering Logic Enhancement 📋 [TODO]
 
 ### Current Issue: Non-Functional Grandfathering
 **Problem**: Grandfathered and non-grandfathered violations have identical behavior

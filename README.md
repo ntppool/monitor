@@ -48,9 +48,20 @@ The NTP Pool Monitor uses an advanced candidate status system for selecting whic
 ### Key Features
 - **Constraint validation** - Prevents monitors from same network/account
 - **Gradual state transitions** - Safe promotion/demotion to maintain service stability
-- **Bootstrap logic** - Automatic promotion when servers need monitoring coverage
-- **Change rate limiting** - Maximum 1 change per selection cycle for operational safety
-- **Emergency safeguards** - Maintains minimum active monitors per server
+- **Emergency override** - System can recover from zero monitors by bypassing constraints
+- **Dynamic capacity management** - Testing pool size adjusts based on active monitor availability
+
+## Documentation
+
+### Development Planning
+See **[plans/](plans/)** directory for comprehensive implementation planning:
+- **Design documents** - Timeless architecture descriptions
+- **Implementation plans** - Current and planned development work
+- **Archive** - Historical context from completed implementations
+
+### Project Documentation
+- **[LLM_CODING_AGENT.md](LLM_CODING_AGENT.md)** - Comprehensive developer guidelines and architectural patterns
+- **[plans/README.md](plans/README.md)** - Planning documentation overview and status summary
 
 The system ensures diverse, reliable monitoring coverage while preventing operational disruptions from mass changes.
 

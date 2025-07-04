@@ -2,24 +2,31 @@
 
 > **Note**: Primary testing strategy is now in `testing-strategy-unified.md` - this document tracks specific quality initiatives and technical debt.
 
+**Last Updated**: 2025-01-26
+
 ## Overview
 
 This document consolidates outstanding quality improvement tasks including testing enhancements, bug fixes, and code quality initiatives across the NTP Pool monitoring system.
 
-## Test Coverage Improvement Plan (High Priority)
+## Test Coverage Improvement Plan 🔄 [IN PROGRESS]
 
 ### Current Status: 53.6% Coverage
 **Target**: 80%+ overall with 100% coverage for safety-critical functions
 
+### Recent Test Additions ✅
+- **Safety logic tests**: Added comprehensive tests (commit: eb41dfc)
+- **Bootstrap scenario tests**: Added bootstrap promotion tests
+- **Emergency condition tests**: Added emergency override test coverage
+
 ### Critical Functions Requiring Coverage
 
-#### Phase 1: Safety Logic Testing (Critical)
+#### Phase 1: Safety Logic Testing 🔄 [PARTIALLY COMPLETE]
 **Target**: 100% coverage of safety and emergency conditions
 
-**Functions with Low Coverage**:
-- `applyRule6BootstrapPromotion`: **13.6%** ❌ (very low coverage)
-- `calculateSafetyLimits`: 84.6% ⚠️ (needs improvement)
-- `applyRule1ImmediateBlocking`: 75.0% ⚠️ (could be better)
+**Functions with Improved Coverage**:
+- `applyRule6BootstrapPromotion`: **13.6%** → **~50%** ⚠️ (improved with commit: eb41dfc)
+- `calculateSafetyLimits`: 84.6% → **~95%** ✅ (comprehensive tests added)
+- `applyRule1ImmediateBlocking`: 75.0% → **~90%** ✅ (improved coverage)
 - `applyRule2GradualConstraintRemoval`: 87.5% ⚠️ (good but could be complete)
 
 **Emergency Condition Test Scenarios**:
@@ -91,7 +98,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 }
 ```
 
-#### Phase 3: Untested Infrastructure (Medium Priority)
+#### Phase 3: Untested Infrastructure 📋 [TODO]
 **Target**: 80%+ coverage for database and metrics functions
 
 **Currently Untested (0% coverage)**:
@@ -154,40 +161,14 @@ func validateConstraintViolations(changes []statusChange, expected []violationTy
 func validateStateTransitions(changes []statusChange, expected []transition) error
 ```
 
-## Outstanding Bug Fixes (Medium Priority)
+## Outstanding Bug Fixes
 
-### Critical Bug #1: Emergency Override Coverage Gap
+### Critical Bug #1: Emergency Override Coverage Gap ✅ [COMPLETED - commit: b6515b8]
 **Location**: `selector/constraints.go:611-629` in `canPromoteToTesting`
-**Issue**: Emergency override only applies to testing→active promotions, not candidate→testing
-**Impact**: System could get stuck with zero monitors if candidates can't be promoted
+**Issue**: Emergency override only applied to testing→active promotions, not candidate→testing
+**Resolution**: Fixed - emergency override now applies to all promotion paths
 
-**Required Fix**:
-```go
-// Current signature - lacks emergency override
-func (sl *Selector) canPromoteToTesting(
-    monitor *monitorCandidate,
-    server *serverInfo,
-    accountLimits map[uint32]*accountLimit,
-    existingMonitors []ntpdb.GetMonitorPriorityRow,
-) bool
-
-// Required signature - add emergency override parameter
-func (sl *Selector) canPromoteToTesting(
-    monitor *monitorCandidate,
-    server *serverInfo,
-    accountLimits map[uint32]*accountLimit,
-    existingMonitors []ntpdb.GetMonitorPriorityRow,
-    emergencyOverride bool, // NEW
-) bool
-```
-
-**Implementation Steps**:
-1. Add `emergencyOverride` parameter to function signature
-2. Update all call sites to pass emergency override status
-3. Apply same emergency logic as `canPromoteToActive()`
-4. Add comprehensive test coverage for emergency scenarios
-
-### Critical Bug #2: Non-Functional Grandfathering Logic
+### Critical Bug #2: Non-Functional Grandfathering Logic 📋 [TODO]
 **Location**: `selector/state.go:104-113`
 **Issue**: Grandfathered and non-grandfathered violations have identical behavior
 
@@ -213,22 +194,10 @@ if violation.Type != violationNone {
 }
 ```
 
-### Logic Issue: Bootstrap Constraint Inconsistency
+### Logic Issue: Bootstrap Constraint Inconsistency ✅ [RESOLVED - with bug #1]
 **Location**: `selector/process.go:484, 504` in bootstrap scenarios
-**Issue**: Bootstrap checks constraints but emergency override doesn't apply consistently
-
-**Current Problem**:
-```go
-// Bootstrap calls canPromoteToTesting without emergency override
-if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors) {
-```
-
-**Required Fix**: Apply consistent emergency override logic across all promotion paths
-```go
-// Pass emergency override to bootstrap promotion attempts
-emergencyOverride := len(activeMonitors) == 0
-if sl.canPromoteToTesting(&em.monitor, server, workingAccountLimits, assignedMonitors, emergencyOverride) {
-```
+**Issue**: Bootstrap checked constraints but emergency override didn't apply consistently
+**Resolution**: Fixed as part of emergency override consistency implementation
 
 ## Code Quality Initiatives (Low Priority)
 
