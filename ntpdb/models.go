@@ -144,7 +144,6 @@ func (ns NullMonitorsType) Value() (driver.Value, error) {
 type ServerScoresStatus string
 
 const (
-	ServerScoresStatusNew       ServerScoresStatus = "new"
 	ServerScoresStatusCandidate ServerScoresStatus = "candidate"
 	ServerScoresStatusTesting   ServerScoresStatus = "testing"
 	ServerScoresStatusActive    ServerScoresStatus = "active"

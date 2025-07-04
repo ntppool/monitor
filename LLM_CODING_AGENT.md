@@ -365,6 +365,64 @@ When debugging failing integration tests, especially those involving databases:
 - `scorer/` - Server performance scoring algorithms
 - `ntpdb/` - Database layer using MySQL with sqlc for type-safe queries
 
+### Monitor Types
+
+The system supports two distinct types of monitors with different purposes and lifecycles:
+
+#### 1. Regular Monitors (`type = 'monitor'`)
+
+**Purpose**: Distributed NTP monitoring clients that test server performance
+- **Implementation**: `ntppool-agent` clients running on user systems
+- **Data Flow**: Submit test results via monitor-api gRPC/ConnectRPC endpoints
+- **Status Management**: Managed by selector through proper constraint checking
+- **Status Progression**: `candidate` → `testing` → `active`
+- **Assignment**: Automatically assigned to compatible servers via `GetServers` API
+- **Location**: `client/` package and related monitoring code
+
+**Lifecycle**:
+1. Monitor submits test results → Creates `log_scores` entries
+2. Scorer processes results → Creates `server_scores` with `candidate` status
+3. Selector evaluates server → Promotes based on constraints and health
+4. Constraint violations → Gradual demotion through status hierarchy
+
+#### 2. Scorer Monitors (`type = 'score'`)
+
+**Purpose**: Meta-monitors that calculate aggregate server performance scores
+- **Implementation**: Backend processes that analyze monitoring data
+- **Data Flow**: Process `log_scores` from regular monitors to compute server scores
+- **Status Management**: Automatically set to `active` status when processing scores
+- **Assignment**: Manually configured, not subject to selector constraint checking
+- **Location**: `scorer/` package
+
+**Lifecycle**:
+1. Scorer processes `log_scores` entries from regular monitors
+2. Creates/updates `server_scores` entries with calculated performance metrics
+3. Status automatically forced to `active` during score calculation (this is correct behavior)
+4. Not subject to selector's constraint checking or promotion logic
+
+#### Key Differences
+
+| Aspect | Regular Monitors | Scorer Monitors |
+|--------|------------------|-----------------|
+| **Purpose** | Test individual servers | Calculate aggregate scores |
+| **Data Source** | Direct NTP measurements | Processed monitoring data |
+| **Status Flow** | `candidate` → `testing` → `active` | Always `active` when processing |
+| **Constraint Checking** | Full selector constraint validation | Not subject to constraints |
+| **Assignment** | Automatic via selector logic | Manual configuration |
+| **Count Limits** | Subject to account/network limits | No limits (system-managed) |
+
+#### Database Identification
+
+Monitors are identified by the `type` field in the `monitors` table:
+```sql
+SELECT * FROM monitors WHERE type = 'monitor';  -- Regular monitoring clients
+SELECT * FROM monitors WHERE type = 'score';    -- Scorer/meta-monitors
+```
+
+The `server_scores` table contains entries from both types, but they serve different purposes:
+- **Regular monitors**: Status managed by selector for constraint compliance
+- **Scorer monitors**: Status automatically managed for operational needs
+
 ### Configuration Management Architecture
 
 **Two separate configuration endpoints with different purposes and frequencies:**
@@ -766,6 +824,24 @@ To avoid conflicts, different test scenarios use specific ports:
 - Selector implementation moved to dedicated `selector/` package
 - New constraint validation algorithm for server scoring
 - Added candidate status tracking in `server_scores` table
+
+### "New" Status Elimination (July 2025)
+
+**Problem Solved**: Monitors were getting stuck at "new" status causing persistent constraint violation warnings.
+
+**Solution**: Eliminated the "new" status entirely from the system:
+- **Database migration #146**: Updates existing "new" records to "candidate" and removes "new" from enum
+- **Schema updated**: `server_scores.status` now `enum('candidate','testing','active')` with default `'candidate'`
+- **Simplified status flow**: `candidate → testing → active` (no intermediate "new" state)
+- **Bootstrap compatibility**: All existing logic works with "candidate" as the initial status
+
+**Benefits**:
+- Eliminates constraint violation warnings for unassigned monitors
+- Simplifies monitor lifecycle management
+- Maintains all existing selector constraint checking and promotion logic
+- Preserves scorer functionality for meta-monitors
+
+**Location**: Database schema, `ntpdb/` generated code, migration in `../../ntppool/sql/ntppool.update`
 
 ### Testing Infrastructure Improvements
 - Enhanced integration test framework

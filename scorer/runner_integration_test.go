@@ -204,8 +204,8 @@ func setupScorerTestData(t *testing.T, tdb *testutil.TestDB, factory *testutil.D
 	factory.CreateTestServer(t, 3003, "2001:db8::1", "v6", nil)
 
 	// Create initial server scores
-	factory.CreateTestServerScore(t, 3001, 2001, "new", 0)
-	factory.CreateTestServerScore(t, 3002, 2002, "new", 0)
+	factory.CreateTestServerScore(t, 3001, 2001, "candidate", 0)
+	factory.CreateTestServerScore(t, 3002, 2002, "candidate", 0)
 
 	// Create server scores for regular monitors (needed for GetScorerRecentScores query)
 	// The recentmedian scorer needs these to find log scores from active monitors

@@ -41,9 +41,20 @@ When you run the setup command, configuration changes are applied automatically 
 The NTP Pool Monitor uses an advanced candidate status system for selecting which monitors test each server:
 
 ### Monitor States (Per-Server Assignment)
-- **candidate** - Monitor selected for potential assignment to server
+- **candidate** - Monitor selected for potential assignment to server (default for new assignments)
 - **testing** - Monitor actively monitoring and being evaluated for server
 - **active** - Monitor confirmed for long-term monitoring of server
+
+### Status Flow
+Regular monitors progress through states based on performance and constraints:
+```
+candidate → testing → active
+```
+
+New monitors are initially assigned `candidate` status and promoted by the selector based on:
+- **Health metrics** - RTT, accuracy, and reliability measurements
+- **Constraint compliance** - Network diversity, account limits, and geographic distribution
+- **Server needs** - Available slots and current monitor coverage
 
 ### Key Features
 - **Constraint validation** - Prevents monitors from same network/account
@@ -62,6 +73,11 @@ See **[plans/](plans/)** directory for comprehensive implementation planning:
 ### Project Documentation
 - **[LLM_CODING_AGENT.md](LLM_CODING_AGENT.md)** - Comprehensive developer guidelines and architectural patterns
 - **[plans/README.md](plans/README.md)** - Planning documentation overview and status summary
+
+### Monitor Types
+The system supports two distinct monitor types:
+- **Regular monitors** (`type = 'monitor'`) - Client agents that test NTP servers
+- **Scorer monitors** (`type = 'score'`) - Backend processes that calculate aggregate performance metrics
 
 The system ensures diverse, reliable monitoring coverage while preventing operational disruptions from mass changes.
 
