@@ -329,10 +329,19 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 		return true, nil
 	}
 
+	// Conservative 200ms sleep between all requests for safety
+	// Fast enough to feel interactive, but prevents runaway request loops
+	sleepDuration := 200 * time.Millisecond
+
+	// Use longer sleep for status polling after URL is shown
+	if rs.urlPrinted {
+		sleepDuration = 5 * time.Second
+	}
+
 	select {
 	case <-ctx.Done():
 		return true, fmt.Errorf("setup aborted")
-	case <-time.After(5 * time.Second):
+	case <-time.After(sleepDuration):
 		return false, nil
 	}
 }
