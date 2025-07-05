@@ -175,7 +175,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	if router != nil {
 		mqttcfg.Router = router
 	} else {
-		mqttcfg.Router = paho.NewSingleHandlerRouter(func(m *paho.Publish) {
+		mqttcfg.Router = paho.NewStandardRouterWithDefault(func(m *paho.Publish) {
 			log.Info("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
 			// h.handle(m)
 		})

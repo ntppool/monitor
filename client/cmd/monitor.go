@@ -247,7 +247,7 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 			log := log.WithGroup("mqtt")
 
 			mqc := monitor.NewMQClient(log, topics, mqconfigger, promreg)
-			router := paho.NewSingleHandlerRouter(mqc.Handler)
+			router := paho.NewStandardRouterWithDefault(mqc.Handler)
 
 			var err error
 			mq, err = mqttcm.Setup(
