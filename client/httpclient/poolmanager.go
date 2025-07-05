@@ -38,7 +38,7 @@ func (pft *PoolFlusherTransport) RoundTrip(req *http.Request) (*http.Response, e
 			"status", getStatusCode(resp))
 
 		// Close idle connections to force fresh connections on retry
-		pft.Transport.CloseIdleConnections()
+		pft.CloseIdleConnections()
 
 		// Retry the request with fresh connections
 		if err != nil {

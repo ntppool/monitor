@@ -215,10 +215,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			return nil
 		}
 		// wait for the config to be loaded
-		for {
-			if mqconfigger.GetMQTTConfig() != nil {
-				break
-			}
+		for mqconfigger.GetMQTTConfig() == nil {
 			select {
 			case <-ctx.Done():
 				return nil

@@ -3,14 +3,11 @@ package config
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
@@ -113,178 +110,12 @@ func readStateFile(t *testing.T, dir string) map[string]interface{} {
 	return state
 }
 
-// mockWatcher provides a controllable file watcher for testing
-type mockWatcher struct {
-	Events chan fsnotify.Event
-	Errors chan error
-	closed bool
-	mu     sync.Mutex
-	dirs   map[string]bool
-}
-
-// newMockWatcher creates a new mock file watcher
-func newMockWatcher() *mockWatcher {
-	return &mockWatcher{
-		Events: make(chan fsnotify.Event, 10),
-		Errors: make(chan error, 10),
-		dirs:   make(map[string]bool),
-	}
-}
-
-// Add simulates adding a directory to watch
-func (m *mockWatcher) Add(name string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.closed {
-		return fmt.Errorf("watcher closed")
-	}
-
-	m.dirs[name] = true
-	return nil
-}
-
-// Close simulates closing the watcher
-func (m *mockWatcher) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.closed {
-		m.closed = true
-		close(m.Events)
-		close(m.Errors)
-	}
-	return nil
-}
-
-// SendEvent sends a mock file system event
-func (m *mockWatcher) SendEvent(event fsnotify.Event) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.closed {
-		select {
-		case m.Events <- event:
-		default:
-			// Buffer full, ignore
-		}
-	}
-}
-
-// SendError sends a mock error
-func (m *mockWatcher) SendError(err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if !m.closed {
-		select {
-		case m.Errors <- err:
-		default:
-			// Buffer full, ignore
-		}
-	}
-}
-
-// IsClosed returns whether the watcher is closed
-func (m *mockWatcher) IsClosed() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.closed
-}
-
 // countWaiters counts the number of active waiters (for testing memory leaks)
 func countWaiters(cfg AppConfig) int {
 	ac := cfg.(*appConfig)
 	ac.configChangeMu.RLock()
 	defer ac.configChangeMu.RUnlock()
 	return len(ac.configChangeWaiters)
-}
-
-// createLargeStateFile creates a state file with many fields for testing
-func createLargeStateFile(t *testing.T, dir string, size int) {
-	t.Helper()
-
-	stateDir := filepath.Join(dir, depenv.DeployDevel.String())
-	err := os.MkdirAll(stateDir, 0o700)
-	require.NoError(t, err)
-
-	// Create a large state structure
-	data := make(map[string]interface{})
-	data["API"] = map[string]interface{}{"APIKey": "test-key"}
-	data["Data"] = map[string]interface{}{
-		"Name":    "test-server",
-		"TLSName": "test.example.com",
-		"IPv4":    map[string]interface{}{"Status": "active", "IP": "1.2.3.4"},
-		"IPv6":    map[string]interface{}{"Status": "active", "IP": "2001:db8::1"},
-	}
-
-	// Add many extra fields to increase size
-	extras := make(map[string]interface{})
-	for i := 0; i < size; i++ {
-		extras[fmt.Sprintf("field_%d", i)] = fmt.Sprintf("value_%d", i)
-	}
-	data["Extra"] = extras
-	data["DataSha"] = ""
-
-	content, err := json.MarshalIndent(data, "", "  ")
-	require.NoError(t, err)
-
-	stateFile := filepath.Join(stateDir, "state.json")
-	generateFileChange(t, stateFile, content)
-}
-
-// runWithTimeout runs a function with a timeout context
-func runWithTimeout(t *testing.T, timeout time.Duration, fn func(context.Context)) {
-	t.Helper()
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		fn(ctx)
-	}()
-
-	select {
-	case <-done:
-		// Completed successfully
-	case <-ctx.Done():
-		t.Fatalf("Function timed out after %v", timeout)
-	}
-}
-
-// goroutineLeakChecker helps detect goroutine leaks in tests
-type goroutineLeakChecker struct {
-	initialCount int
-}
-
-// newGoroutineLeakChecker creates a new leak checker
-func newGoroutineLeakChecker() *goroutineLeakChecker {
-	return &goroutineLeakChecker{
-		initialCount: countGoroutines(),
-	}
-}
-
-// Check verifies no goroutines have leaked
-func (g *goroutineLeakChecker) Check(t *testing.T) {
-	t.Helper()
-
-	// Give goroutines time to cleanup
-	time.Sleep(100 * time.Millisecond)
-
-	currentCount := countGoroutines()
-	if currentCount > g.initialCount {
-		t.Errorf("Goroutine leak detected: started with %d, now have %d goroutines",
-			g.initialCount, currentCount)
-	}
-}
-
-// countGoroutines returns the current number of goroutines
-func countGoroutines() int {
-	// This is a simplified version - in real tests you might use runtime.NumGoroutine()
-	// or more sophisticated leak detection
-	return 1 // Placeholder
 }
 
 // temporarilyBreakFile makes a file temporarily unreadable for testing error conditions

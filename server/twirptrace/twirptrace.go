@@ -20,7 +20,7 @@ type oteltwirpKey string
 
 const (
 	RequestReceivedEvent = "request.received"
-	ctxRemoteAddr        = "RemoteAddr"
+	ctxRemoteAddr        = oteltwirpKey("RemoteAddr")
 )
 
 type TraceServerHooks struct {
