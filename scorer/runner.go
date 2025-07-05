@@ -202,6 +202,11 @@ func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.
 func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchSize int32) (int, error) {
 	log := r.log.With("name", name)
 
+	// Validate connection before starting transaction
+	if err := r.validateConnection(ctx); err != nil {
+		return 0, fmt.Errorf("connection validation failed: %w", err)
+	}
+
 	tx, err := r.dbconn.BeginTx(r.ctx, nil)
 	if err != nil {
 		return 0, err
@@ -345,4 +350,13 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (
 	}
 
 	return db.GetServerScore(ctx, p)
+}
+
+// validateConnection performs a lightweight health check on the database connection
+func (r *runner) validateConnection(ctx context.Context) error {
+	// Simple ping to verify connection is alive
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	return r.dbconn.PingContext(ctx)
 }

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -49,12 +50,36 @@ func scorerRun(ctx context.Context, continuous bool) error {
 	expback.InitialInterval = time.Second * 3
 	expback.MaxInterval = time.Second * 60
 
+	dbErrorBackoff := backoff.NewExponentialBackOff()
+	dbErrorBackoff.InitialInterval = time.Second * 5
+	dbErrorBackoff.MaxInterval = time.Second * 120
+
 	for {
 		count, err := sc.Run(ctx)
 		if err != nil {
 			log.Error("run error", "err", err, "count", count)
+
+			// Check if this is a database connection error
+			if isConnectionError(err) {
+				if !continuous {
+					// In once mode, still fail on connection errors
+					return err
+				}
+
+				// In continuous mode, retry with exponential backoff
+				wait := dbErrorBackoff.NextBackOff()
+				log.Warn("database connection error, retrying", "wait", wait)
+				time.Sleep(wait)
+				continue
+			}
+
+			// For other errors, fail immediately
 			return err
 		}
+
+		// Reset database error backoff on successful run
+		dbErrorBackoff.Reset()
+
 		if count > 0 || !continuous {
 			// todo: add prom metric counter
 			log.Debug("Processed log scores", "count", count)
@@ -74,6 +99,40 @@ func scorerRun(ctx context.Context, continuous bool) error {
 	}
 
 	return nil
+}
+
+// isConnectionError checks if an error is a database connection error
+// that should trigger a retry rather than a fatal exit
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Check for common connection error patterns
+	connectionErrors := []string{
+		"driver: bad connection",
+		"invalid connection",
+		"connection refused",
+		"connection reset by peer",
+		"broken pipe",
+		"EOF",
+		"i/o timeout",
+		"network is unreachable",
+		"no such host",
+		"connection timed out",
+		"Too many connections",
+		"Can't connect to MySQL server",
+	}
+
+	for _, pattern := range connectionErrors {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
