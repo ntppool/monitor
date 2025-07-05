@@ -102,7 +102,9 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	}()
 
 	batchID := ulid.ULID{}
-	batchID.UnmarshalText(in.BatchId)
+	if err := batchID.UnmarshalText(in.BatchId); err != nil {
+		return false, fmt.Errorf("invalid batch ID: %w", err)
+	}
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 	log = log.With("batchID", batchID.String())
@@ -130,11 +132,14 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 		return false, fmt.Errorf("invalid batch submission")
 	}
 
-	srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
+	if err := srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
 		ID:         monitor.ID,
 		LastSubmit: sql.NullTime{Time: batchTime, Valid: true},
 		LastSeen:   sql.NullTime{Time: now, Valid: true},
-	})
+	}); err != nil {
+		// Log warning but don't fail the request
+		log.WarnContext(ctx, "failed to update monitor submit", "err", err)
+	}
 
 	clientVersion := monitor.ClientVersion
 	if idx := strings.Index(clientVersion, "/"); idx >= 0 {
@@ -195,7 +200,9 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	server, err := db.GetServerIP(ctx, status.GetIP().String())
 	if err != nil {
@@ -223,21 +230,27 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 
 	if status.Stratum > 0 {
 		nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
-		db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
+		if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
 			ID:      serverScore.ID,
 			Stratum: nullStratum,
-		})
-		db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
+		}); err != nil {
+			return fmt.Errorf("updating server score stratum: %w", err)
+		}
+		if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
 			ID:      server.ID,
 			Stratum: nullStratum,
-		})
+		}); err != nil {
+			return fmt.Errorf("updating server stratum: %w", err)
+		}
 	}
 
-	db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
+	if err := db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
 		ID:       serverScore.ID,
 		ScoreTs:  sql.NullTime{Time: score.Ts, Valid: true},
 		ScoreRaw: serverScore.ScoreRaw,
-	})
+	}); err != nil {
+		return fmt.Errorf("updating server score: %w", err)
+	}
 
 	ls := ntpdb.InsertLogScoreParams{
 		ServerID:   server.ID,

@@ -102,10 +102,13 @@ func (srv *Server) GetConfig(ctx context.Context, monIP string) (*ntpdb.MonitorC
 	if err != nil {
 		return nil, err
 	}
-	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
+	if err := srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
 		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
-	})
+	}); err != nil {
+		// Log warning but don't fail the request
+		log.WarnContext(ctx, "failed to update monitor seen", "err", err)
+	}
 	span.AddEvent("UpdateMonitorSeen")
 
 	if !monitor.IsLive() {
@@ -191,10 +194,13 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 		return nil, err
 	}
 
-	srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
+	if err := srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
 		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
-	})
+	}); err != nil {
+		// Log warning but don't fail the request
+		log.WarnContext(ctx, "failed to update monitor seen", "err", err)
+	}
 
 	if !monitor.IsLive() {
 		return nil, twirp.PermissionDenied.Error("monitor not active")
@@ -250,11 +256,6 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 
-	log = log.With("traceID", span.SpanContext().TraceID(),
-		"batchID", batchID.String(),
-		"cn", monitor.TlsName.String,
-	)
-
 	mcfg, err := srv.getMonitorConfig(ctx, monitor)
 	if err != nil {
 		return nil, err
@@ -264,7 +265,9 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	db := ntpdb.New(srv.dbconn).WithTx(tx)
 
@@ -337,10 +340,14 @@ func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) erro
 	ua = strings.TrimPrefix(ua, "ntppool-agent/")
 
 	if ua != mon.ClientVersion {
-		srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{
+		if err := srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{
 			ClientVersion: ua,
 			ID:            mon.ID,
-		})
+		}); err != nil {
+			// Log warning but don't fail the request
+			log := logger.FromContext(ctx)
+			log.WarnContext(ctx, "failed to update monitor version", "err", err)
+		}
 	}
 
 	return nil

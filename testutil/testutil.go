@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"testing"
@@ -46,7 +47,10 @@ func NewTestDB(t *testing.T) *TestDB {
 
 // Close closes the database connection
 func (tdb *TestDB) Close() {
-	tdb.DB.Close()
+	if err := tdb.DB.Close(); err != nil {
+		// Log error but don't fail test cleanup
+		log.Printf("Error closing test database: %v", err)
+	}
 }
 
 // Queries returns the ntpdb queries instance
@@ -152,7 +156,7 @@ func (tc *TimeController) Unfreeze() {
 // SetTime sets the current time
 func (tc *TimeController) SetTime(t time.Time) {
 	tc.current = t
-	tc.offset = t.Sub(time.Now())
+	tc.offset = -time.Until(t)
 	tc.frozen = true
 }
 

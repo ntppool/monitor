@@ -496,7 +496,11 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.WarnContext(ctx, "Failed to close response body", "err", err)
+		}
+	}()
 	traceID := resp.Header.Get("Traceid")
 	if resp.StatusCode == http.StatusUnauthorized {
 		log.WarnContext(ctx, "API authorization failed", "trace", traceID)

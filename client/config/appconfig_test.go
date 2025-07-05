@@ -368,7 +368,7 @@ func TestConcurrentAccess(t *testing.T) {
 					defer wg.Done()
 					switch id % 4 {
 					case 0:
-						env.cfg.SetAPIKey(fmt.Sprintf("deadlock-test-%d", id))
+						_ = env.cfg.SetAPIKey(fmt.Sprintf("deadlock-test-%d", id))
 					case 1:
 						_ = env.cfg.APIKey()
 					case 2:
@@ -461,7 +461,7 @@ func TestConfigChangeNotifications(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 
 		// Start manager
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Create waiter
@@ -652,7 +652,7 @@ func TestEnvironmentSpecificBehavior(t *testing.T) {
 		t.Run(fmt.Sprintf("environment_%s", env.String()), func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", fmt.Sprintf("env-test-%s-*", env.String()))
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			ctx := context.Background()
 			log := logger.Setup()

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -27,7 +28,9 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 		endpoint = ""
 	} else {
 		// Set the env var so autoexport log exporter uses our endpoint
-		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://"+endpoint+":4318")
+		if err := os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://"+endpoint+":4318"); err != nil {
+			return nil, fmt.Errorf("failed to set OTEL_EXPORTER_OTLP_ENDPOINT: %w", err)
+		}
 	}
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,

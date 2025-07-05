@@ -103,7 +103,7 @@ func TestFileWatcherSetup(t *testing.T) {
 		managerDone := make(chan struct{})
 		go func() {
 			defer close(managerDone)
-			env.cfg.Manager(ctx, promReg)
+			_ = env.cfg.Manager(ctx, promReg)
 		}()
 
 		// Give manager time to start
@@ -140,7 +140,7 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		defer cancel()
 
 		// Start manager
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond) // Let manager start
 
 		// Set up waiter before making change
@@ -170,7 +170,7 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Set up waiter
@@ -205,7 +205,7 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Test that timer resets properly
@@ -242,7 +242,7 @@ func TestFileOperationEvents(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -270,7 +270,7 @@ func TestFileOperationEvents(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -297,7 +297,7 @@ func TestFileOperationEvents(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -356,7 +356,7 @@ func TestWatcherErrorRecovery(t *testing.T) {
 			managerDone := make(chan struct{})
 			go func() {
 				defer close(managerDone)
-				env.cfg.Manager(ctx, promReg)
+				_ = env.cfg.Manager(ctx, promReg)
 			}()
 
 			time.Sleep(50 * time.Millisecond)
@@ -457,7 +457,7 @@ func TestReloadIntervals(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// This test verifies the manager can handle timer-based reloads
@@ -485,7 +485,7 @@ func TestReloadIntervals(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		start := time.Now()
@@ -516,7 +516,7 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Create multiple waiters
@@ -568,7 +568,7 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 
-		go env.cfg.Manager(ctx, promReg)
+		go func() { _ = env.cfg.Manager(ctx, promReg) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)

@@ -129,7 +129,9 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		if cli.Config.HaveCertificate() {
 			// if we don't have a certificate, don't try
 			// to flush the buffered tracing data
-			tracingShutdown(context.Background())
+			if err := tracingShutdown(context.Background()); err != nil {
+				log.WarnContext(ctx, "Failed to shutdown tracing", "err", err)
+			}
 		}
 	}()
 
@@ -179,6 +181,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			if !ipc.IsLive() {
 				ipLog.InfoContext(ctx, "protocol not active, waiting for activation")
 				// Wait for config change
+			outerLoop:
 				for {
 					configChangeWaiter := cli.Config.WaitForConfigChange(ctx)
 					select {
@@ -191,7 +194,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 						}
 						if ipc.IsLive() {
 							ipLog.InfoContext(ctx, "protocol is now active, starting monitor")
-							break
+							break outerLoop
 						}
 					case <-ctx.Done():
 						configChangeWaiter.Cancel() // Clean up on exit
@@ -270,7 +273,9 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 	}
 
 	if mq != nil {
-		mq.Disconnect(ctx)
+		if err := mq.Disconnect(ctx); err != nil {
+			log.WarnContext(ctx, "Failed to disconnect MQTT", "err", err)
+		}
 	}
 
 	if mq != nil {
@@ -506,7 +511,9 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	}
 
 	batchID := ulid.ULID{}
-	batchID.UnmarshalText(serverlist.BatchId)
+	if err := batchID.UnmarshalText(serverlist.BatchId); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal batch ID: %w", err)
+	}
 
 	log = log.With("batchID", batchID.String())
 
@@ -539,7 +546,9 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 				if err != nil {
 					log.Error("traceroute", "err", err)
 				}
-				tr.Start(ctx)
+				if err := tr.Start(ctx); err != nil {
+					log.Error("traceroute start failed", "err", err)
+				}
 				x, err := tr.ReadAll()
 				if err != nil {
 					log.Error("traceroute", "err", err)

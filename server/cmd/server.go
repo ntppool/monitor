@@ -129,7 +129,11 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
 	metricssrv := metricsserver.New()
-	go metricssrv.ListenAndServe(ctx, 9000)
+	go func() {
+		if err := metricssrv.ListenAndServe(ctx, 9000); err != nil {
+			log.Error("metrics server error", "err", err)
+		}
+	}()
 
 	mqcfg := mqconfig{
 		tlsName: tlsName,
@@ -176,7 +180,11 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	})
 
 	// todo: ctx + errgroup
-	go health.HealthCheckListener(ctx, 8080, log)
+	go func() {
+		if err := health.HealthCheckListener(ctx, 8080, log); err != nil {
+			log.Error("health check listener error", "err", err)
+		}
+	}()
 
 	g.Go(func() error {
 		srv, err := server.NewServer(ctx, scfg, dbconn, metricssrv.Registry())
@@ -196,7 +204,9 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		}
 	}
 
-	mq.Disconnect(ctx)
+	if err := mq.Disconnect(ctx); err != nil {
+		log.Error("mqtt disconnect error", "err", err)
+	}
 
 	return err
 }

@@ -76,7 +76,10 @@ func (ac *appConfig) stateFilePrefix(filename string) string {
 			"base_dir", ac.dir,
 			"env", ac.Env().String(),
 			"full_dir", dir)
-		os.MkdirAll(dir, 0o700)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			log.ErrorContext(ctx, "failed to create state directory", "dir", dir, "err", err)
+			// Continue anyway - this will likely fail later but we'll handle it then
+		}
 	}
 
 	return path.Join(dir, filename)
@@ -320,9 +323,9 @@ func replaceFile(path string, b []byte) error {
 		return err
 	}
 	defer func() {
-		f.Close()
+		_ = f.Close()
 		if err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 

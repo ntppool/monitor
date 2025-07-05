@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"time"
@@ -155,7 +156,9 @@ func (mqc *mqclient) sendResponse(ctx context.Context, log *slog.Logger, data []
 		log.Error("mq==nil")
 	}
 
-	mqc.mq.AwaitConnection(ctx)
+	if err := mqc.mq.AwaitConnection(ctx); err != nil {
+		return fmt.Errorf("failed to establish MQTT connection: %w", err)
+	}
 	log.Debug("connection for response established")
 
 	_, err := mqc.mq.Publish(ctx, rmsg)

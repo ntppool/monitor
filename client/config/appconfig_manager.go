@@ -38,7 +38,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 		err = watcher.Add(stateDir)
 		if err != nil {
 			log.WarnContext(ctx, "failed to watch state file directory, falling back to timer-only reloading", "dir", stateDir, "err", err)
-			watcher.Close()
+			_ = watcher.Close()
 			watcher = nil
 		} else {
 			log.DebugContext(ctx, "watching state file directory for changes", "dir", stateDir, "file", stateFileName)
@@ -49,7 +49,7 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 	go func() {
 		defer func() {
 			if watcher != nil {
-				watcher.Close()
+				_ = watcher.Close()
 			}
 		}()
 

@@ -241,7 +241,9 @@ func (srv *Server) Run() error {
 	g.Go(func() error {
 		<-ctx.Done()
 		log.Info("shutting down twirp server")
-		server.Shutdown(ctx)
+		if err := server.Shutdown(ctx); err != nil {
+			log.Error("server shutdown error", "err", err)
+		}
 		errs := []error{}
 		for _, fn := range srv.shutdownFns {
 			err := fn(ctx)

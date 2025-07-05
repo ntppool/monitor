@@ -48,7 +48,7 @@ func TestReplaceFileAtomic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", "replace-file-test-*")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			testFile := filepath.Join(tmpDir, "test.txt")
 
@@ -87,7 +87,7 @@ func TestReplaceFileAtomicConcurrentReaders(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "concurrent-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testFile := filepath.Join(tmpDir, "test.txt")
 
@@ -219,7 +219,7 @@ func TestStateFilePersistence(t *testing.T) {
 	t.Run("missing file creation", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "missing-file-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		ctx := context.Background()
 		log := logger.Setup()
@@ -262,7 +262,7 @@ func TestStateFilePersistence(t *testing.T) {
 
 		// Restore permissions for cleanup
 		defer func() {
-			os.Chmod(stateDir, 0o755)
+			_ = os.Chmod(stateDir, 0o755)
 		}()
 
 		// Attempt to save should fail
@@ -352,7 +352,7 @@ func TestConcurrentFileAccessWithRaceDetector(t *testing.T) {
 			for j := 0; j < operationsPerGoroutine; j++ {
 				switch j % 4 {
 				case 0:
-					env.cfg.SetAPIKey(fmt.Sprintf("key-%d-%d", id, j))
+					_ = env.cfg.SetAPIKey(fmt.Sprintf("key-%d-%d", id, j))
 				case 1:
 					_ = env.cfg.APIKey()
 				case 2:
@@ -372,7 +372,7 @@ func TestStateDirectoryManagement(t *testing.T) {
 	t.Run("automatic directory creation", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "dir-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		ctx := context.Background()
 		log := logger.Setup()
@@ -400,7 +400,7 @@ func TestStateDirectoryManagement(t *testing.T) {
 	t.Run("permission inheritance", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "perm-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		// Set specific permissions on parent directory
 		err = os.Chmod(tmpDir, 0o755)
@@ -426,7 +426,7 @@ func TestStateDirectoryManagement(t *testing.T) {
 	t.Run("verify environment-specific subdirectories", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "env-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		ctx := context.Background()
 		log := logger.Setup()
@@ -488,7 +488,7 @@ func TestReplaceFileErrorHandling(t *testing.T) {
 
 		tmpDir, err := os.MkdirTemp("", "perm-error-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		// Make directory non-writable
 		err = os.Chmod(tmpDir, 0o444)
@@ -496,7 +496,7 @@ func TestReplaceFileErrorHandling(t *testing.T) {
 
 		// Restore permissions for cleanup
 		defer func() {
-			os.Chmod(tmpDir, 0o755)
+			_ = os.Chmod(tmpDir, 0o755)
 		}()
 
 		testFile := filepath.Join(tmpDir, "test.txt")
@@ -586,7 +586,7 @@ func TestMigrationFromRuntimeDirectory(t *testing.T) {
 		// Create temporary directories for runtime and state
 		tmpDir, err := os.MkdirTemp("", "migration-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		runtimeDir := filepath.Join(tmpDir, "runtime")
 		stateDir := filepath.Join(tmpDir, "state")
@@ -655,7 +655,7 @@ func TestMigrationFromRuntimeDirectory(t *testing.T) {
 	t.Run("no runtime directory set", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "migration-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		ctx := context.Background()
 		log := logger.Setup()
@@ -675,7 +675,7 @@ func TestMigrationFromRuntimeDirectory(t *testing.T) {
 	t.Run("no old state file to migrate", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "migration-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		runtimeDir := filepath.Join(tmpDir, "runtime")
 		stateDir := filepath.Join(tmpDir, "state")
@@ -703,7 +703,7 @@ func TestMigrationFromRuntimeDirectory(t *testing.T) {
 	t.Run("migration with partial certificate files", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "migration-test-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		runtimeDir := filepath.Join(tmpDir, "runtime")
 		stateDir := filepath.Join(tmpDir, "state")

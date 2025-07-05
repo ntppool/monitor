@@ -42,7 +42,7 @@ func setupTestConfig(t *testing.T) (*testEnv, func()) {
 			cfg:    cfg,
 			tmpDir: tmpDir,
 		}, func() {
-			os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(tmpDir)
 		}
 }
 
@@ -303,7 +303,7 @@ func temporarilyBreakFile(t *testing.T, path string, duration time.Duration) {
 	// Restore permissions after duration
 	go func() {
 		time.Sleep(duration)
-		os.Chmod(path, originalMode)
+		_ = os.Chmod(path, originalMode)
 	}()
 }
 

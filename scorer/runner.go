@@ -206,7 +206,9 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	count := 0
 
@@ -230,11 +232,13 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		}
 		if ss.Status != "active" {
 			// if we are calculating a score, it's active ...
-			db.UpdateServerScoreStatus(r.ctx, ntpdb.UpdateServerScoreStatusParams{
+			if err := db.UpdateServerScoreStatus(r.ctx, ntpdb.UpdateServerScoreStatusParams{
 				ServerID:  ls.ServerID,
 				MonitorID: sm.ScorerID,
 				Status:    "active",
-			})
+			}); err != nil {
+				return 0, fmt.Errorf("updating server score status: %w", err)
+			}
 		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {

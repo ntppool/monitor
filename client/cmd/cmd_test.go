@@ -18,14 +18,14 @@ func TestStateDirPriority(t *testing.T) {
 	originalMonitorStateDir := os.Getenv("MONITOR_STATE_DIR")
 	originalStateDirectory := os.Getenv("STATE_DIRECTORY")
 	defer func() {
-		os.Setenv("MONITOR_STATE_DIR", originalMonitorStateDir)
-		os.Setenv("STATE_DIRECTORY", originalStateDirectory)
+		_ = os.Setenv("MONITOR_STATE_DIR", originalMonitorStateDir)
+		_ = os.Setenv("STATE_DIRECTORY", originalStateDirectory)
 	}()
 
 	t.Run("explicit MONITOR_STATE_DIR takes priority", func(t *testing.T) {
 		// Clear both environment variables first
-		os.Unsetenv("MONITOR_STATE_DIR")
-		os.Unsetenv("STATE_DIRECTORY")
+		_ = os.Unsetenv("MONITOR_STATE_DIR")
+		_ = os.Unsetenv("STATE_DIRECTORY")
 
 		// Set both environment variables
 		t.Setenv("MONITOR_STATE_DIR", "/custom/monitor/state")
@@ -41,8 +41,8 @@ func TestStateDirPriority(t *testing.T) {
 
 	t.Run("STATE_DIRECTORY used when MONITOR_STATE_DIR not set", func(t *testing.T) {
 		// Clear both environment variables first
-		os.Unsetenv("MONITOR_STATE_DIR")
-		os.Unsetenv("STATE_DIRECTORY")
+		_ = os.Unsetenv("MONITOR_STATE_DIR")
+		_ = os.Unsetenv("STATE_DIRECTORY")
 
 		// Set only STATE_DIRECTORY
 		t.Setenv("STATE_DIRECTORY", "/systemd/state")
@@ -57,8 +57,8 @@ func TestStateDirPriority(t *testing.T) {
 
 	t.Run("fallback to user config dir when neither env var set", func(t *testing.T) {
 		// Clear both environment variables
-		os.Unsetenv("MONITOR_STATE_DIR")
-		os.Unsetenv("STATE_DIRECTORY")
+		_ = os.Unsetenv("MONITOR_STATE_DIR")
+		_ = os.Unsetenv("STATE_DIRECTORY")
 
 		cmd := &ClientCmd{}
 		err := cmd.BeforeApply()
@@ -109,7 +109,7 @@ func TestLoadFromDiskWithMigration(t *testing.T) {
 
 		tmpDir, err := os.MkdirTemp("", "migration-integration-*")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		runtimeDir := filepath.Join(tmpDir, "runtime")
 		stateDir := filepath.Join(tmpDir, "state")

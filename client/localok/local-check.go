@@ -250,7 +250,12 @@ func (l *LocalOK) update(ctx context.Context) bool {
 		return nil
 	})
 
-	g.Wait()
+	if err := g.Wait(); err != nil {
+		log.ErrorContext(ctx, "local check goroutines failed", "err", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "goroutines failed")
+		return false
+	}
 
 	failureThreshold := len(hosts) - ((len(hosts) + 2) / 2)
 	log.InfoContext(ctx, "local-check", "failures", fails, "threshold", failureThreshold, "hosts", len(hosts))

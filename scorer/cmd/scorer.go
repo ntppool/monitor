@@ -88,7 +88,7 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	db := ntpdb.New(dbconn).WithTx(tx)
 
@@ -134,10 +134,12 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		db.InsertScorerStatus(ctx, ntpdb.InsertScorerStatusParams{
+		if err := db.InsertScorerStatus(ctx, ntpdb.InsertScorerStatusParams{
 			ScorerID:   uint32(scorerID),
 			LogScoreID: minLogScoreID,
-		})
+		}); err != nil {
+			log.WarnContext(ctx, "Failed to insert scorer status", "err", err)
+		}
 
 	}
 

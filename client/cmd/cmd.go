@@ -49,7 +49,12 @@ func (c *ClientCmd) BeforeReset() error {
 		if err != nil {
 			return fmt.Errorf("could not open defaults file: %s", err)
 		}
-		defer file.Close()
+		defer func() {
+			if err := file.Close(); err != nil {
+				log := logger.Setup()
+				log.Warn("Failed to close defaults file", "err", err)
+			}
+		}()
 
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
@@ -67,7 +72,9 @@ func (c *ClientCmd) BeforeReset() error {
 			if _, exists := os.LookupEnv(key); !exists {
 				log := logger.Setup()
 				log.Debug("Setting environment variable", "name", key, "value", value)
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					log.Warn("Failed to set environment variable", "name", key, "err", err)
+				}
 			}
 		}
 
@@ -110,7 +117,9 @@ func (c *ClientCmd) BeforeApply() error {
 
 func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
 	if c.Debug {
-		os.Setenv("MONITOR_DEBUG", "true")
+		if err := os.Setenv("MONITOR_DEBUG", "true"); err != nil {
+			return fmt.Errorf("failed to set MONITOR_DEBUG environment variable: %w", err)
+		}
 	}
 	if c.DeployEnv == depenv.DeployUndefined {
 		return fmt.Errorf("deployment environment invalid or undefined")

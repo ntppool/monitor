@@ -223,10 +223,10 @@ func (rs *registrationState) registrationStep(ctx context.Context) (done bool, e
 	}
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return false, err
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	serverTraceID := resp.Header.Get("TraceID")
 	log = log.With("trace_id", serverTraceID)

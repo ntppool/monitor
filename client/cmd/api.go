@@ -206,7 +206,11 @@ func testGRPCAPI(ctx context.Context, cli *ClientCmd, log *slog.Logger) error {
 		if err != nil {
 			log.WarnContext(ctx, "  MQTT setup failed", "err", err)
 		} else {
-			defer mq.Disconnect(ctx)
+			defer func() {
+				if err := mq.Disconnect(ctx); err != nil {
+					log.WarnContext(ctx, "Failed to disconnect MQTT", "err", err)
+				}
+			}()
 
 			mqctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
