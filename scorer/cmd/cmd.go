@@ -23,9 +23,13 @@ type ScorerCmd struct {
 }
 
 type (
-	scorerOnceCmd   struct{}
-	scorerServerCmd struct{}
-	scorerSetupCmd  struct{}
+	scorerOnceCmd struct {
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+	}
+	scorerServerCmd struct {
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+	}
+	scorerSetupCmd struct{}
 )
 
 type versionCmd struct{}

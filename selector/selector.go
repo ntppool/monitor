@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -22,20 +22,24 @@ type Cmd struct {
 }
 
 type (
-	ServerCmd struct{}
-	OnceCmd   struct{}
+	ServerCmd struct {
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+	}
+	OnceCmd struct {
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+	}
 )
 
 func (cmd ServerCmd) Run(ctx context.Context) error {
-	return Run(ctx, true)
+	return Run(ctx, true, cmd.MetricsPort)
 }
 
 func (cmd OnceCmd) Run(ctx context.Context) error {
-	return Run(ctx, false)
+	return Run(ctx, false, cmd.MetricsPort)
 }
 
 // Run executes the selector logic either continuously or once
-func Run(ctx context.Context, continuous bool) error {
+func Run(ctx context.Context, continuous bool, metricsPort int) error {
 	log := logger.FromContext(ctx)
 
 	log.InfoContext(ctx, "selector starting", "version", version.Version())
@@ -45,9 +49,16 @@ func Run(ctx context.Context, continuous bool) error {
 		return err
 	}
 
-	// Create metrics - for now we'll create a no-op metrics instance
-	// This will be properly wired when integrated with the scorer command
-	metrics := NewMetrics(prometheus.NewRegistry())
+	// Create and start metrics server
+	metricssrv := metricsserver.New()
+	go func() {
+		if err := metricssrv.ListenAndServe(ctx, metricsPort); err != nil {
+			log.Error("metrics server error", "err", err)
+		}
+	}()
+
+	// Create metrics with the shared registry
+	metrics := NewMetrics(metricssrv.Registry())
 
 	sl, err := NewSelector(ctx, dbconn, log, metrics)
 	if err != nil {

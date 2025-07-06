@@ -17,22 +17,22 @@ import (
 )
 
 func (cmd *scorerOnceCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, false)
+	return scorerRun(ctx, false, cmd.MetricsPort)
 }
 
 func (cmd *scorerServerCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, true)
+	return scorerRun(ctx, true, cmd.MetricsPort)
 }
 
-func scorerRun(ctx context.Context, continuous bool) error {
+func scorerRun(ctx context.Context, continuous bool, metricsPort int) error {
 	log := logger.FromContext(ctx)
 	log.InfoContext(ctx, "starting monitor-scorer", "version", version.Version(), "continuous", continuous)
 
 	metricssrv := metricsserver.New()
 	go func() {
-		err := metricssrv.ListenAndServe(ctx, 9000)
+		err := metricssrv.ListenAndServe(ctx, metricsPort)
 		if err != nil {
-			log.Error("metricssrv", "err", err)
+			log.Error("metrics server error", "err", err)
 		}
 	}()
 

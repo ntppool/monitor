@@ -26,7 +26,8 @@ import (
 )
 
 type serverCmd struct {
-	Listen string `default:":8000" help:"Listen address" flag:"listen"`
+	Listen      string `default:":8000" help:"Listen address" flag:"listen"`
+	MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 
 	TLS struct {
 		Key  string `default:"/etc/tls/tls.key" help:"TLS key file"`
@@ -130,7 +131,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 
 	metricssrv := metricsserver.New()
 	go func() {
-		if err := metricssrv.ListenAndServe(ctx, 9000); err != nil {
+		if err := metricssrv.ListenAndServe(ctx, cfg.MetricsPort); err != nil {
 			log.Error("metrics server error", "err", err)
 		}
 	}()
