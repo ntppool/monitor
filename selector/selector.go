@@ -51,6 +51,7 @@ func Run(ctx context.Context, continuous bool, metricsPort int) error {
 
 	// Create and start metrics server
 	metricssrv := metricsserver.New()
+	version.RegisterMetric("selector", metricssrv.Registry())
 	go func() {
 		if err := metricssrv.ListenAndServe(ctx, metricsPort); err != nil {
 			log.Error("metrics server error", "err", err)

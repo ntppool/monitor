@@ -29,6 +29,7 @@ func scorerRun(ctx context.Context, continuous bool, metricsPort int) error {
 	log.InfoContext(ctx, "starting monitor-scorer", "version", version.Version(), "continuous", continuous)
 
 	metricssrv := metricsserver.New()
+	version.RegisterMetric("scorer", metricssrv.Registry())
 	go func() {
 		err := metricssrv.ListenAndServe(ctx, metricsPort)
 		if err != nil {
