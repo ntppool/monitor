@@ -62,10 +62,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		ProcessDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    "selector_process_duration_seconds",
-				Help:    "Time spent processing each server in seconds",
+				Help:    "Time spent processing servers in seconds",
 				Buckets: prometheus.DefBuckets,
 			},
-			[]string{"server_id"},
+			[]string{},
 		),
 
 		MonitorsEvaluated: prometheus.NewCounterVec(
@@ -236,7 +236,7 @@ func (m *Metrics) RecordProcessingMetrics(
 ) {
 	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
 
-	m.ProcessDuration.WithLabelValues(serverIDStr).Observe(duration)
+	m.ProcessDuration.WithLabelValues().Observe(duration)
 	m.MonitorsEvaluated.WithLabelValues(serverIDStr).Add(float64(evaluatedCount))
 	m.ChangesApplied.WithLabelValues(serverIDStr).Add(float64(appliedChanges))
 	m.ChangesFailed.WithLabelValues(serverIDStr).Add(float64(failedChanges))
