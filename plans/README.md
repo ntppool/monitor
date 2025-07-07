@@ -7,6 +7,7 @@ This directory contains the comprehensive planning documentation for the NTP Poo
 ## Quick Status Summary
 
 ### ✅ Recently Completed
+- **Performance-Based Replacement in Rule 5** - Candidates can now replace worse-performing testing monitors
 - **Emergency Override Consistency** - Fixed candidate→testing promotion gap (commit: b6515b8)
 - **Helper Function Extraction** - 47% code reduction in promotion logic (commit: 6c4ae72)
 - **Safety Logic Improvements** - Fixed blocking constraint demotions (commit: e04e47a)

@@ -166,7 +166,7 @@ The selector applies rules in a specific order to maintain system stability:
 2. **Rule 2 (Gradual Constraint Removal)**: Gradual removal of candidateOut monitors
 3. **Rule 1.5 (Active Excess Demotion)**: Demote excess healthy active monitors
 4. **Rule 3 (Testing to Active Promotion)**: Promote from testing to active
-5. **Rule 5 (Candidate to Testing Promotion)**: Promote candidates to testing
+5. **Rule 5 (Candidate to Testing Promotion)**: Promote candidates to testing and replace worse-performing testing monitors
 6. **Rule 2.5 (Testing Pool Management)**: Demote excess testing monitors
 7. **Rule 6 (Bootstrap Promotion)**: Bootstrap case promotions
 

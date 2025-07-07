@@ -129,16 +129,37 @@ if len(testingMonitors) > dynamicTestingTarget {
 }
 ```
 
-#### Rule 5: Candidate Promotion with Capacity Limit
-Promotes candidates to testing with capacity awareness:
+#### Rule 5: Candidate Promotion with Performance-Based Replacement
+Promotes candidates to testing using two complementary approaches:
 
-**Capacity Check**:
+**Phase 1: Capacity-Based Promotion** (existing logic):
 ```go
 testingCapacity := max(0, dynamicTestingTarget - workingTestingCount)
 promotionsNeeded := min(min(changesRemaining, 2), testingCapacity)
 ```
 
-This prevents over-promotion that would require immediate cleanup.
+**Phase 2: Performance-Based Replacement** (new logic):
+When testing pool is at capacity, compares candidate performance with existing testing monitors and replaces worse performers:
+
+```go
+// Only attempt replacement if we have budget remaining
+remainingBudget := promotionLimit - capacityPromotions
+if remainingBudget > 0 && len(candidates) > 0 && len(testingMonitors) > 0 {
+    // Find better-performing candidates that can replace worse testing monitors
+    // Respects all constraints and account limits
+    replacementChanges := attemptTestingReplacements(...)
+}
+```
+
+**Performance Comparison Logic**:
+- Health status takes priority (healthy always beats unhealthy)
+- Among monitors with equal health, RTT determines performance (lower is better)
+- Only replaces when candidate significantly outperforms testing monitor
+
+**Constraint Compliance**:
+- Tests replacement scenarios with temporary account limits
+- Validates both demotion and promotion against all constraints
+- Maintains testing pool size (1 out, 1 in)
 
 ### Change Limits System
 
@@ -227,7 +248,7 @@ The rules execute in a specific order to maximize efficiency:
 2. **Rule 2** (Gradual Constraint Removal): Gradual removal of candidateOut monitors
 3. **Rule 1.5** (Active Excess Demotion): Demote excess healthy active monitors
 4. **Rule 3** (Testing to Active Promotion): Promote from testing to active
-5. **Rule 5** (Candidate to Testing Promotion): Promote candidates to testing
+5. **Rule 5** (Candidate to Testing Promotion): Promote candidates to testing and replace worse-performing testing monitors
 6. **Rule 2.5** (Testing Pool Management): Demote excess testing monitors
 7. **Rule 6** (Bootstrap Promotion): Bootstrap case promotions
 

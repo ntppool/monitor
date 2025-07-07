@@ -147,3 +147,36 @@ func createCandidateGroups(candidateMonitors []evaluatedMonitor) []candidateGrou
 		{filterMonitorsByGlobalStatus(candidateMonitors, ntpdb.MonitorsStatusTesting), "testing"},
 	}
 }
+
+// candidateOutperformsTestingMonitor compares performance between a candidate and testing monitor
+// Returns true if the candidate is better performing than the testing monitor
+func (sl *Selector) candidateOutperformsTestingMonitor(candidate, testingMonitor evaluatedMonitor) bool {
+	// First compare by health - healthy monitors are always better than unhealthy
+	if candidate.monitor.IsHealthy && !testingMonitor.monitor.IsHealthy {
+		return true
+	}
+	if !candidate.monitor.IsHealthy && testingMonitor.monitor.IsHealthy {
+		return false
+	}
+
+	// If health is equal, compare by RTT (lower is better)
+	// Note: This is a simplified comparison. The full priority calculation
+	// happens in the database and monitors are pre-sorted by performance.
+	// Since we don't have access to the calculated priority here, we use RTT
+	// as the primary performance indicator.
+	return candidate.monitor.RTT < testingMonitor.monitor.RTT
+}
+
+// copyAccountLimits creates a deep copy of account limits map for testing scenarios
+func (sl *Selector) copyAccountLimits(original map[uint32]*accountLimit) map[uint32]*accountLimit {
+	copy := make(map[uint32]*accountLimit)
+	for k, v := range original {
+		copy[k] = &accountLimit{
+			AccountID:    v.AccountID,
+			MaxPerServer: v.MaxPerServer,
+			ActiveCount:  v.ActiveCount,
+			TestingCount: v.TestingCount,
+		}
+	}
+	return copy
+}
