@@ -31,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/common/version"
@@ -52,6 +53,8 @@ type server struct {
 	promGauge *prometheus.GaugeVec
 
 	rr *mqttResponseRouter
+
+	depEnv depenv.DeploymentEnvironment
 }
 
 type client struct {
@@ -79,7 +82,7 @@ func Setup(log *slog.Logger, dbconn *sql.DB, promRegistry prometheus.Registerer)
 	monitorsConnected := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "monitors_connected",
 		Help: "monitors connected via mqtt",
-	}, []string{"client", "version", "ip_version", "account", "account_id"})
+	}, []string{"client", "version", "ip_version", "account", "account_id", "depenv"})
 	err := promRegistry.Register(monitorsConnected)
 	if err != nil {
 		return nil, err
@@ -123,6 +126,7 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 	// router.SetDebugLogger(log.Default())
 
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
+	mqs.depEnv = depEnv
 
 	topics := mqttcm.NewTopics(depEnv)
 
@@ -213,6 +217,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 					m.IpVersion.MonitorsIpVersion.String(),
 					"", // account id_token not available in MQTT context
 					accountID,
+					mqs.depEnv.String(),
 				).Add(1.0)
 			}
 		}
