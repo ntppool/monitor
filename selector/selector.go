@@ -180,7 +180,6 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 	}
 
 	// No longer loading available monitors - only work with assigned monitors
-	availableMonitors := []monitorCandidate{}
 
 	// Step 3: Build account limits from assigned monitors (still needed for promotion logic)
 	accountLimits := sl.buildAccountLimitsFromMonitors(assignedMonitors)
@@ -190,7 +189,7 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 	accountLimitViolations := sl.checkAccountConstraintsIterative(assignedMonitors, server)
 
 	// Step 5: Evaluate all monitors against constraints
-	evaluatedMonitors := make([]evaluatedMonitor, 0, len(assignedMonitors)+len(availableMonitors))
+	evaluatedMonitors := make([]evaluatedMonitor, 0, len(assignedMonitors))
 
 	// Process assigned monitors
 	for _, row := range assignedMonitors {
@@ -309,7 +308,6 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 			activeCount,
 			testingCount,
 			candidateCount,
-			len(availableMonitors),
 		)
 	}
 
@@ -317,7 +315,6 @@ func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, server
 	sl.log.Info("server processing complete",
 		"serverID", serverID,
 		"assignedMonitors", len(assignedMonitors),
-		"availableMonitors", len(availableMonitors),
 		"evaluatedMonitors", len(evaluatedMonitors),
 		"plannedChanges", len(changes),
 		"appliedChanges", changeCount,

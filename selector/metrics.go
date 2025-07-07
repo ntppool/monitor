@@ -203,14 +203,13 @@ func (m *Metrics) TrackConstraintViolation(
 // TrackMonitorPoolSizes updates monitor pool size metrics
 func (m *Metrics) TrackMonitorPoolSizes(
 	serverID uint32,
-	activeCount, testingCount, candidateCount, availableCount int,
+	activeCount, testingCount, candidateCount int,
 ) {
 	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
 
 	m.MonitorPoolSize.WithLabelValues("active", serverIDStr).Set(float64(activeCount))
 	m.MonitorPoolSize.WithLabelValues("testing", serverIDStr).Set(float64(testingCount))
 	m.MonitorPoolSize.WithLabelValues("candidate", serverIDStr).Set(float64(candidateCount))
-	m.MonitorPoolSize.WithLabelValues("available", serverIDStr).Set(float64(availableCount))
 }
 
 // TrackConstraintBlockedCount updates constraint blocked monitor counts
