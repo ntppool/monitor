@@ -10,7 +10,7 @@ there.
 ## Installation
 
 The monitor is supported on Linux and FreeBSD. Yum and deb package
-repositories are available for i386, arm64 and amd64. For repository
+repositories are available for i386, arm64, amd64 and riscv64. For repository
 instructions see https://builds.ntppool.dev/repo/
 
 ## Setup

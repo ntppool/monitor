@@ -11,6 +11,11 @@ builds:
       - linux
       - freebsd
       - darwin
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - riscv64
     ldflags:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
