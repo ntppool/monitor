@@ -17,6 +17,8 @@ sql:
             go_type: "github.com/lomsa-dev/gonull.Nullable[uint64]"
             unsigned: true
             nullable: true
+          - column: "accounts.flags"
+            go_type: "*encoding/json.RawMessage"
           # - column: "x.avg_rtt"
           #   go_type: "database/sql.NullFloat64"
     database:

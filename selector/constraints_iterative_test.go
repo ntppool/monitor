@@ -13,10 +13,11 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 	server := &serverInfo{ID: 1982, AccountID: nil}
 
 	// Helper to create account flags JSON
-	createAccountFlags := func(limit int) json.RawMessage {
+	createAccountFlags := func(limit int) *json.RawMessage {
 		flags := accountFlags{MonitorsPerServerLimit: limit, MonitorEnabled: true}
 		data, _ := json.Marshal(flags)
-		return data
+		rawMessage := json.RawMessage(data)
+		return &rawMessage
 	}
 
 	// Helper to create monitor row
@@ -151,10 +152,11 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 	server := &serverInfo{ID: 1982, AccountID: nil}
 
 	// Helper to create account flags JSON
-	createAccountFlags := func(limit int) json.RawMessage {
+	createAccountFlags := func(limit int) *json.RawMessage {
 		flags := accountFlags{MonitorsPerServerLimit: limit, MonitorEnabled: true}
 		data, _ := json.Marshal(flags)
-		return data
+		rawMessage := json.RawMessage(data)
+		return &rawMessage
 	}
 
 	t.Run("empty_monitors_list", func(t *testing.T) {

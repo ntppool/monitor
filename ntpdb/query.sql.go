@@ -96,7 +96,7 @@ type GetMonitorPriorityRow struct {
 	MonitorStatus            MonitorsStatus         `json:"monitor_status"`
 	Status                   NullServerScoresStatus `json:"status"`
 	Count                    int64                  `json:"count"`
-	AccountFlags             json.RawMessage        `json:"account_flags"`
+	AccountFlags             *json.RawMessage       `json:"account_flags"`
 	ConstraintViolationType  sql.NullString         `json:"constraint_violation_type"`
 	ConstraintViolationSince sql.NullTime           `json:"constraint_violation_since"`
 }

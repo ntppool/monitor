@@ -349,8 +349,8 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 		if _, exists := limits[accountID]; !exists {
 			// Parse account flags to get limit
 			var flags accountFlags
-			if len(monitor.AccountFlags) > 0 {
-				if err := json.Unmarshal(monitor.AccountFlags, &flags); err != nil {
+			if monitor.AccountFlags != nil {
+				if err := json.Unmarshal(*monitor.AccountFlags, &flags); err != nil {
 					sl.log.Warn("failed to parse account flags", "accountID", accountID, "error", err)
 					flags.MonitorsPerServerLimit = defaultAccountLimitPerServer
 				}
@@ -435,9 +435,9 @@ func (sl *Selector) checkAccountConstraintsIterative(
 		for _, statusList := range statusGroups {
 			if len(statusList) > 0 {
 				monitor := statusList[0].row
-				if monitor.AccountID.Valid && uint32(monitor.AccountID.Int32) == accountID && len(monitor.AccountFlags) > 0 {
+				if monitor.AccountID.Valid && uint32(monitor.AccountID.Int32) == accountID && monitor.AccountFlags != nil {
 					var flags accountFlags
-					if err := json.Unmarshal(monitor.AccountFlags, &flags); err == nil && flags.MonitorsPerServerLimit > 0 {
+					if err := json.Unmarshal(*monitor.AccountFlags, &flags); err == nil && flags.MonitorsPerServerLimit > 0 {
 						accountLimit = flags.MonitorsPerServerLimit
 					}
 				}
