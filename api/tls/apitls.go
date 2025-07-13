@@ -14,13 +14,14 @@ import (
 var caBytes []byte
 
 var (
-	ErrNoCertificateProvider = errors.New("no certificate provider configured")
-	ErrNoCertificate         = errors.New("no certificate")
+	ErrNoAuthProvider = errors.New("no auth provider configured")
+	ErrNoCertificate  = errors.New("no certificate")
 )
 
-type CertificateProvider interface {
+type AuthProvider interface {
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 	GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error)
+	GetAPIKey() string
 }
 
 func CAPool() (*x509.CertPool, error) {

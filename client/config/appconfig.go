@@ -45,7 +45,8 @@ type AppConfig interface {
 
 	Env() depenv.DeploymentEnvironment
 
-	APIKey() string // NTP Pool API key
+	APIKey() string    // NTP Pool API key
+	GetAPIKey() string // Alias for APIKey for AuthProvider interface
 	SetAPIKey(apiKey string) error
 
 	// does this API make sense?

@@ -63,3 +63,7 @@ func (ac *appConfig) setCertificate(_ context.Context, cert *tls.Certificate) er
 
 	return nil
 }
+
+func (ac *appConfig) GetAPIKey() string {
+	return ac.APIKey()
+}

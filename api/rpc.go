@@ -18,7 +18,7 @@ import (
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 )
 
-func httpClient(cm apitls.CertificateProvider) (*http.Client, error) {
+func httpClient(cm apitls.AuthProvider) (*http.Client, error) {
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func getServerName(clientName string) (string, error) {
 	return depEnv.MonitorAPIHost(), nil
 }
 
-func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
+func NewHeaderInterceptor(ap apitls.AuthProvider) connect.UnaryInterceptorFunc {
 	interceptor := func(next connect.UnaryFunc) connect.UnaryFunc {
 		return connect.UnaryFunc(func(
 			ctx context.Context,
@@ -86,6 +86,9 @@ func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
 		) (connect.AnyResponse, error) {
 			if req.Spec().IsClient {
 				req.Header().Set("User-Agent", "ntppool-agent/"+version.Version())
+				if apiKey := ap.GetAPIKey(); apiKey != "" {
+					req.Header().Set("Authorization", "Bearer "+apiKey)
+				}
 			}
 			return next(ctx, req)
 		})
@@ -93,7 +96,7 @@ func NewHeaderInterceptor() connect.UnaryInterceptorFunc {
 	return connect.UnaryInterceptorFunc(interceptor)
 }
 
-func Client(ctx context.Context, clientName string, cp apitls.CertificateProvider) (context.Context, apiv2connect.MonitorServiceClient, error) {
+func Client(ctx context.Context, clientName string, cp apitls.AuthProvider) (context.Context, apiv2connect.MonitorServiceClient, error) {
 	log := logger.FromContext(ctx)
 
 	log.DebugContext(ctx, "setting up api client", "name", clientName)
@@ -117,7 +120,7 @@ func Client(ctx context.Context, clientName string, cp apitls.CertificateProvide
 		httpClient,
 		serverName,
 		connect.WithInterceptors(otelinter),
-		connect.WithInterceptors(NewHeaderInterceptor()),
+		connect.WithInterceptors(NewHeaderInterceptor(cp)),
 	)
 
 	return ctx, client, nil

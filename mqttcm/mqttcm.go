@@ -20,7 +20,7 @@ import (
 	"go.ntppool.org/monitor/client/config/checkconfig"
 )
 
-func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf checkconfig.MQConfigger, cp apitls.CertificateProvider) (*autopaho.ConnectionManager, error) {
+func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf checkconfig.MQConfigger, cp apitls.AuthProvider) (*autopaho.ConnectionManager, error) {
 	log := logger.Setup()
 
 	cfg := conf.GetMQTTConfig()
@@ -31,7 +31,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	}
 
 	if cp == nil {
-		return nil, apitls.ErrNoCertificateProvider
+		return nil, apitls.ErrNoAuthProvider
 	}
 
 	tlsConfig := &tls.Config{

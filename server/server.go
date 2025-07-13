@@ -46,7 +46,7 @@ type Config struct {
 	DeploymentEnv string
 	Listen        string
 	JWTKey        string
-	CertProvider  apitls.CertificateProvider
+	CertProvider  apitls.AuthProvider
 }
 
 func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {

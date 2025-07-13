@@ -12,14 +12,14 @@ import (
 	apitls "go.ntppool.org/monitor/api/tls"
 )
 
-func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth apitls.CertificateProvider) (tracing.TpShutdownFunc, error) {
+func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth apitls.AuthProvider) (tracing.TpShutdownFunc, error) {
 	capool, err := apitls.CAPool()
 	if err != nil {
 		return nil, err
 	}
 
 	if tlsAuth == nil {
-		return nil, apitls.ErrNoCertificateProvider
+		return nil, apitls.ErrNoAuthProvider
 	}
 
 	endpoint := "api-buzz.mon.ntppool.dev"

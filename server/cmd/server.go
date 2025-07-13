@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/abh/certman"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
@@ -24,6 +25,20 @@ import (
 	"go.ntppool.org/monitor/server/mqserver"
 	"golang.org/x/sync/errgroup"
 )
+
+// serverAuthProvider wraps certman.CertMan to implement AuthProvider interface
+// The server doesn't use API keys, so GetAPIKey returns empty string
+type serverAuthProvider struct {
+	*certman.CertMan
+}
+
+func (s *serverAuthProvider) GetAPIKey() string {
+	return ""
+}
+
+func wrapCertMan(cm *certman.CertMan) apitls.AuthProvider {
+	return &serverAuthProvider{CertMan: cm}
+}
 
 type serverCmd struct {
 	Listen      string `default:":8000" help:"Listen address" flag:"listen"`
@@ -86,7 +101,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 
 	scfg := server.Config{
 		Listen:        cfg.Listen,
-		CertProvider:  cm,
+		CertProvider:  wrapCertMan(cm),
 		JWTKey:        cfg.JWTKey,
 		DeploymentEnv: deploymentMode,
 	}
@@ -157,7 +172,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		ctx, tlsName,
 		"",                           // status channel
 		[]string{topicPrefix + "/#"}, // subscriptions
-		router, &mqcfg, cm,
+		router, &mqcfg, wrapCertMan(cm),
 	)
 	if err != nil {
 		// todo: autopaho should handle reconnecting, so temporary errors
