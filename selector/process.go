@@ -61,7 +61,7 @@ type ruleResult struct {
 // loadServerInfo loads server details including IP and account
 func (sl *Selector) loadServerInfo(
 	ctx context.Context,
-	db *ntpdb.Queries,
+	db ntpdb.QuerierTx,
 	serverID uint32,
 ) (*serverInfo, error) {
 	server, err := db.GetServer(ctx, serverID)
@@ -822,7 +822,7 @@ func calculateChangeLimits(currentActiveMonitors, blockedMonitors int) changeLim
 // applyStatusChange executes a single status change
 func (sl *Selector) applyStatusChange(
 	ctx context.Context,
-	db *ntpdb.Queries,
+	db ntpdb.QuerierTx,
 	serverID uint32,
 	change statusChange,
 	monitor *monitorCandidate,

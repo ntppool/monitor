@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
+	"go.ntppool.org/common/database"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
@@ -261,70 +262,63 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 		return nil, err
 	}
 
-	tx, err := srv.dbconn.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	db := ntpdb.New(srv.dbconn).WithTx(tx)
-
-	servers, err := db.GetServers(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	span.AddEvent("GetServers DB select", otrace.WithAttributes(attribute.Int("serverCount", len(servers))))
-
-	bidb, err := batchID.MarshalText()
-	if err != nil {
-		return nil, err
-	}
-
-	list := &ServerListResponse{
-		BatchID: bidb,
-		Config:  mcfg,
-		Servers: servers,
-		monitor: monitor,
-	}
-
-	if count := len(servers); count > 0 {
-		accountIDToken := ""
-		accountID := "0"
-		if acc != nil {
-			accountIDToken = acc.IDToken.String
-			accountID = strconv.Itoa(int(acc.ID))
-		}
-		srv.m.TestsRequested.WithLabelValues(
-			monitor.TlsName.String,
-			monitor.IpVersion.MonitorsIpVersion.String(),
-			accountIDToken,
-			accountID,
-		).Add(float64(count))
-
-		now := sql.NullTime{Time: time.Now(), Valid: true}
-
-		ids := make([]uint32, len(servers))
-		for i, s := range servers {
-			ids[i] = s.ID
-		}
-
-		err = db.UpdateServerScoreQueue(ctx,
-			ntpdb.UpdateServerScoreQueueParams{
-				MonitorID: monitor.ID,
-				QueueTs:   now,
-				ServerIds: ids,
-			},
-		)
+	var list *ServerListResponse
+	err = database.WithTransaction(ctx, srv.db, func(ctx context.Context, db ntpdb.QuerierTx) error {
+		servers, err := db.GetServers(ctx, p)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-	}
+		span.AddEvent("GetServers DB select", otrace.WithAttributes(attribute.Int("serverCount", len(servers))))
 
-	err = tx.Commit()
+		bidb, err := batchID.MarshalText()
+		if err != nil {
+			return err
+		}
+
+		list = &ServerListResponse{
+			BatchID: bidb,
+			Config:  mcfg,
+			Servers: servers,
+			monitor: monitor,
+		}
+
+		if count := len(servers); count > 0 {
+			accountIDToken := ""
+			accountID := "0"
+			if acc != nil {
+				accountIDToken = acc.IDToken.String
+				accountID = strconv.Itoa(int(acc.ID))
+			}
+			srv.m.TestsRequested.WithLabelValues(
+				monitor.TlsName.String,
+				monitor.IpVersion.MonitorsIpVersion.String(),
+				accountIDToken,
+				accountID,
+			).Add(float64(count))
+
+			now := sql.NullTime{Time: time.Now(), Valid: true}
+
+			ids := make([]uint32, len(servers))
+			for i, s := range servers {
+				ids[i] = s.ID
+			}
+
+			err = db.UpdateServerScoreQueue(ctx,
+				ntpdb.UpdateServerScoreQueueParams{
+					MonitorID: monitor.ID,
+					QueueTs:   now,
+					ServerIds: ids,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -9,7 +9,7 @@ import (
 
 // trackConstraintViolations updates the database with current constraint violations
 func (sl *Selector) trackConstraintViolations(
-	db *ntpdb.Queries,
+	db ntpdb.QuerierTx,
 	serverID uint32,
 	evaluatedMonitors []evaluatedMonitor,
 ) error {

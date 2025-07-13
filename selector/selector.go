@@ -9,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 
+	"go.ntppool.org/common/database"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/version"
@@ -112,50 +113,45 @@ func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger, metrics 
 func (sl *Selector) Run() (int, error) {
 	ctx, cancel := context.WithCancel(sl.ctx)
 	defer cancel()
-	tx, err := sl.dbconn.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() {
-		_ = tx.Rollback() // Rollback is expected to fail on successful commit
-	}()
 
-	db := ntpdb.New(sl.dbconn).WithTx(tx)
-
-	ids, err := db.GetServersMonitorReview(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	count := 0
-	for _, serverID := range ids {
-		changed, err := sl.processServer(ctx, db, serverID)
+	var count int
+	db := ntpdb.New(sl.dbconn)
+	err := database.WithTransaction(ctx, db, func(ctx context.Context, db ntpdb.QuerierTx) error {
+		ids, err := db.GetServersMonitorReview(ctx)
 		if err != nil {
-			// todo: rollback transaction here? Save that we did a review anyway?
-			sl.log.Warn("could not process selection of monitors", "serverID", serverID, "err", err)
+			return err
 		}
-		count++
 
-		if changed {
-			err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
-				ServerID:   serverID,
-				NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
-			})
+		count = 0
+		for _, serverID := range ids {
+			changed, err := sl.processServer(ctx, db, serverID)
 			if err != nil {
-				return count, err
+				// todo: rollback transaction here? Save that we did a review anyway?
+				sl.log.Warn("could not process selection of monitors", "serverID", serverID, "err", err)
 			}
-		} else {
-			err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
-				ServerID:   serverID,
-				NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
-			})
-			if err != nil {
-				return count, err
+			count++
+
+			if changed {
+				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
+					ServerID:   serverID,
+					NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
+				})
+				if err != nil {
+					return err
+				}
+			} else {
+				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
+					ServerID:   serverID,
+					NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
+				})
+				if err != nil {
+					return err
+				}
 			}
 		}
-	}
 
-	err = tx.Commit()
+		return nil
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -163,7 +159,7 @@ func (sl *Selector) Run() (int, error) {
 	return count, nil
 }
 
-func (sl *Selector) processServer(ctx context.Context, db *ntpdb.Queries, serverID uint32) (bool, error) {
+func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID uint32) (bool, error) {
 	start := time.Now()
 	sl.log.Debug("processing server", "serverID", serverID)
 
