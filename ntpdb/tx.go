@@ -3,9 +3,8 @@ package ntpdb
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
-	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/database"
 )
 
 type QuerierTx interface {
@@ -27,48 +26,19 @@ type Tx interface {
 }
 
 func (q *Queries) Begin(ctx context.Context) (QuerierTx, error) {
-	// log := logger.Setup()
-	// log.Warn("db type test", "db", q.db, "type", fmt.Sprintf("%T", q.db))
-
-	if db, ok := q.db.(*sql.DB); ok {
-		tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-		if err != nil {
-			return nil, err
-		}
-		return &Queries{db: tx}, nil
-	} else {
-		tx, err := q.db.(Beginner).Begin(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return &Queries{db: &tx}, nil
+	result, err := database.BeginTransactionForQuerier(ctx, q.db)
+	if err != nil {
+		return nil, err
 	}
+	return &Queries{db: result}, nil
 }
 
 func (q *Queries) Commit(ctx context.Context) error {
-	if db, ok := q.db.(*sql.Tx); ok {
-		return db.Commit()
-	}
-
-	tx, ok := q.db.(Tx)
-	if !ok {
-		log := logger.FromContext(ctx)
-		log.ErrorContext(ctx, "could not get a Tx", "type", fmt.Sprintf("%T", q.db))
-		return sql.ErrTxDone
-	}
-	return tx.Commit(ctx)
+	return database.CommitTransactionForQuerier(ctx, q.db)
 }
 
 func (q *Queries) Rollback(ctx context.Context) error {
-	if db, ok := q.db.(*sql.Tx); ok {
-		return db.Rollback()
-	}
-
-	tx, ok := q.db.(Tx)
-	if !ok {
-		return sql.ErrTxDone
-	}
-	return tx.Rollback(ctx)
+	return database.RollbackTransactionForQuerier(ctx, q.db)
 }
 
 type WrappedQuerier struct {
