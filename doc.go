@@ -1,5 +1,5 @@
 // monitor is the NTP Pool NTP Monitoring system
 
-//go:generate buf generate proto/
+//go:generate go tool buf generate proto/
 
 package monitor

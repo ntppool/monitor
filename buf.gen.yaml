@@ -4,9 +4,11 @@ managed:
   go_package_prefix:
     default: go.ntppool.org/monitor/gen
 plugins:
-  - plugin: buf.build/protocolbuffers/go
+  - name: go
     out: gen
     opt: paths=source_relative
-  - plugin: buf.build/connectrpc/go
+    path: ./scripts/protoc-gen-go-tool
+  - name: connect-go
     out: gen
     opt: paths=source_relative
+    path: ./scripts/protoc-gen-connect-go-tool
