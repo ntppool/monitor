@@ -25,7 +25,7 @@ The NTP Pool Monitor is a distributed monitoring system for the NTP Pool project
 **MANDATORY before any git commit:**
 
 1. Run `gofumpt -w` on all changed `.go` files
-2. Run `go test ./...` to ensure all tests pass
+2. Run `make test` to ensure all tests pass
 3. Verify compilation with `go build` for affected packages
 4. Run lint tools if available (`golangci-lint run`, `go vet ./...`)
 5. Check for race conditions and proper error handling
@@ -83,7 +83,7 @@ make test           # Run comprehensive test suite
 
 **Before marking any coding task as complete:**
 1. Code compiles successfully (`go build`)
-2. Tests pass (`go test ./...`)
+2. Tests pass (`make test`)
 3. Code is formatted (`gofumpt -w`)
 4. Basic functionality verified
 
@@ -138,13 +138,121 @@ make test           # Run comprehensive test suite
 - Use table-driven tests
 - Avoid `testify/assert` or similar tools
 - SQL queries tested through integration tests
-- Use `./scripts/test-db.sh start` for database testing
+- Always use make targets for running tests (see Testing Framework section below)
 
 **Test Data Validation:**
 - Validate constraint mathematics ensure expected outcomes are possible
 - Cross-check test logic before writing assertions
 - Document mathematical relationships in comments
 - Use CI tools (`./scripts/test-ci-local.sh`) for debugging
+
+## Testing Framework
+
+**ALWAYS use make targets for running tests.** Never run test commands directly unless specifically documented.
+
+### Primary Test Targets
+
+**`make test`** - Default comprehensive test suite
+- Runs all unit tests across the entire codebase
+- Use this for general development and pre-commit validation
+- Equivalent to `go test ./...` but preferred for consistency
+
+**`make test-unit`** - Fast unit tests only
+- Runs tests with `-short` flag, skipping slower integration tests
+- Use for rapid development feedback cycles
+- No database dependencies required
+
+**`make test-integration`** - Integration tests with database
+- Automatically starts test database if `TEST_DATABASE_URL` not set
+- Runs all tests tagged with `integration` build tag
+- Includes database-dependent tests and scorer integration tests
+- Use for validating database interactions and full system behavior
+
+**`make test-all`** - Complete test suite
+- Runs both unit and integration tests sequentially
+- Equivalent to `make test-unit test-integration`
+- Use for comprehensive validation before major changes
+
+### Database Management Targets
+
+**`make test-db-start`** - Start test database
+- Starts MySQL 8.0 container on port 3308
+- Loads schema automatically
+- Database persists until explicitly stopped
+
+**`make test-db-stop`** - Stop test database
+- Cleanly shuts down and removes test database container
+- Use when finished with integration testing
+
+**`make test-db-restart`** - Restart test database
+- Equivalent to `make test-db-stop test-db-start`
+- Use to reset database state between test runs
+
+**`make test-db-reset`** - Reset database schema
+- Drops and recreates database, reloads schema
+- Use when schema changes require fresh database state
+
+### Specialized Test Targets
+
+**`make test-load`** - Performance and load tests
+- Runs tests tagged with `load` build tag
+- Requires test database, automatically started if needed
+- Extended timeout (30 minutes) for long-running tests
+
+**`make test-ci-local`** - CI environment emulation
+- Replicates CI testing environment locally
+- Use for debugging CI-specific test failures
+- Includes additional validation and cleanup steps
+
+### Direct Script Usage (Special Cases Only)
+
+**`./scripts/test-scorer-integration.sh`** - Scorer-specific debugging
+- **When to use**: Debugging scorer-specific issues in isolation
+- **Port conflict detection**: Checks for existing database on port 3308
+- **Guidance**: Use `make test-db-stop` first if port conflicts occur
+- **Cleanup**: Automatically cleans up its own database container
+- **Alternative**: Use `make test-db-start && go test ./scorer -tags=integration -v`
+
+### Testing Workflow Examples
+
+**Development workflow:**
+```bash
+make test-unit          # Quick feedback during development
+make test-integration   # Validate database interactions
+make test               # Final validation before commit
+```
+
+**Database testing workflow:**
+```bash
+make test-db-start      # Start persistent test database
+go test ./ntpdb -v      # Test specific package with database
+make test-db-stop       # Clean up when done
+```
+
+**CI debugging workflow:**
+```bash
+make test-ci-local      # Replicate CI environment
+# If failures occur, use individual targets to isolate issues
+```
+
+**Scorer debugging workflow:**
+```bash
+# Option 1: Using make targets
+make test-db-start
+go test ./scorer -tags=integration -v
+
+# Option 2: Using specialized script (handles its own database)
+./scripts/test-scorer-integration.sh
+```
+
+### Best Practices
+
+1. **Always prefer make targets** over direct go test commands
+2. **Use test-unit for rapid iteration** during development
+3. **Run test-integration before commits** that touch database code
+4. **Clean up test databases** with `make test-db-stop` when done
+5. **Use CI tools for debugging** complex test failures
+6. **Isolate component testing** using specialized scripts only when needed
 
 ## Key Architecture Components
 
@@ -414,7 +522,7 @@ For complex changes, break work into distinct phases:
 1. **After schema changes**: Run `make sqlc` to regenerate database code
 2. **After protobuf changes**: Run `make generate` to regenerate RPC code
 3. **Before commits**: Run `gofumpt -w` on all modified Go files
-4. **Testing**: Run `make test` to validate changes
+4. **Testing**: Run appropriate make test targets to validate changes
 5. **Phase validation**: Complete and test each development phase before proceeding
 6. **Incremental commits**: Commit each stable phase independently
 
@@ -473,15 +581,13 @@ For complex changes, break work into distinct phases:
 - `test-scorer-integration.sh` - Component-specific testing
 - `diagnose-ci.sh` - CI failure diagnostics
 
-**Database ports:**
-- 3307: Scorer integration tests
-- 3308: Main test database (default)
-- 3309: CI diagnostics
+**Database port:**
+- 3308: All test databases (unified port for consistency)
 
 **Local workflow:**
-1. `./scripts/test-db.sh start`
-2. `go test ./...`
-3. `./scripts/test-db.sh stop`
+1. `make test-db-start` (for integration tests)
+2. `make test` (comprehensive test suite)
+3. `make test-db-stop` (cleanup when done)
 
 ## Recent Architecture Changes
 

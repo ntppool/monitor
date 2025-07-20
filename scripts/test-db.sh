@@ -11,7 +11,7 @@ DB_NAME="monitor_test"
 DB_USER="monitor"
 DB_PASSWORD="test123"
 DB_ROOT_PASSWORD="rootpass123"
-DB_PORT="3308"  # Different port from API test DB (3307)
+DB_PORT="3308"  # Unified port for all test databases
 MYSQL_VERSION="8.0"
 
 # Colors for output

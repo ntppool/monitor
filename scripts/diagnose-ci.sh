@@ -28,6 +28,13 @@ run_step() {
     echo ""
 }
 
+# Check for existing database on port 3308
+if lsof -i :3308 >/dev/null 2>&1; then
+    echo "❌ ERROR: Port 3308 is already in use. Another database may be running."
+    echo "You can stop the existing database with: make test-db-stop"
+    exit 1
+fi
+
 # Clean up any existing containers
 echo "Cleaning up existing containers..."
 docker rm -f ci-diag-mysql 2>/dev/null || true
@@ -40,7 +47,7 @@ docker run -d \
     -e MYSQL_DATABASE=monitor_test \
     -e MYSQL_USER=monitor \
     -e MYSQL_PASSWORD=test123 \
-    -p 3309:3306 \
+    -p 3308:3306 \
     mysql:8.0
 
 # Wait for MySQL to be ready

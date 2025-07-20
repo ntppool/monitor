@@ -146,7 +146,7 @@ func validateStateTransitions(changes []statusChange, expected []transition) err
 
 **Infrastructure**:
 - Use CI tools (`./scripts/test-db.sh start`) for database setup
-- Port allocation (3307: scorer, 3308: main, 3309: diagnostics)
+- Port allocation (3308: all test databases - unified for consistency)
 - Clean database state for each test run
 - Transaction rollbacks for test isolation
 
@@ -324,9 +324,7 @@ func TestSelfExclusionInConstraints(t *testing.T) {
 #### Test Environment Management
 
 **Database Port Allocation**:
-- 3307: Scorer integration tests
-- 3308: Main test database (default)
-- 3309: CI diagnostics
+- 3308: All test databases (unified port for consistency)
 
 **Test Data Isolation**:
 - Use separate databases per test suite
