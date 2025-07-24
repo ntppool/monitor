@@ -91,7 +91,7 @@ nfpms:
     overrides:
       deb:
         dependencies:
-          - "ntp | chrony"
+          - "ntp | chrony | ntpsec | ntpd-rs"
 
       rpm:
         # this is supposed to work, but I couldn't figure it out.
