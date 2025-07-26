@@ -69,8 +69,17 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 			}
 		} else if *offsetAbs > 750*time.Millisecond {
 			step = -2
-		} else if *offsetAbs > 75*time.Millisecond {
-			step = -4*offsetAbs.Seconds() + 1
+		} else if *offsetAbs > 25*time.Millisecond {
+			offsetSecs := offsetAbs.Seconds()
+			if offsetSecs <= 0.100 { // 25ms - 100ms range
+				step = -6.667*offsetSecs + 1.167
+			} else { // 100ms - 750ms range
+				step = -2.308*offsetSecs + 0.731
+			}
+			// Sanity check: never exceed +1
+			if step > 1 {
+				step = 1
+			}
 		} else {
 			step = 1
 		}
