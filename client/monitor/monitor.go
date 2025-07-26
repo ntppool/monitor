@@ -161,7 +161,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 					resp.Stratum, refText)
 		}
 
-		if resp.Stratum > 6 {
+		if resp.Stratum > 10 {
 			return status, resp, fmt.Errorf("bad stratum %d", resp.Stratum)
 		}
 
