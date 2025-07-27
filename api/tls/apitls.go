@@ -1,6 +1,7 @@
 package apitls
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	_ "embed" // embed CA from file
@@ -22,6 +23,7 @@ type AuthProvider interface {
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 	GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error)
 	GetAPIKey() string
+	GetJWTToken(ctx context.Context) (string, error)
 }
 
 func CAPool() (*x509.CertPool, error) {

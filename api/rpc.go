@@ -86,7 +86,12 @@ func NewHeaderInterceptor(ap apitls.AuthProvider) connect.UnaryInterceptorFunc {
 		) (connect.AnyResponse, error) {
 			if req.Spec().IsClient {
 				req.Header().Set("User-Agent", "ntppool-agent/"+version.Version())
-				if apiKey := ap.GetAPIKey(); apiKey != "" {
+
+				// Prefer JWT token over API key for authentication
+				if jwtToken, err := ap.GetJWTToken(ctx); err == nil && jwtToken != "" {
+					req.Header().Set("Authorization", "Bearer "+jwtToken)
+				} else if apiKey := ap.GetAPIKey(); apiKey != "" {
+					// Fallback to API key during migration period
 					req.Header().Set("Authorization", "Bearer "+apiKey)
 				}
 			}

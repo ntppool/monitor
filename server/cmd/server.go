@@ -36,6 +36,10 @@ func (s *serverAuthProvider) GetAPIKey() string {
 	return ""
 }
 
+func (s *serverAuthProvider) GetJWTToken(ctx context.Context) (string, error) {
+	return "", errors.New("JWT tokens not supported on server side")
+}
+
 func wrapCertMan(cm *certman.CertMan) apitls.AuthProvider {
 	return &serverAuthProvider{CertMan: cm}
 }

@@ -152,6 +152,17 @@ func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer)
 					log.DebugContext(ctx, "AppConfig reloaded successfully")
 					nextCheck = defaultReloadInterval
 
+					// Refresh JWT token if needed
+					if ac.jwtTokenNeedsRefresh() {
+						log.DebugContext(ctx, "JWT token needs refresh, refreshing")
+						_, jwtErr := ac.refreshJWTToken(ctx)
+						if jwtErr != nil {
+							log.WarnContext(ctx, "failed to refresh JWT token", "err", jwtErr)
+						} else {
+							log.DebugContext(ctx, "JWT token refreshed successfully")
+						}
+					}
+
 					// Check for protocol status changes
 					currentIPv4Live := ac.IPv4().IsLive()
 					currentIPv6Live := ac.IPv6().IsLive()

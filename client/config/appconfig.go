@@ -57,6 +57,9 @@ type AppConfig interface {
 	GetClientCertificate(certRequestInfo *tls.CertificateRequestInfo) (*tls.Certificate, error)
 	GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
 
+	// JWT token provider for API authentication (replaces mTLS)
+	GetJWTToken(ctx context.Context) (string, error)
+
 	HaveCertificate() bool
 	CertificateDates() (notBefore time.Time, notAfter time.Time, remaining time.Duration, err error)
 
@@ -102,6 +105,11 @@ type appConfig struct {
 	DataSha string
 
 	tlsCert *tls.Certificate
+
+	// JWT token management
+	jwtMutex  sync.RWMutex
+	jwtToken  string
+	jwtExpiry time.Time
 
 	// For configuration change notifications
 	configChangeMu      sync.RWMutex
@@ -370,7 +378,12 @@ func (ac *appConfig) WaitUntilConfigured(ctx context.Context) error {
 	}
 
 	// Then wait for certificates
-	return ac.WaitUntilCertificatesLoaded(ctx)
+	if err := ac.WaitUntilCertificatesLoaded(ctx); err != nil {
+		return err
+	}
+
+	// Finally wait for JWT token
+	return ac.waitForJWTToken(ctx)
 }
 
 func (ac *appConfig) WaitUntilCertificatesLoaded(ctx context.Context) error {
@@ -505,6 +518,8 @@ func (ac *appConfig) loadAPIAppConfig(ctx context.Context, renewCert bool) (bool
 	traceID := resp.Header.Get("Traceid")
 	if resp.StatusCode == http.StatusUnauthorized {
 		log.WarnContext(ctx, "API authorization failed", "trace", traceID)
+		// Clear JWT token on authorization error as it might be invalid
+		ac.clearJWTToken()
 		return false, ErrAuthorization
 	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return false, fmt.Errorf("unexpected response code: %d (trace %s)", resp.StatusCode, traceID)

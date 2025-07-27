@@ -3,7 +3,7 @@
 --
 -- Host: ntpdb-haproxy.ntpdb.svc.cluster.local    Database: askntp
 -- ------------------------------------------------------
--- Server version	8.0.40-31
+-- Server version	8.0.42-33
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -382,6 +382,28 @@ SET character_set_client = utf8mb4;
   1 AS `last_seen`,
   1 AS `last_submit` */;
 SET character_set_client = @saved_cs_client;
+
+--
+-- Table structure for table `oidc_public_keys`
+--
+
+DROP TABLE IF EXISTS `oidc_public_keys`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `oidc_public_keys` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `kid` varchar(255) NOT NULL,
+  `public_key` text NOT NULL,
+  `algorithm` varchar(20) NOT NULL,
+  `created_at` timestamp NOT NULL,
+  `expires_at` timestamp NULL DEFAULT NULL,
+  `active` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `kid` (`kid`),
+  KEY `idx_kid` (`kid`),
+  KEY `idx_active_expires` (`active`,`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `schema_revision`
@@ -876,4 +898,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-06-22 21:17:53
+-- Dump completed on 2025-07-29  5:58:40
