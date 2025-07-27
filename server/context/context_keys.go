@@ -9,4 +9,6 @@ const (
 	RequestStartKey
 	DeploymentEnv
 	AccountKey
+	AuthMethodKey
+	JWTClaimsKey
 )

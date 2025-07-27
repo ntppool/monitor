@@ -1,24 +1,12 @@
 package server
 
 import (
-	"context"
 	"crypto/x509"
 	"errors"
-	"net/http"
 	"strings"
-
-	sctx "go.ntppool.org/monitor/server/context"
 )
 
-func (srv *Server) certificateMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, name := srv.getVerifiedCert(r.TLS.VerifiedChains)
-
-		ctx := context.WithValue(r.Context(), sctx.CertificateKey, name)
-		rctx := r.WithContext(ctx)
-		next.ServeHTTP(w, rctx)
-	})
-}
+// certificateMiddleware is now replaced by dualAuthMiddleware in auth.go
 
 func (srv *Server) getVerifiedCert(verifiedChains [][]*x509.Certificate) (*x509.Certificate, string) {
 	for _, chain := range verifiedChains {
@@ -36,9 +24,12 @@ func (srv *Server) getVerifiedCert(verifiedChains [][]*x509.Certificate) (*x509.
 }
 
 func (srv *Server) verifyClient(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	// With JWT authentication support, client certificates are optional
+	// This function is only called when a client certificate is presented
 	cert, _ := srv.getVerifiedCert(verifiedChains)
 	if cert != nil {
 		return nil
 	}
+	// Allow no certificate - JWT authentication will be used instead
 	return errors.New("no valid certificate found")
 }

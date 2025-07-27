@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	gjwt "github.com/golang-jwt/jwt/v4"
+	gjwt "github.com/golang-jwt/jwt/v5"
 
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"

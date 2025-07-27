@@ -39,6 +39,7 @@ type Server struct {
 	m           *metrics.Metrics
 	db          ntpdb.QuerierTx
 	dbconn      *sql.DB
+	jwtAuth     *JWTAuthenticator
 	shutdownFns []func(ctx context.Context) error
 }
 
@@ -69,13 +70,21 @@ func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry pro
 
 	metrics := metrics.New(promRegistry)
 
+	// Initialize JWT authenticator
+	jwtAuth, err := NewJWTAuthenticator(ctx, cfg.DeploymentEnv)
+	if err != nil {
+		log.WarnContext(ctx, "failed to initialize JWT authenticator, JWT authentication will be disabled", "error", err)
+		jwtAuth = nil // Continue without JWT support
+	}
+
 	srv := &Server{
-		ctx:    ctx,
-		cfg:    &cfg,
-		db:     db,
-		dbconn: dbconn,
-		tokens: tm,
-		m:      metrics,
+		ctx:     ctx,
+		cfg:     &cfg,
+		db:      db,
+		dbconn:  dbconn,
+		tokens:  tm,
+		m:       metrics,
+		jwtAuth: jwtAuth,
 	}
 
 	// capool, err := apitls.CAPool()
@@ -102,6 +111,14 @@ func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry pro
 
 	srv.shutdownFns = append(srv.shutdownFns, tpShutdownFn)
 
+	// Add JWT authenticator cleanup
+	if jwtAuth != nil {
+		srv.shutdownFns = append(srv.shutdownFns, func(ctx context.Context) error {
+			jwtAuth.Close()
+			return nil
+		})
+	}
+
 	return srv, nil
 }
 
@@ -121,7 +138,7 @@ func (srv *Server) Run() error {
 	tlsConfig := &tls.Config{
 		MinVersion:            tls.VersionTLS12,
 		ClientCAs:             capool,
-		ClientAuth:            tls.RequireAndVerifyClientCert,
+		ClientAuth:            tls.RequestClientCert, // Changed from RequireAndVerifyClientCert to support JWT auth
 		GetCertificate:        srv.cfg.CertProvider.GetCertificate,
 		VerifyPeerCertificate: srv.verifyClient,
 	}
@@ -173,7 +190,7 @@ func (srv *Server) Run() error {
 	mux := http.NewServeMux()
 	mux.Handle(twirpHandler.PathPrefix(),
 		twirptrace.WithTraceContext(
-			srv.certificateMiddleware(
+			srv.dualAuthMiddleware(
 				WithUserAgent(
 					twirpHandler,
 				),
@@ -200,7 +217,7 @@ func (srv *Server) Run() error {
 		urlpath,
 		otelhttp.NewMiddleware("monitor-api")(
 			WithLogger(
-				srv.certificateMiddleware(
+				srv.dualAuthMiddleware(
 					WithUserAgent(
 						apiHandler,
 					),
