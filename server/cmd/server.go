@@ -103,11 +103,17 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		os.Exit(2)
 	}
 
+	depEnv := depenv.DeploymentEnvironmentFromString(deploymentMode)
+	if depEnv == depenv.DeployUndefined {
+		log.Error("unknown deployment mode", "deployment_mode", deploymentMode)
+		os.Exit(2)
+	}
+
 	scfg := server.Config{
 		Listen:        cfg.Listen,
 		CertProvider:  wrapCertMan(cm),
 		JWTKey:        cfg.JWTKey,
-		DeploymentEnv: deploymentMode,
+		DeploymentEnv: depEnv,
 	}
 
 	tlsName, err := func() (string, error) {
@@ -138,12 +144,6 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 	}()
 	if err != nil {
 		return err
-	}
-
-	depEnv := depenv.DeploymentEnvironmentFromString(deploymentMode)
-	if depEnv == depenv.DeployUndefined {
-		log.Error("unknown deployment mode", "deployment_mode", deploymentMode)
-		os.Exit(2)
 	}
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)

@@ -19,6 +19,7 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api/pb"
@@ -44,7 +45,7 @@ type Server struct {
 }
 
 type Config struct {
-	DeploymentEnv string
+	DeploymentEnv depenv.DeploymentEnvironment
 	Listen        string
 	JWTKey        string
 	CertProvider  apitls.AuthProvider
@@ -95,7 +96,7 @@ func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry pro
 	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
 			ServiceName: "monitor-api",
-			Environment: cfg.DeploymentEnv,
+			Environment: cfg.DeploymentEnv.String(),
 			// RootCAs:     capool,
 		},
 	)

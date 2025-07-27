@@ -36,15 +36,14 @@ type JWTAuthenticator struct {
 }
 
 // NewJWTAuthenticator creates a new JWT authenticator with JWKS support
-func NewJWTAuthenticator(ctx context.Context, deploymentEnv string) (*JWTAuthenticator, error) {
+func NewJWTAuthenticator(ctx context.Context, deploymentEnv depenv.DeploymentEnvironment) (*JWTAuthenticator, error) {
 	log := logger.FromContext(ctx)
 
-	depEnv := depenv.DeploymentEnvironmentFromString(deploymentEnv)
-	if depEnv == depenv.DeployUndefined {
+	if deploymentEnv == depenv.DeployUndefined {
 		return nil, fmt.Errorf("invalid deployment environment: %s", deploymentEnv)
 	}
 
-	issuer := depEnv.APIHost()
+	issuer := deploymentEnv.APIHost()
 	jwksURL := issuer + "/.well-known/jwks.json"
 
 	log.DebugContext(ctx, "initializing JWT authenticator", "issuer", issuer, "jwks_url", jwksURL)
