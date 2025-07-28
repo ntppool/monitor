@@ -136,7 +136,7 @@ func (ac *appConfig) load(ctx context.Context) error {
 	// Notify if local changes were detected (API key or certificate changes)
 	// Do this before API calls so notifications happen even if API fails
 	if configChanged {
-		log.InfoContext(ctx, "local config changed",
+		log.DebugContext(ctx, "local config changed",
 			"api_key_changed", prevAPIKey != currentAPIKey,
 			"cert_changed", prevHaveCert != currentHaveCert)
 		ac.notifyConfigChange()

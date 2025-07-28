@@ -17,6 +17,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/otelconnect v0.7.2
 	github.com/MakeNowJust/heredoc v1.0.0
+	github.com/MicahParks/keyfunc/v3 v3.4.0
 	github.com/abh/certman v0.4.0
 	github.com/alecthomas/kong v1.12.1
 	github.com/beevik/ntp v1.4.3
@@ -25,7 +26,7 @@ require (
 	github.com/evanphx/json-patch v0.5.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/golang-jwt/jwt/v4 v4.5.2
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/hashicorp/vault/api v1.20.0
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/oklog/ulid/v2 v2.1.1
@@ -34,7 +35,7 @@ require (
 	github.com/samber/slog-echo v1.16.1
 	github.com/stretchr/testify v1.10.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.5.0
+	go.ntppool.org/common v0.5.1-0.20250728001306-796b2a84128f
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.62.0
@@ -68,7 +69,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.2 // indirect
 	github.com/MicahParks/jwkset v0.8.0 // indirect
-	github.com/MicahParks/keyfunc/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -98,7 +98,6 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/google/cel-go v0.25.0 // indirect
 	github.com/google/go-containerregistry v0.20.6 // indirect
 	github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a // indirect

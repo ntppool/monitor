@@ -51,7 +51,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		clientID = clientID[:idx]
 	}
 
-	log.InfoContext(ctx, "mqtt", "clientID", clientID)
+	// log.DebugContext(ctx, "mqtt", "clientID", clientID)
 
 	publishOnlineMessage := func(cm *autopaho.ConnectionManager) {
 		if len(statusChannel) == 0 {

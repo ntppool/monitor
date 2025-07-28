@@ -87,7 +87,7 @@ func (c *ClientCmd) BeforeReset() error {
 
 func (c *ClientCmd) BeforeApply() error {
 	// Create a logger for debugging
-	log := logger.Setup()
+	log := logger.SetupMultiLogger()
 	ctx := logger.NewContext(context.Background(), log)
 
 	if c.StateDir == "" {
@@ -125,13 +125,16 @@ func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
 		return fmt.Errorf("deployment environment invalid or undefined")
 	}
 
+	// Add deployment environment to logger context
+	log := logger.FromContext(ctx).With("env", c.DeployEnv.String())
+	ctx = logger.NewContext(ctx, log)
+
 	if c.StateDir == "" {
 		return fmt.Errorf("state directory not set")
 	} else {
 		c.StateDir = kong.ExpandPath(c.StateDir)
 	}
 
-	log := logger.FromContext(ctx)
 	log.DebugContext(ctx, "determined state directory",
 		"state_dir", c.StateDir,
 		"env", c.DeployEnv.String(),

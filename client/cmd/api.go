@@ -26,8 +26,7 @@ type apiCmd struct {
 type apiOkCmd struct{}
 
 func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
-	log := logger.SetupMultiLogger().With("env", cli.DeployEnv.String())
-	ctx = logger.NewContext(ctx, log)
+	log := logger.FromContext(ctx)
 
 	timeout := time.Second * 40
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -86,6 +85,19 @@ func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 			if remaining < 24*time.Hour {
 				log.WarnContext(ctx, "Certificate expires soon!")
+			} else {
+				tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
+				if err != nil {
+					log.WarnContext(ctx, "tracing initialization failed", "err", err)
+				} else {
+					defer func() {
+						shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+						defer cancel()
+						if err := tracingShutdown(shutdownCtx); err != nil {
+							log.WarnContext(ctx, "tracing shutdown error", "err", err)
+						}
+					}()
+				}
 			}
 		}
 	}
@@ -126,21 +138,8 @@ func (cmd *apiOkCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		}
 	}
 
-	// Step 6: Initialize tracing for detailed diagnostics
-	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
-	if err != nil {
-		log.DebugContext(ctx, "Tracing initialization failed", "err", err)
-	} else {
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			if err := tracingShutdown(shutdownCtx); err != nil {
-				log.DebugContext(ctx, "Tracing shutdown error", "err", err)
-			}
-		}()
-	}
-
 	log.InfoContext(ctx, "API diagnostics complete")
+
 	return nil
 }
 
@@ -196,13 +195,13 @@ func testGRPCAPI(ctx context.Context, cli *ClientCmd, log *slog.Logger) error {
 
 	// Test MQTT if configured
 	if cfg.MqttConfig != nil && len(cfg.MqttConfig.Host) > 0 {
-		log.InfoContext(ctx, "  MQTT configured", "hosts", len(cfg.MqttConfig.Host))
+		log.InfoContext(ctx, "  MQTT configured", "host", cfg.MqttConfig.Host)
 
 		// Test MQTT connection and publish status message
 		conf := checkconfig.NewConfigger(nil)
 		conf.SetConfigFromApi(cfg)
 
-		mq, err := mqttcm.Setup(ctx, cli.Config.TLSName(), "", []string{}, nil, conf, nil)
+		mq, err := mqttcm.Setup(ctx, cli.Config.TLSName(), "", []string{}, nil, conf, cli.Config)
 		if err != nil {
 			log.WarnContext(ctx, "  MQTT setup failed", "err", err)
 		} else {

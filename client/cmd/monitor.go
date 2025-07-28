@@ -123,17 +123,20 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	tracingShutdown, err := InitTracing(ctx, cli.DeployEnv, cli.Config)
 	if err != nil {
-		log.Error("tracing error", "err", err)
-	}
-	defer func() {
-		if cli.Config.HaveCertificate() {
-			// if we don't have a certificate, don't try
-			// to flush the buffered tracing data
-			if err := tracingShutdown(context.Background()); err != nil {
-				log.WarnContext(ctx, "Failed to shutdown tracing", "err", err)
+		log.WarnContext(ctx, "tracing initialization failed", "err", err)
+	} else {
+		defer func() {
+			if cli.Config.HaveCertificate() {
+				// if we don't have a certificate, don't try
+				// to flush the buffered tracing data
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if err := tracingShutdown(shutdownCtx); err != nil {
+					log.WarnContext(ctx, "failed to shutdown tracing", "err", err)
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	ctx, api, err := api.Client(ctx, cli.Config.TLSName(), cli.Config)
 	if err != nil {
@@ -582,8 +585,6 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	}
 
 	wg.Wait()
-
-	log.InfoContext(ctx, "submitting")
 
 	list := &apiv2.SubmitResultsRequest{
 		MonId:   ipc.IP.String(),
