@@ -2,7 +2,7 @@
 
 > **Note**: Primary testing strategy is now in `testing-strategy-unified.md` - this document tracks specific quality initiatives and technical debt.
 
-**Last Updated**: 2025-01-26
+**Last Updated**: 2025-08-02 (Maintenance Review)
 
 ## Overview
 
@@ -105,7 +105,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 - `loadServerInfo`: Database loading logic
 - `applyStatusChange`: Actual status change application
 - `buildAccountLimitsFromMonitors`: Account limit calculation
-- All metrics tracking functions
+- ✅ **Metrics tracking functions** - Migrated to OpenTelemetry (commit: 9aa4d39)
 - `isGrandfathered`: Constraint grandfathering logic
 
 **Database Integration Testing**:
@@ -329,9 +329,9 @@ func BenchmarkSelectorPerformance(b *testing.B) {
 
 ### Sprint 2: Bug Fixes
 **Week 3-4**:
-- 🔲 Emergency override consistency fix
+- ✅ Emergency override consistency fix (commit: b6515b8)
 - 🔲 Grandfathering logic implementation
-- 🔲 Bootstrap constraint consistency fix
+- ✅ Bootstrap constraint consistency fix (resolved with emergency override)
 
 ### Sprint 3: Infrastructure Testing
 **Week 5-6**:

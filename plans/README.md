@@ -7,7 +7,11 @@ This directory contains the comprehensive planning documentation for the NTP Poo
 ## Quick Status Summary
 
 ### ✅ Recently Completed
-- **Performance-Based Replacement in Rule 5** - Candidates can now replace worse-performing testing monitors
+- **JWT Authentication Implementation** - Superseded API key auth plan with JWT+JWKS (commits: 10e2a70, deb9a16, 304cc1c)
+- **OpenTelemetry Migration** - Complete client metrics migration (commit: 9aa4d39)
+- **Database Consolidation** - Migrated to common/database package (commits: 650aeb9, 393a251, c86adf2)
+- **"New" Status Elimination** - Removed from schema (commit: 64416d0)
+- **Performance-Based Replacement in Rule 5** - Candidates can now replace worse-performing testing monitors (commit: de5e03a)
 - **Emergency Override Consistency** - Fixed candidate→testing promotion gap (commit: b6515b8)
 - **Helper Function Extraction** - 47% code reduction in promotion logic (commit: 6c4ae72)
 - **Safety Logic Improvements** - Fixed blocking constraint demotions (commit: e04e47a)
@@ -21,7 +25,6 @@ This directory contains the comprehensive planning documentation for the NTP Poo
 - **Grandfathering Logic** - Non-functional implementation needs fixing
 
 ### 📋 Ready for Implementation
-- **Eliminate "New" Status** - Major architectural simplification plan ready
 - **Performance Optimizations** - Database query optimization and testing improvements
 - **Quality Improvements** - Code quality initiatives and technical debt cleanup
 
@@ -38,7 +41,6 @@ These documents describe "what the system is and how it works":
 ### Implementation Plans (Actionable Work)
 These documents describe "what needs to be done":
 
-- **[eliminate-new-status.md](eliminate-new-status.md)** - 📋 Ready: Major architectural simplification
 - **[grandfathering-fix.md](grandfathering-fix.md)** - 🔄 Active: Functional grandfathering implementation
 - **[performance-optimizations.md](performance-optimizations.md)** - 📋 TODO: Database and testing performance improvements
 - **[quality-improvements.md](quality-improvements.md)** - 🔄 Active: Test coverage and code quality
@@ -47,7 +49,8 @@ These documents describe "what needs to be done":
 
 ### Archive Structure
 - **[archive/README.md](archive/README.md)** - Historical implementation context
-- **[archive/completed-implementations/](archive/completed-implementations/)** - 8 completed plans with implementation details
+- **[archive/completed-implementations/](archive/completed-implementations/)** - 9 completed plans with implementation details
+- **[archive/releases/](archive/releases/)** - Release notes and version history
 - **[archive/legacy/](archive/legacy/)** - 2 superseded approaches
 
 ## Priority Recommendations

@@ -4,7 +4,8 @@
 
 This document consolidates major architectural improvements and simplifications planned for the NTP Pool monitoring system. These changes focus on reducing complexity, improving maintainability, and enhancing system reliability.
 
-## Eliminate "New" Status Architecture Simplification (High Priority)
+## Eliminate "New" Status Architecture Simplification ✅ **COMPLETED**
+**Status**: Schema updated (commit: 64416d0)
 
 ### Current Problem
 The selector system manages both "which monitors should be considered" (assignment policy) and "how to select among assigned monitors" (selection algorithm) in a single component, leading to:
@@ -346,8 +347,8 @@ func (sl *Selector) checkGeographicConstraint(
 ## Implementation Roadmap
 
 ### Phase 1: Foundation (Next Quarter)
-1. **Eliminate "New" Status** - Remove conceptual complexity
-2. **Emergency Override Consistency** - Fix candidate→testing promotion gap
+1. ✅ **Eliminate "New" Status** - Schema updated (commit: 64416d0)
+2. ✅ **Emergency Override Consistency** - Fixed (commit: b6515b8)
 3. **Grandfathering Logic** - Implement functional grandfathering behavior
 
 ### Phase 2: Enhancement (Following Quarter)

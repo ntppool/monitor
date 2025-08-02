@@ -591,9 +591,14 @@ For complex changes, break work into distinct phases:
 
 ## Recent Architecture Changes
 
-**Key recent changes:**
+**Key recent changes (2025):**
+- **JWT Authentication**: Complete JWT authentication with JWKS support replacing planned API key auth (commits: 10e2a70, deb9a16, 304cc1c)
+- **OpenTelemetry Migration**: Client metrics fully migrated to OpenTelemetry from Prometheus (commit: 9aa4d39)
+- **Database Consolidation**: Migrated to shared common/database package reducing code duplication (commits: 650aeb9, 393a251, c86adf2)
+- **"New" Status Elimination**: Schema updated to remove "new" status entirely (commit: 64416d0)
+- **Performance-Based Rule 5**: Candidates can replace worse-performing testing monitors (commit: de5e03a)
+- **Emergency Override Consistency**: Fixed candidate→testing promotion gap (commit: b6515b8)
 - **Selector Package Refactoring**: Moved to dedicated `selector/` package with new constraint validation algorithm
-- **"New" Status Elimination**: Eliminated "new" status entirely; simplified flow to `candidate → testing → active`
 - **Per-Status-Group Change Limits**: Separate limits for each status transition type in `selector/process.go`
 - **Dynamic Testing Pool Sizing**: Testing pool adjusts based on active monitor gap
 - **Monitor Limit Enforcement**: Fixed monitor count tracking and rule execution order
