@@ -11,6 +11,7 @@ import (
 
 	"github.com/beevik/ntp"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -18,6 +19,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/client/config/checkconfig"
+	"go.ntppool.org/monitor/client/metrics"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
 
@@ -35,6 +37,11 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 	ipVersion := "ipv4"
 	if ip.Is6() {
 		ipVersion = "ipv6"
+	}
+
+	// Increment servers checked counter
+	if metrics.ServersChecked != nil {
+		metrics.ServersChecked.Add(ctx, 1, metric.WithAttributes(attribute.String("ip_version", ipVersion)))
 	}
 
 	traceAttributes = append(traceAttributes,
@@ -106,6 +113,12 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 		}
 
 		resp, err := ntp.QueryWithOptions(ipStr, opts)
+
+		// Increment NTP queries sent counter
+		if metrics.NTPQueriesSent != nil {
+			metrics.NTPQueriesSent.Add(ctx, 1, metric.WithAttributes(attribute.String("ip_version", ipVersion)))
+		}
+
 		if err != nil {
 			r := &response{
 				Status: &apiv2.ServerStatus{

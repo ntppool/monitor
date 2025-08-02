@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,9 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
-
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/api"
 	"go.ntppool.org/monitor/client/config/checkconfig"
@@ -29,11 +25,10 @@ type mqclient struct {
 	topics *mqttcm.MQTTTopics
 	conf   checkconfig.ConfigGetter
 	log    *slog.Logger
-	prom   prometheus.Gatherer
 }
 
-func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf checkconfig.ConfigGetter, promreg prometheus.Gatherer) *mqclient {
-	return &mqclient{topics: topics, conf: conf, log: log, prom: promreg}
+func NewMQClient(log *slog.Logger, topics *mqttcm.MQTTTopics, conf checkconfig.ConfigGetter) *mqclient {
+	return &mqclient{topics: topics, conf: conf, log: log}
 }
 
 func (mqc *mqclient) SetMQ(mq *autopaho.ConnectionManager) {
@@ -70,19 +65,10 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 	switch requestType {
 
 	case "metrics":
-		gathering, err := mqc.prom.Gather()
-		if err != nil {
-			log.Error("could not fetch metrics", "err", err)
-		}
+		// Return empty metrics set as requested during Prometheus to OTel migration
+		log.Debug("metrics request received, returning empty metrics set")
 
-		out := &bytes.Buffer{}
-		for _, mf := range gathering {
-			if _, err := expfmt.MetricFamilyToText(out, mf); err != nil {
-				log.Error("metrics format", "err", err)
-			}
-		}
-
-		err = mqc.sendResponse(ctx, log, out.Bytes(), m)
+		err := mqc.sendResponse(ctx, log, []byte{}, m)
 		if err != nil {
 			log.Error("mqtt response", "err", err)
 		}

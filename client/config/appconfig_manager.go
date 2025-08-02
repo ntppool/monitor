@@ -6,26 +6,38 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/logger"
+	commonMetrics "go.ntppool.org/common/metrics"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Manager handles AppConfig hot reloading and certificate management
-func (ac *appConfig) Manager(ctx context.Context, promreg prometheus.Registerer) error {
+func (ac *appConfig) Manager(ctx context.Context) error {
 	log := logger.FromContext(ctx).WithGroup("appconfig-manager")
 
-	promGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "ssl_earliest_cert_expiry",
-		Help: "TLS expiration time",
-	}, func() float64 {
-		_, notAfter, _, err := ac.CertificateDates()
+	// Create SSL certificate expiry ObservableGauge with callback
+	meter := commonMetrics.GetMeter("monitor.client")
+	sslCertExpiry, err := meter.Int64ObservableGauge("monitor.ssl_earliest_cert_expiry",
+		metric.WithDescription("TLS certificate expiration timestamp"))
+	if err != nil {
+		log.ErrorContext(ctx, "failed to create SSL certificate expiry gauge", "err", err)
+		// Continue anyway - metrics are not critical
+	} else {
+		// Register callback for the SSL certificate expiry gauge
+		_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+			_, notAfter, _, err := ac.CertificateDates()
+			if err != nil {
+				log.ErrorContext(ctx, "could not get certificate notAfter date", "err", err)
+				return nil // Don't fail the callback on cert errors
+			}
+			o.ObserveInt64(sslCertExpiry, notAfter.Unix())
+			return nil
+		}, sslCertExpiry)
 		if err != nil {
-			log.Error("could not get certificate notAfter date", "err", err)
-			return 0
+			log.ErrorContext(ctx, "failed to register SSL certificate expiry callback", "err", err)
+			// Continue anyway - metrics are not critical
 		}
-		return float64(notAfter.Unix())
-	})
-	promreg.MustRegister(promGauge)
+	}
 	// Create file watcher for state.json
 	stateFilePath := ac.stateFilePrefix(stateFile)
 	stateDir, stateFileName := filepath.Dir(stateFilePath), filepath.Base(stateFilePath)

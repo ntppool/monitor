@@ -15,15 +15,14 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.ntppool.org/pingtrace/traceroute"
 
 	"go.ntppool.org/common/logger"
-	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/common/version"
 
@@ -31,6 +30,7 @@ import (
 	"go.ntppool.org/monitor/client/config"
 	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/client/localok"
+	"go.ntppool.org/monitor/client/metrics"
 	"go.ntppool.org/monitor/client/monitor"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
@@ -80,13 +80,11 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	// Start the config manager early so it can watch for file changes
 	// during WaitUntilLive
-	promreg := prometheus.NewRegistry()
-	version.RegisterMetric("monitor", promreg)
 
 	if !cmd.SanityOnly && !cmd.Once {
 		g.Go(func() error {
 			log.InfoContext(ctx, "starting AppConfig manager early for file watching", "name", cli.Config.TLSName())
-			return cli.Config.Manager(ctx, promreg)
+			return cli.Config.Manager(ctx)
 		})
 	}
 
@@ -102,15 +100,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 		return nil
 	}
 
-	// todo: switch to pushing metrics over oltp
-	metricssrv := metricsserver.New()
-	// Use the metrics server registry if we didn't create one earlier
-	if cmd.SanityOnly || cmd.Once {
-		promreg = metricssrv.Registry()
-	}
-
-	// todo: option to enable local metrics?
-	// go metricssrv.ListenAndServe(ctx, 9999)
+	// Metrics are now handled via OpenTelemetry OTLP export
 
 	// Wait for certificates to be loaded before setting up API client
 	// This ensures we don't try to use the API without proper TLS authentication
@@ -206,7 +196,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				}
 			}
 
-			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, promreg, cli.Config)
+			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, cli.Config)
 			ipLog.DebugContext(ctx, "monitor done", "err", err)
 			return err
 		})
@@ -226,7 +216,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			}
 		}
 		log.InfoContext(ctx, "starting mqtt client", "name", cli.Config.TLSName())
-		return runMQTTClient(ctx, cli, mqconfigger, promreg)
+		return runMQTTClient(ctx, cli, mqconfigger)
 	})
 
 	err = g.Wait()
@@ -238,7 +228,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	return nil
 }
 
-func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.ConfigGetter, promreg prometheus.Gatherer) error {
+func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.ConfigGetter) error {
 	log := logger.FromContext(ctx)
 
 	var mq *autopaho.ConnectionManager
@@ -249,7 +239,7 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 		if mqcfg := mqconfigger.GetMQTTConfig(); mqcfg != nil && len(mqcfg.Host) > 0 {
 			log := log.WithGroup("mqtt")
 
-			mqc := monitor.NewMQClient(log, topics, mqconfigger, promreg)
+			mqc := monitor.NewMQClient(log, topics, mqconfigger)
 			router := paho.NewStandardRouterWithDefault(mqc.Handler)
 
 			var err error
@@ -289,7 +279,7 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 	return nil
 }
 
-func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, promreg prometheus.Registerer, appConfig config.AppConfig) error {
+func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, appConfig config.AppConfig) error {
 	log := logger.FromContext(ctx).With("monitor_ip", ipc.IP.String())
 
 	log.InfoContext(ctx, "starting monitor")
@@ -313,8 +303,6 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 			if firstRun {
 				log.InfoContext(ctx, "getting client configuration with BaseChecks for LocalOK", "errors", errors)
 			}
-
-			log.WarnContext(ctx, "ipc", "ip", ipc.IP.String())
 
 			cfgresp, err := fetchConfig(ctx, ipc, api)
 			if err != nil {
@@ -372,7 +360,7 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 
 	// LocalOK can now be safely created since we're guaranteed to have valid BaseChecks
 	log.DebugContext(ctx, "setting up localok.NewLocalOK with validated configuration")
-	localOK := localok.NewLocalOK(monconf, promreg)
+	localOK := localok.NewLocalOK(monconf)
 
 	if cmd.SanityOnly {
 		ok := localOK.Check(ctx)
@@ -471,6 +459,19 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 		connect.NewRequest(
 			&apiv2.GetConfigRequest{MonId: ipc.IP.String()},
 		))
+
+	// Record RPC request metric
+	if metrics.RPCRequests != nil {
+		statusCode := "success"
+		if err != nil {
+			statusCode = "error"
+		}
+		metrics.RPCRequests.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("type", "config"),
+				attribute.String("status_code", statusCode)))
+	}
+
 	if err != nil || cfgresp.Msg == nil {
 		if strings.Contains(err.Error(), "tls: expired certificate") {
 			log.ErrorContext(ctx, "TLS certificate error - check server certificate validity", "err", err, "monitor_ip", ipc.IP.String())
@@ -495,6 +496,19 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 			},
 		),
 	)
+
+	// Record RPC request metric
+	if metrics.RPCRequests != nil {
+		statusCode := "success"
+		if err != nil {
+			statusCode = "error"
+		}
+		metrics.RPCRequests.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("type", "getServers"),
+				attribute.String("status_code", statusCode)))
+	}
+
 	if err != nil {
 		return 0, fmt.Errorf("getting server list: %s", err)
 	}
@@ -594,6 +608,19 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	}
 
 	r, err := api.SubmitResults(ctx, connect.NewRequest(list))
+
+	// Record RPC request metric
+	if metrics.RPCRequests != nil {
+		statusCode := "success"
+		if err != nil || (r != nil && !r.Msg.Ok) {
+			statusCode = "error"
+		}
+		metrics.RPCRequests.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("type", "submitResults"),
+				attribute.String("status_code", statusCode)))
+	}
+
 	if err != nil {
 		return 0, fmt.Errorf("SubmitResults: %s", err)
 	}

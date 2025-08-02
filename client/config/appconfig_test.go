@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.ntppool.org/common/config/depenv"
@@ -457,11 +456,10 @@ func TestConfigChangeNotifications(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 
 		// Start manager
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Create waiter

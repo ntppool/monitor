@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.ntppool.org/common/config/depenv"
@@ -20,8 +19,6 @@ func TestFileWatcherSetup(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
-
 		// Start manager in a goroutine
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
@@ -29,7 +26,7 @@ func TestFileWatcherSetup(t *testing.T) {
 		managerStarted := make(chan struct{})
 		go func() {
 			defer close(managerStarted)
-			err := env.cfg.Manager(ctx, promReg)
+			err := env.cfg.Manager(ctx)
 			if err != nil {
 				t.Errorf("Manager failed: %v", err)
 			}
@@ -65,13 +62,12 @@ func TestFileWatcherSetup(t *testing.T) {
 			ac.dir = originalDir
 		}()
 
-		promReg := prometheus.NewRegistry()
 
 		ctx, cancel := context.WithTimeout(env.ctx, 1*time.Second)
 		defer cancel()
 
 		// Manager should not fail even with invalid directory
-		err := env.cfg.Manager(ctx, promReg)
+		err := env.cfg.Manager(ctx)
 		// Should complete without error even if watcher fails
 		assert.NoError(t, err)
 	})
@@ -96,14 +92,13 @@ func TestFileWatcherSetup(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 
 		ctx, cancel := context.WithCancel(env.ctx)
 
 		managerDone := make(chan struct{})
 		go func() {
 			defer close(managerDone)
-			_ = env.cfg.Manager(ctx, promReg)
+			_ = env.cfg.Manager(ctx)
 		}()
 
 		// Give manager time to start
@@ -135,12 +130,11 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
 		// Start manager
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond) // Let manager start
 
 		// Set up waiter before making change
@@ -166,11 +160,10 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Set up waiter
@@ -201,11 +194,10 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Test that timer resets properly
@@ -238,11 +230,10 @@ func TestFileOperationEvents(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -266,11 +257,10 @@ func TestFileOperationEvents(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -293,11 +283,10 @@ func TestFileOperationEvents(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)
@@ -324,7 +313,6 @@ func TestWatcherErrorRecovery(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithTimeout(env.ctx, 2*time.Second)
 		defer cancel()
 
@@ -335,7 +323,7 @@ func TestWatcherErrorRecovery(t *testing.T) {
 		defer func() { ac.dir = originalDir }()
 
 		// Manager should still work in timer-only mode
-		err := env.cfg.Manager(ctx, promReg)
+		err := env.cfg.Manager(ctx)
 		assert.NoError(t, err, "Manager should handle watcher errors gracefully")
 	})
 
@@ -350,13 +338,12 @@ func TestWatcherErrorRecovery(t *testing.T) {
 		// Start and stop manager multiple times
 		for i := 0; i < 3; i++ {
 			// Create a new registry for each iteration to avoid duplicate registration
-			promReg := prometheus.NewRegistry()
-			ctx, cancel := context.WithCancel(env.ctx)
+				ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan struct{})
 			go func() {
 				defer close(managerDone)
-				_ = env.cfg.Manager(ctx, promReg)
+				_ = env.cfg.Manager(ctx)
 			}()
 
 			time.Sleep(50 * time.Millisecond)
@@ -382,12 +369,11 @@ func TestManagerLifecycle(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithTimeout(env.ctx, 1*time.Second)
 		defer cancel()
 
 		// Manager should start cleanly
-		err := env.cfg.Manager(ctx, promReg)
+		err := env.cfg.Manager(ctx)
 		assert.NoError(t, err)
 	})
 
@@ -395,12 +381,11 @@ func TestManagerLifecycle(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 
 		managerDone := make(chan error, 1)
 		go func() {
-			managerDone <- env.cfg.Manager(ctx, promReg)
+			managerDone <- env.cfg.Manager(ctx)
 		}()
 
 		time.Sleep(100 * time.Millisecond)
@@ -424,12 +409,11 @@ func TestManagerLifecycle(t *testing.T) {
 
 		for i := 0; i < 3; i++ {
 			// Create a new registry for each iteration to avoid duplicate registration
-			promReg := prometheus.NewRegistry()
-			ctx, cancel := context.WithCancel(env.ctx)
+				ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan error, 1)
 			go func() {
-				managerDone <- env.cfg.Manager(ctx, promReg)
+				managerDone <- env.cfg.Manager(ctx)
 			}()
 
 			time.Sleep(100 * time.Millisecond)
@@ -453,11 +437,10 @@ func TestReloadIntervals(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// This test verifies the manager can handle timer-based reloads
@@ -481,11 +464,10 @@ func TestReloadIntervals(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		start := time.Now()
@@ -512,11 +494,10 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		err := env.cfg.SetAPIKey("initial-key")
 		require.NoError(t, err)
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 		defer cancel()
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		// Create multiple waiters
@@ -565,10 +546,9 @@ func TestConfigurationNotificationSystem(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		promReg := prometheus.NewRegistry()
 		ctx, cancel := context.WithCancel(env.ctx)
 
-		go func() { _ = env.cfg.Manager(ctx, promReg) }()
+		go func() { _ = env.cfg.Manager(ctx) }()
 		time.Sleep(100 * time.Millisecond)
 
 		waiter := env.cfg.WaitForConfigChange(ctx)

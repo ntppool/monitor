@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go4.org/netipx"
 	"golang.org/x/sync/errgroup"
@@ -18,13 +18,9 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/monitor/client/config/checkconfig"
+	"go.ntppool.org/monitor/client/metrics"
 	"go.ntppool.org/monitor/client/monitor"
 )
-
-type metrics struct {
-	Ok        *prometheus.GaugeVec
-	LastCheck *prometheus.GaugeVec
-}
 
 type LocalOK struct {
 	cfg        *checkconfig.Config
@@ -35,17 +31,18 @@ type LocalOK struct {
 	mu         sync.RWMutex
 }
 
+type hostResult struct {
+	name      string
+	ok        bool
+	checkTime time.Time
+}
+
 const (
 	localCacheTTL = 180 * time.Second
 	maxOffset     = 10 * time.Millisecond
 )
 
-var (
-	localMetrics         = metrics{}
-	syncLocalMetricsOnce sync.Once
-)
-
-func NewLocalOK(conf checkconfig.ConfigGetter, promreg prometheus.Registerer) *LocalOK {
+func NewLocalOK(conf checkconfig.ConfigGetter) *LocalOK {
 	var isv4 bool
 
 	cfg := conf.GetConfig()
@@ -59,18 +56,6 @@ func NewLocalOK(conf checkconfig.ConfigGetter, promreg prometheus.Registerer) *L
 	} else {
 		isv4 = false
 	}
-
-	syncLocalMetricsOnce.Do(func() {
-		localMetrics.Ok = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "local_check_up",
-		}, []string{"host", "ip_version"})
-		promreg.MustRegister(localMetrics.Ok)
-
-		localMetrics.LastCheck = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "local_check_time",
-		}, []string{"host", "ip_version"})
-		promreg.MustRegister(localMetrics.LastCheck)
-	})
 
 	return &LocalOK{
 		cfg:       cfg,
@@ -192,6 +177,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	}
 
 	results := make(chan bool)
+	hostResults := make(chan hostResult)
 
 	g, _ := errgroup.WithContext(ctx)
 
@@ -201,6 +187,35 @@ func (l *LocalOK) update(ctx context.Context) bool {
 				fails++
 			}
 		}
+		return nil
+	})
+
+	g.Go(func() error {
+		var allHostResults []hostResult
+		for hr := range hostResults {
+			allHostResults = append(allHostResults, hr)
+		}
+
+		// Update metrics at the end of the LocalOK run
+		if metrics.LocalCheckUp != nil && metrics.LocalCheckTime != nil {
+			for _, hr := range allHostResults {
+				upValue := int64(0)
+				if hr.ok {
+					upValue = 1
+				}
+
+				metrics.LocalCheckUp.Record(ctx, upValue,
+					metric.WithAttributes(
+						attribute.String("host", hr.name),
+						attribute.String("ip_version", ipVersion)))
+
+				metrics.LocalCheckTime.Record(ctx, hr.checkTime.Unix(),
+					metric.WithAttributes(
+						attribute.String("host", hr.name),
+						attribute.String("ip_version", ipVersion)))
+			}
+		}
+
 		return nil
 	})
 
@@ -218,34 +233,26 @@ func (l *LocalOK) update(ctx context.Context) bool {
 			}
 
 			go func(h namedIP) {
+				checkTime := time.Now()
 				ok, err := l.sanityCheckHost(ctx, cfg, h.Name, h.IP)
 				if err != nil {
 					log.WarnContext(ctx, "local-check failure", "server", h.Name, "ip", h.IP.String(), "err", err.Error())
 					span.RecordError(err)
 				}
 
-				localMetrics.LastCheck.WithLabelValues(h.Name, ipVersion).Set(float64(time.Now().Unix()))
-				m := localMetrics.Ok.WithLabelValues(h.Name, ipVersion)
-				if ok {
-					m.Set(1)
-				} else {
-					m.Set(0)
-				}
-
 				results <- ok
+				hostResults <- hostResult{
+					name:      h.Name,
+					ok:        ok,
+					checkTime: checkTime,
+				}
 				wg.Done()
 			}(h)
 		}
 
 		wg.Wait()
 		close(results)
-
-		for h, seen := range l.seenHosts {
-			if !seen {
-				localMetrics.Ok.DeleteLabelValues(h, ipVersion)
-				localMetrics.LastCheck.DeleteLabelValues(h, ipVersion)
-			}
-		}
+		close(hostResults)
 
 		return nil
 	})

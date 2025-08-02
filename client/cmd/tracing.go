@@ -8,8 +8,10 @@ import (
 
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/metrics"
 	"go.ntppool.org/common/tracing"
 	apitls "go.ntppool.org/monitor/api/tls"
+	clientmetrics "go.ntppool.org/monitor/client/metrics"
 )
 
 func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tlsAuth apitls.AuthProvider) (tracing.TpShutdownFunc, error) {
@@ -46,11 +48,32 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 		return nil, err
 	}
 
+	// Initialize OpenTelemetry metrics
+	if err := metrics.Setup(ctx); err != nil {
+		log := logger.FromContext(ctx)
+		log.WarnContext(ctx, "metrics setup failed", "err", err)
+		// Continue anyway - metrics are not critical for operation
+	}
+
+	// Initialize client-specific metric instruments
+	if err := clientmetrics.InitInstruments(); err != nil {
+		log := logger.FromContext(ctx)
+		log.WarnContext(ctx, "client metrics instruments setup failed", "err", err)
+		// Continue anyway - metrics are not critical for operation
+	}
+
 	return func(ctx context.Context) error {
 		log := logger.Setup()
-		log.Debug("shutting down trace provider")
+		log.Debug("shutting down trace and metrics providers")
 		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
+
+		// Shutdown metrics first
+		if err := metrics.Shutdown(shutdownCtx); err != nil {
+			log.WarnContext(shutdownCtx, "failed to shutdown metrics", "err", err)
+		}
+
+		// Then shutdown tracing
 		err := tpShutdownFn(shutdownCtx)
 		// log.Debug("trace provider shutdown", "err", err)
 		return err

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
@@ -76,7 +75,7 @@ type AppConfig interface {
 	load(ctx context.Context) error
 
 	// AppConfig manager for hot reloading
-	Manager(ctx context.Context, promreg prometheus.Registerer) error
+	Manager(ctx context.Context) error
 
 	// Configuration change notifications
 	WaitForConfigChange(ctx context.Context) *ConfigChangeWaiter
