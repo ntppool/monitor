@@ -26,6 +26,7 @@ builds:
     ldflags:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
+      - -X go.ntppool.org/common/version.buildTime={{.Timestamp}}
 
   - main: ./cmd/monitor-api/
     id: monitor-api
@@ -39,6 +40,7 @@ builds:
     ldflags:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
+      - -X go.ntppool.org/common/version.buildTime={{.Timestamp}}
 
   - main: ./cmd/monitor-scorer/
     id: monitor-scorer
@@ -51,6 +53,7 @@ builds:
     ldflags:
       - -s -w
       - -X go.ntppool.org/common/version.VERSION={{.Version}}
+      - -X go.ntppool.org/common/version.buildTime={{.Timestamp}}
 
 before:
   # Templates for the commands to be ran.
