@@ -606,7 +606,7 @@ func (sl *Selector) canPromoteToActive(
 
 	// Check constraints against active state specifically
 	violation := sl.checkConstraints(monitor, server, accountLimits, ntpdb.ServerScoresStatusActive, existingMonitors)
-	return violation.Type == violationNone || violation.IsGrandfathered
+	return violation.Type == violationNone
 }
 
 // canPromoteToTesting checks if a monitor can be promoted to testing status
@@ -630,7 +630,7 @@ func (sl *Selector) canPromoteToTesting(
 
 	// Check constraints against testing state specifically
 	violation := sl.checkConstraints(monitor, server, accountLimits, ntpdb.ServerScoresStatusTesting, existingMonitors)
-	return violation.Type == violationNone || violation.IsGrandfathered
+	return violation.Type == violationNone
 }
 
 // updateAccountLimitsForPromotion updates account limits after a monitor promotion

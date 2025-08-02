@@ -204,13 +204,8 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 			currentViolation = sl.checkNonAccountConstraints(&monitor, server, assignedMonitors, monitor.ServerStatus)
 		}
 
-		if currentViolation.Type != violationNone {
-			currentViolation.IsGrandfathered = sl.isGrandfathered(&monitor, server, currentViolation)
-
-			// Track grandfathered violations in metrics
-			if currentViolation.IsGrandfathered && sl.metrics != nil {
-				sl.metrics.TrackConstraintViolation(&monitor, currentViolation.Type, serverID, true)
-			}
+		if currentViolation.Type != violationNone && sl.metrics != nil {
+			sl.metrics.TrackConstraintViolation(&monitor, currentViolation.Type, serverID, false)
 		}
 
 		// Compute legacy recommendedState for backward compatibility

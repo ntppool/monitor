@@ -31,10 +31,9 @@ const (
 
 // constraintViolation describes a constraint violation
 type constraintViolation struct {
-	Type            constraintViolationType
-	Since           time.Time
-	IsGrandfathered bool
-	Details         string
+	Type    constraintViolationType
+	Since   time.Time
+	Details string
 }
 
 // monitorCandidate represents a monitor being evaluated for a server

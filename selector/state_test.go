@@ -104,20 +104,7 @@ func TestDetermineState(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			},
 			violation: constraintViolation{
-				Type:            violationNetworkSameSubnet,
-				IsGrandfathered: false,
-			},
-			want: candidateOut,
-		},
-		{
-			name: "active_monitor_with_grandfathered_violation_is_candidate_out",
-			monitor: monitorCandidate{
-				GlobalStatus: ntpdb.MonitorsStatusActive,
-				ServerStatus: ntpdb.ServerScoresStatusActive,
-			},
-			violation: constraintViolation{
-				Type:            violationLimit,
-				IsGrandfathered: true,
+				Type: violationNetworkSameSubnet,
 			},
 			want: candidateOut,
 		},

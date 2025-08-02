@@ -13,8 +13,7 @@ type Metrics struct {
 	StatusChanges *prometheus.CounterVec
 
 	// Constraint violation metrics
-	ConstraintViolations    *prometheus.CounterVec
-	GrandfatheredViolations *prometheus.GaugeVec
+	ConstraintViolations *prometheus.CounterVec
 
 	// Selection algorithm performance
 	ProcessDuration   *prometheus.HistogramVec
@@ -45,15 +44,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			prometheus.CounterOpts{
 				Name: "selector_constraint_violations_total",
 				Help: "Total number of constraint violations detected",
-			},
-			[]string{"monitor_id_token", "monitor_tls_name", "constraint_type", "server_id", "is_grandfathered"},
-		),
-
-		// Track grandfathered violations
-		GrandfatheredViolations: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "selector_grandfathered_violations",
-				Help: "Current number of grandfathered constraint violations",
 			},
 			[]string{"monitor_id_token", "monitor_tls_name", "constraint_type", "server_id"},
 		),
@@ -122,7 +112,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	reg.MustRegister(
 		m.StatusChanges,
 		m.ConstraintViolations,
-		m.GrandfatheredViolations,
 		m.ProcessDuration,
 		m.MonitorsEvaluated,
 		m.ChangesApplied,
@@ -186,18 +175,7 @@ func (m *Metrics) TrackConstraintViolation(
 		tlsName,
 		string(constraintType),
 		strconv.FormatUint(uint64(serverID), 10),
-		strconv.FormatBool(isGrandfathered),
 	).Inc()
-
-	// Track grandfathered violations separately
-	if isGrandfathered {
-		m.GrandfatheredViolations.WithLabelValues(
-			idToken,
-			tlsName,
-			string(constraintType),
-			strconv.FormatUint(uint64(serverID), 10),
-		).Inc()
-	}
 }
 
 // TrackMonitorPoolSizes updates monitor pool size metrics

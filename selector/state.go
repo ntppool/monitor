@@ -103,11 +103,6 @@ func (sl *Selector) determineState(
 
 	// STEP 3: Apply constraint validation (only for globally active/testing monitors)
 	if violation.Type != violationNone {
-		if violation.IsGrandfathered {
-			// Grandfathered violations get gradual removal
-			return candidateOut
-		}
-
 		// All constraint violations trigger gradual removal
 		return candidateOut
 	}

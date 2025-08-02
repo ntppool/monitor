@@ -101,8 +101,7 @@ func (sl *Selector) trackConstraintViolations(
 				sl.log.Debug("updated constraint violation",
 					"serverID", serverID,
 					"monitorID", monitor.ID,
-					"violationType", violation.Type,
-					"isGrandfathered", violation.IsGrandfathered)
+					"violationType", violation.Type)
 			}
 		}
 	}
