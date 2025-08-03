@@ -14,6 +14,11 @@ import (
 	sctx "go.ntppool.org/monitor/server/context"
 )
 
+const (
+	// Maximum reasonable JWT token size (3KB)
+	maxJWTTokenSize = 3072
+)
+
 // AuthMethod represents the authentication method used
 type AuthMethod string
 
@@ -64,6 +69,14 @@ func NewJWTAuthenticator(ctx context.Context, deploymentEnv depenv.DeploymentEnv
 func (j *JWTAuthenticator) ValidateToken(ctx context.Context, tokenString string) (*JWTClaims, error) {
 	log := logger.FromContext(ctx)
 
+	// Basic size validation before expensive parsing
+	if len(tokenString) > maxJWTTokenSize {
+		return nil, fmt.Errorf("token too large: %d bytes (max %d)", len(tokenString), maxJWTTokenSize)
+	}
+	if len(tokenString) == 0 {
+		return nil, errors.New("token is empty")
+	}
+
 	// Parse and validate the token
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, j.jwks.Keyfunc, jwt.WithValidMethods([]string{"ES384", "RS256"}))
 	if err != nil {
@@ -96,10 +109,17 @@ func (j *JWTAuthenticator) ValidateToken(ctx context.Context, tokenString string
 		return nil, errors.New("token missing required audience 'monitor-api'")
 	}
 
-	// Validate scope
-	if !strings.Contains(claims.Scope, "monitor:read") {
-		log.WarnContext(ctx, "JWT token missing required scope", "scope", claims.Scope)
-		return nil, errors.New("token missing required scope 'monitor:read'")
+	// Validate scope - must contain at least one valid monitor scope
+	hasValidScope := strings.Contains(claims.Scope, "monitor:read") || strings.Contains(claims.Scope, "monitor:data")
+	if !hasValidScope {
+		log.WarnContext(ctx, "JWT token missing valid monitor scope", "scope", claims.Scope)
+		return nil, errors.New("token missing valid monitor scope")
+	}
+
+	// Validate claims format
+	if err := validateJWTClaims(claims); err != nil {
+		log.WarnContext(ctx, "JWT token claims validation failed", "error", err.Error())
+		return nil, fmt.Errorf("invalid claims: %w", err)
 	}
 
 	log.DebugContext(ctx, "JWT token validation successful",
@@ -113,6 +133,25 @@ func (j *JWTAuthenticator) ValidateToken(ctx context.Context, tokenString string
 // Close closes the JWKS client
 func (j *JWTAuthenticator) Close() {
 	// keyfunc v3 handles cleanup automatically
+}
+
+// validateJWTClaims performs basic validation on JWT claims
+func validateJWTClaims(claims *JWTClaims) error {
+	// Validate Subject is not empty (required for identification)
+	if claims.Subject == "" {
+		return errors.New("subject claim is required")
+	}
+
+	if len(claims.Subject) > 128 {
+		return errors.New("subject too long (max 128 characters)")
+	}
+
+	// Validate Monitor field length if present
+	if len(claims.Monitor) > 64 {
+		return errors.New("monitor name too long (max 64 characters)")
+	}
+
+	return nil
 }
 
 // dualAuthMiddleware provides both JWT and mTLS authentication support
@@ -148,16 +187,23 @@ func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 				authHeader := r.Header.Get("Authorization")
 				jwtHeaderPresent := strings.HasPrefix(authHeader, "Bearer ")
 
-				log.DebugContext(ctx, "mTLS authentication successful",
+				log.DebugContext(ctx, "authentication successful",
+					"method", "mtls",
 					"certificate_name", name,
-					"jwt_header_ignored", jwtHeaderPresent)
+					"remote_addr", r.RemoteAddr,
+					"user_agent", r.UserAgent(),
+					"endpoint", r.URL.Path,
+					"jwt_header_present", jwtHeaderPresent)
 
 				r = r.WithContext(ctx)
 				next.ServeHTTP(w, r)
 				return
 			}
 			// Note: This case should be impossible given our security assumptions above
-			log.WarnContext(ctx, "TLS handshake succeeded but certificate validation failed in middleware")
+			log.WarnContext(ctx, "TLS handshake succeeded but certificate validation failed in middleware",
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.UserAgent(),
+				"endpoint", r.URL.Path)
 		}
 
 		// Fallback to JWT authentication if no client certificate was sent
@@ -168,7 +214,12 @@ func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 			if srv.jwtAuth != nil {
 				claims, err := srv.jwtAuth.ValidateToken(ctx, tokenString)
 				if err != nil {
-					log.WarnContext(ctx, "JWT authentication failed", "error", err.Error())
+					log.WarnContext(ctx, "authentication failed",
+						"method", "jwt",
+						"error", err.Error(),
+						"remote_addr", r.RemoteAddr,
+						"user_agent", r.UserAgent(),
+						"endpoint", r.URL.Path)
 					http.Error(w, "Invalid JWT token", http.StatusUnauthorized)
 					return
 				}
@@ -178,7 +229,13 @@ func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 				ctx = context.WithValue(ctx, sctx.JWTClaimsKey, claims)
 				ctx = context.WithValue(ctx, sctx.CertificateKey, claims.Subject)
 
-				log.DebugContext(ctx, "JWT authentication successful", "subject", claims.Subject)
+				log.DebugContext(ctx, "authentication successful",
+					"method", "jwt",
+					"subject", claims.Subject,
+					"monitor", claims.Monitor,
+					"remote_addr", r.RemoteAddr,
+					"user_agent", r.UserAgent(),
+					"endpoint", r.URL.Path)
 
 				r = r.WithContext(ctx)
 				next.ServeHTTP(w, r)
@@ -187,7 +244,10 @@ func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// No valid authentication method found
-		log.WarnContext(ctx, "no valid authentication method found")
+		log.WarnContext(ctx, "authentication required",
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+			"endpoint", r.URL.Path)
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
 	})
 }
