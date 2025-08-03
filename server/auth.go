@@ -116,12 +116,51 @@ func (j *JWTAuthenticator) Close() {
 }
 
 // dualAuthMiddleware provides both JWT and mTLS authentication support
+// mTLS takes precedence over JWT when both are present
 func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := logger.FromContext(ctx)
 
-		// Check for JWT authentication first
+		// SECURITY ASSUMPTION: If we reach this HTTP middleware AND the client
+		// sent certificates in r.TLS.PeerCertificates, it means:
+		// 1. The TLS handshake completed successfully
+		// 2. Our verifyClient callback was called and returned nil (success)
+		// 3. The certificates were validated against our CA pool
+		// 4. The certificates meet our DNS suffix requirements (.mon.ntppool.dev)
+		//
+		// This is because with RequestClientCert + VerifyPeerCertificate callback:
+		// - If verifyClient returns error → TLS handshake fails → no HTTP request
+		// - If verifyClient returns nil → TLS handshake succeeds → HTTP request proceeds
+
+		// Check for mTLS authentication first (takes precedence over JWT)
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			// Client sent certificate(s) and TLS handshake succeeded
+			// This proves our verifyClient callback validated them successfully
+
+			// Extract certificate identity (no need to re-validate, already done in TLS layer)
+			cert, name := srv.getVerifiedCertFromPeers(r.TLS.PeerCertificates)
+			if cert != nil && name != "" {
+				// Store mTLS authentication context
+				ctx = context.WithValue(ctx, sctx.AuthMethodKey, AuthMethodMTLS)
+				ctx = context.WithValue(ctx, sctx.CertificateKey, name)
+
+				authHeader := r.Header.Get("Authorization")
+				jwtHeaderPresent := strings.HasPrefix(authHeader, "Bearer ")
+
+				log.DebugContext(ctx, "mTLS authentication successful",
+					"certificate_name", name,
+					"jwt_header_ignored", jwtHeaderPresent)
+
+				r = r.WithContext(ctx)
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Note: This case should be impossible given our security assumptions above
+			log.WarnContext(ctx, "TLS handshake succeeded but certificate validation failed in middleware")
+		}
+
+		// Fallback to JWT authentication if no client certificate was sent
 		authHeader := r.Header.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
@@ -147,29 +186,9 @@ func (srv *Server) dualAuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Fallback to mTLS authentication
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			log.WarnContext(ctx, "no valid authentication method found")
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-
-		// Verify mTLS certificate
-		cert, name := srv.getVerifiedCert(r.TLS.VerifiedChains)
-		if cert == nil || name == "" {
-			log.WarnContext(ctx, "mTLS certificate verification failed")
-			http.Error(w, "Invalid client certificate", http.StatusUnauthorized)
-			return
-		}
-
-		// Store mTLS authentication context
-		ctx = context.WithValue(ctx, sctx.AuthMethodKey, AuthMethodMTLS)
-		ctx = context.WithValue(ctx, sctx.CertificateKey, name)
-
-		log.DebugContext(ctx, "mTLS authentication successful", "certificate_name", name)
-
-		r = r.WithContext(ctx)
-		next.ServeHTTP(w, r)
+		// No valid authentication method found
+		log.WarnContext(ctx, "no valid authentication method found")
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
 	})
 }
 

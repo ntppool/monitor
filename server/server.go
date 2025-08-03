@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -41,6 +42,7 @@ type Server struct {
 	db          ntpdb.QuerierTx
 	dbconn      *sql.DB
 	jwtAuth     *JWTAuthenticator
+	clientCAs   *x509.CertPool
 	shutdownFns []func(ctx context.Context) error
 }
 
@@ -135,6 +137,9 @@ func (srv *Server) Run() error {
 	if err != nil {
 		return err
 	}
+
+	// Store CA pool in server for certificate verification
+	srv.clientCAs = capool
 
 	tlsConfig := &tls.Config{
 		MinVersion:            tls.VersionTLS12,
