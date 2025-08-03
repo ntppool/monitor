@@ -1,4 +1,24 @@
-# NTP Pool Monitor v4.0.0 Changes
+# NTP Pool Monitor Changes
+
+## v4.0.2
+
+### Packaging Improvements
+- **RPM dependency alternatives**: Enabled dependency alternatives for RPM packages to improve installation compatibility
+- **APK dependency cleanup**: Removed unnecessary APK package dependencies for Alpine Linux builds
+
+### Debugging Features
+- **NTP query debugging**: Added `MONITOR_DEBUG_NTP_QUERIES` environment variable for detailed NTP query logging
+
+## v4.0.1
+
+### Bug Fixes
+- **Mutex crash fix**: Updated common package dependency to resolve critical mutex-related crashes
+- **Authentication fixes**: Improved dual mTLS/JWT authentication support with proper `RequestClientCert` handling
+
+### API Changes
+- **Legacy API blocking**: Twirp API now blocked for monitors who upgraded to v4.0.0 and newer
+
+## v4.0.0
 
 ## Breaking Changes
 
