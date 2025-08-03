@@ -48,6 +48,7 @@ type monitorCandidate struct {
 	HasMetrics               bool
 	IsHealthy                bool
 	RTT                      float64
+	Priority                 float64 // Database-calculated monitor priority (RTT + step accuracy)
 	ConstraintViolationType  *string
 	ConstraintViolationSince *time.Time
 }

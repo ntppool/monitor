@@ -159,6 +159,14 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 		}
 	}
 
+	// Priority (from database calculation)
+	candidate.Priority = row.MonitorPriority
+
+	// If priority is invalid (0 or negative), mark monitor as unhealthy
+	if candidate.Priority <= 0 {
+		candidate.IsHealthy = false
+	}
+
 	// Constraint violation
 	if row.ConstraintViolationType.Valid {
 		candidate.ConstraintViolationType = &row.ConstraintViolationType.String

@@ -28,6 +28,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5), // RTT 10, 15, 20, 25, 30, 35, 40
+				Priority:     float64(10 + i*5), // Priority matches RTT for consistency
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -44,6 +45,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          testingRTTs[i],
+				Priority:     testingRTTs[i], // Priority matches RTT for consistency
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -51,8 +53,9 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 		})
 	}
 
-	// 3 candidate monitors with better performance than some testing monitors
-	candidateRTTs := []float64{45, 55, 75} // Better than testing monitors 10, 11, and 12
+	// 3 candidate monitors with significantly better performance than some testing monitors
+	candidateRTTs := []float64{45, 55, 75}
+	candidatePriorities := []float64{25, 30, 35} // Significantly better than testing priorities 50, 60, 70
 	for i := 0; i < 3; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
@@ -60,6 +63,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          candidateRTTs[i],
+				Priority:     candidatePriorities[i], // 50%+ better than corresponding testing monitors
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -393,52 +397,68 @@ func TestCandidateOutperformsTestingMonitor(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		candidateHealthy bool
-		candidateRTT     float64
-		testingHealthy   bool
-		testingRTT       float64
-		expectedResult   bool
+		name              string
+		candidateHealthy  bool
+		candidatePriority float64
+		testingHealthy    bool
+		testingPriority   float64
+		expectedResult    bool
 	}{
 		{
-			name:             "healthy candidate vs unhealthy testing",
-			candidateHealthy: true,
-			candidateRTT:     100,
-			testingHealthy:   false,
-			testingRTT:       50,
-			expectedResult:   true, // Health trumps RTT
+			name:              "healthy candidate vs unhealthy testing",
+			candidateHealthy:  true,
+			candidatePriority: 100,
+			testingHealthy:    false,
+			testingPriority:   50,
+			expectedResult:    true, // Health trumps priority
 		},
 		{
-			name:             "unhealthy candidate vs healthy testing",
-			candidateHealthy: false,
-			candidateRTT:     50,
-			testingHealthy:   true,
-			testingRTT:       100,
-			expectedResult:   false, // Health trumps RTT
+			name:              "unhealthy candidate vs healthy testing",
+			candidateHealthy:  false,
+			candidatePriority: 50,
+			testingHealthy:    true,
+			testingPriority:   100,
+			expectedResult:    false, // Health trumps priority
 		},
 		{
-			name:             "both healthy, candidate better RTT",
-			candidateHealthy: true,
-			candidateRTT:     50,
-			testingHealthy:   true,
-			testingRTT:       100,
-			expectedResult:   true, // Lower RTT is better
+			name:              "both healthy, significant improvement",
+			candidateHealthy:  true,
+			candidatePriority: 50,
+			testingHealthy:    true,
+			testingPriority:   100,
+			expectedResult:    true, // 50% improvement and 50 point difference
 		},
 		{
-			name:             "both healthy, testing better RTT",
-			candidateHealthy: true,
-			candidateRTT:     100,
-			testingHealthy:   true,
-			testingRTT:       50,
-			expectedResult:   false, // Higher RTT is worse
+			name:              "both healthy, below percentage threshold",
+			candidateHealthy:  true,
+			candidatePriority: 96,
+			testingHealthy:    true,
+			testingPriority:   100,
+			expectedResult:    false, // Only 4% improvement
 		},
 		{
-			name:             "both healthy, equal RTT",
-			candidateHealthy: true,
-			candidateRTT:     50,
-			testingHealthy:   true,
-			testingRTT:       50,
-			expectedResult:   false, // Equal performance, no replacement
+			name:              "both healthy, below point threshold",
+			candidateHealthy:  true,
+			candidatePriority: 95,
+			testingHealthy:    true,
+			testingPriority:   99,
+			expectedResult:    false, // Only 4 point difference
+		},
+		{
+			name:              "both healthy, equal priority",
+			candidateHealthy:  true,
+			candidatePriority: 50,
+			testingHealthy:    true,
+			testingPriority:   50,
+			expectedResult:    false, // Equal performance, no replacement
+		},
+		{
+			name:              "both healthy, candidate worse",
+			candidateHealthy:  true,
+			candidatePriority: 100,
+			testingHealthy:    true,
+			testingPriority:   50,
+			expectedResult:    false, // Candidate is worse
 		},
 	}
 
@@ -447,17 +467,17 @@ func TestCandidateOutperformsTestingMonitor(t *testing.T) {
 			candidate := evaluatedMonitor{
 				monitor: monitorCandidate{
 					IsHealthy: tc.candidateHealthy,
-					RTT:       tc.candidateRTT,
+					Priority:  tc.candidatePriority,
 				},
 			}
 			testing := evaluatedMonitor{
 				monitor: monitorCandidate{
 					IsHealthy: tc.testingHealthy,
-					RTT:       tc.testingRTT,
+					Priority:  tc.testingPriority,
 				},
 			}
 
-			result := s.candidateOutperformsTestingMonitor(candidate, testing)
+			result := s.candidateOutperformsTestingMonitor(context.Background(), candidate, testing)
 			if result != tc.expectedResult {
 				t.Errorf("Expected %v, got %v", tc.expectedResult, result)
 			}

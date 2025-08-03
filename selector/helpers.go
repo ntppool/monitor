@@ -1,6 +1,9 @@
 package selector
 
 import (
+	"context"
+	"log/slog"
+
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -148,23 +151,47 @@ func createCandidateGroups(candidateMonitors []evaluatedMonitor) []candidateGrou
 	}
 }
 
-// candidateOutperformsTestingMonitor compares performance between a candidate and testing monitor
-// Returns true if the candidate is better performing than the testing monitor
-func (sl *Selector) candidateOutperformsTestingMonitor(candidate, testingMonitor evaluatedMonitor) bool {
+// monitorOutperformsMonitor compares performance between two monitors using the database-calculated priority
+// Returns true if the better monitor significantly outperforms the worse monitor
+func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse evaluatedMonitor) bool {
 	// First compare by health - healthy monitors are always better than unhealthy
-	if candidate.monitor.IsHealthy && !testingMonitor.monitor.IsHealthy {
+	if better.monitor.IsHealthy && !worse.monitor.IsHealthy {
+		sl.log.DebugContext(ctx, "monitor outperforms by health",
+			slog.Uint64("betterMonitorID", uint64(better.monitor.ID)),
+			slog.Bool("better_healthy", better.monitor.IsHealthy),
+			slog.Uint64("worseMonitorID", uint64(worse.monitor.ID)),
+			slog.Bool("worse_healthy", worse.monitor.IsHealthy),
+		)
 		return true
 	}
-	if !candidate.monitor.IsHealthy && testingMonitor.monitor.IsHealthy {
+	if !better.monitor.IsHealthy && worse.monitor.IsHealthy {
 		return false
 	}
 
-	// If health is equal, compare by RTT (lower is better)
-	// Note: This is a simplified comparison. The full priority calculation
-	// happens in the database and monitors are pre-sorted by performance.
-	// Since we don't have access to the calculated priority here, we use RTT
-	// as the primary performance indicator.
-	return candidate.monitor.RTT < testingMonitor.monitor.RTT
+	// Calculate performance improvement
+	priorityDiff := worse.monitor.Priority - better.monitor.Priority
+	percentImprovement := (priorityDiff / worse.monitor.Priority) * 100
+
+	// Require significant improvement: 5% AND at least 5 priority points
+	meetsThreshold := percentImprovement >= 5.0 && priorityDiff >= 5.0
+
+	sl.log.DebugContext(ctx, "evaluating monitor replacement",
+		slog.Uint64("betterMonitorID", uint64(better.monitor.ID)),
+		slog.Float64("better_priority", better.monitor.Priority),
+		slog.Uint64("worseMonitorID", uint64(worse.monitor.ID)),
+		slog.Float64("worse_priority", worse.monitor.Priority),
+		slog.Float64("priority_diff", priorityDiff),
+		slog.Float64("percent_improvement", percentImprovement),
+		slog.Bool("meets_threshold", meetsThreshold),
+	)
+
+	return meetsThreshold
+}
+
+// candidateOutperformsTestingMonitor compares performance between a candidate and testing monitor
+// Returns true if the candidate is better performing than the testing monitor
+func (sl *Selector) candidateOutperformsTestingMonitor(ctx context.Context, candidate, testingMonitor evaluatedMonitor) bool {
+	return sl.monitorOutperformsMonitor(ctx, candidate, testingMonitor)
 }
 
 // copyAccountLimits creates a deep copy of account limits map for testing scenarios

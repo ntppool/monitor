@@ -3,6 +3,7 @@ package selector
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -250,6 +251,7 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 	ctx context.Context,
 	selCtx selectionContext,
 	testingMonitors []evaluatedMonitor,
+	activeMonitors []evaluatedMonitor,
 	workingAccountLimits map[uint32]*accountLimit,
 	workingActiveCount int,
 	workingTestingCount int,
@@ -291,6 +293,25 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 				workingTestingCount += result.testingIncrement
 				promoted++
 			}
+		}
+	}
+
+	// Phase 2: Performance-based replacement (new logic)
+	remainingBudget := selCtx.limits.promotions - len(changes)
+	if remainingBudget > 0 && len(testingMonitors) > 0 && len(activeMonitors) > 0 {
+		replacementChanges := sl.attemptActiveReplacements(
+			ctx, selCtx, testingMonitors, activeMonitors,
+			workingAccountLimits, remainingBudget,
+		)
+		changes = append(changes, replacementChanges...)
+
+		// Log Phase 2 results
+		if len(replacementChanges) > 0 {
+			sl.log.InfoContext(ctx, "rule 3 phase 2 complete",
+				slog.Uint64("serverID", uint64(selCtx.server.ID)),
+				slog.Int("swaps", len(replacementChanges)/2),
+				slog.Int("total_changes", len(changes)),
+			)
 		}
 	}
 
@@ -760,7 +781,7 @@ func (sl *Selector) applySelectionRules(
 	state.testingCount = rule1_5Result.testingCount
 
 	// Rule 3 (Testing to Active Promotion): Promote from testing to active
-	rule3Result := sl.applyRule3TestingToActivePromotion(ctx, selCtx, testingMonitors, workingAccountLimits, state.activeCount, state.testingCount)
+	rule3Result := sl.applyRule3TestingToActivePromotion(ctx, selCtx, testingMonitors, activeMonitors, workingAccountLimits, state.activeCount, state.testingCount)
 	allChanges = append(allChanges, rule3Result.changes...)
 	state.activeCount = rule3Result.activeCount
 	state.testingCount = rule3Result.testingCount
@@ -1017,7 +1038,7 @@ func (sl *Selector) attemptTestingReplacements(
 				// Since monitors are sorted by performance, if candidate is at position X in candidates
 				// and testing monitor is at position Y in testing, we can only replace if candidate
 				// outperforms the testing monitor (appears earlier in the combined sorted order)
-				if !sl.candidateOutperformsTestingMonitor(candidate, testingMonitor) {
+				if !sl.candidateOutperformsTestingMonitor(ctx, candidate, testingMonitor) {
 					continue
 				}
 
@@ -1060,6 +1081,151 @@ func (sl *Selector) attemptTestingReplacements(
 					break // Move to next candidate
 				}
 			}
+		}
+	}
+
+	return changes
+}
+
+// attemptActiveReplacements compares testing monitors with existing active monitors
+// and replaces worse-performing active monitors with better testing monitors
+func (sl *Selector) attemptActiveReplacements(
+	ctx context.Context,
+	selCtx selectionContext,
+	testingMonitors []evaluatedMonitor,
+	activeMonitors []evaluatedMonitor,
+	workingAccountLimits map[uint32]*accountLimit,
+	changesRemaining int,
+) []statusChange {
+	var changes []statusChange
+	replacements := 0
+
+	// Log entry
+	sl.log.InfoContext(ctx, "attempting active-testing replacements",
+		slog.Uint64("serverID", uint64(selCtx.server.ID)),
+		slog.Int("testing_count", len(testingMonitors)),
+		slog.Int("active_count", len(activeMonitors)),
+		slog.Int("budget", changesRemaining),
+	)
+
+	// Only consider healthy active monitors for replacement (not ones with violations)
+	eligibleActiveMonitors := make([]evaluatedMonitor, 0)
+	for _, em := range activeMonitors {
+		if em.recommendedState != candidateOut &&
+			(em.currentViolation == nil || em.currentViolation.Type == violationNone) {
+			eligibleActiveMonitors = append(eligibleActiveMonitors, em)
+		}
+	}
+
+	if len(eligibleActiveMonitors) == 0 {
+		sl.log.DebugContext(ctx, "no eligible active monitors for replacement")
+		return changes
+	}
+
+	// Only consider globally active or testing monitors (not candidates)
+	eligibleTestingMonitors := make([]evaluatedMonitor, 0)
+	for _, em := range testingMonitors {
+		if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
+			eligibleTestingMonitors = append(eligibleTestingMonitors, em)
+		}
+	}
+
+	if len(eligibleTestingMonitors) == 0 {
+		sl.log.DebugContext(ctx, "no eligible testing monitors for replacement")
+		return changes
+	}
+
+	// Try each testing monitor (they are pre-sorted by performance, best first)
+	for _, testingMonitor := range eligibleTestingMonitors {
+		if replacements*2 >= changesRemaining {
+			sl.log.DebugContext(ctx, "active replacement budget exhausted",
+				slog.Int("replacements", replacements),
+				slog.Int("budget_used", replacements*2),
+			)
+			break
+		}
+
+		// Find worst active monitor that testing outperforms
+		var targetActive *evaluatedMonitor
+		var targetIdx int
+
+		for idx, activeMonitor := range eligibleActiveMonitors {
+			if sl.monitorOutperformsMonitor(ctx, testingMonitor, activeMonitor) {
+				if targetActive == nil || activeMonitor.monitor.Priority > targetActive.monitor.Priority {
+					targetActive = &activeMonitor
+					targetIdx = idx
+				}
+			}
+		}
+
+		if targetActive == nil {
+			continue
+		}
+
+		// Log consideration
+		sl.log.InfoContext(ctx, "considering active-testing swap",
+			slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
+			slog.Float64("testing_priority", testingMonitor.monitor.Priority),
+			slog.Uint64("activeMonitorID", uint64(targetActive.monitor.ID)),
+			slog.Float64("active_priority", targetActive.monitor.Priority),
+		)
+
+		// Create a temporary copy of working limits to test the replacement
+		tempWorkingLimits := sl.copyAccountLimits(workingAccountLimits)
+
+		// Apply the demotion to temp limits (active -> testing)
+		sl.updateAccountLimitsForPromotion(tempWorkingLimits, &targetActive.monitor,
+			ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting)
+
+		// Now test if the testing monitor can be promoted with the updated limits
+		testingReq := promotionRequest{
+			monitor:           &testingMonitor.monitor,
+			server:            selCtx.server,
+			workingLimits:     tempWorkingLimits,
+			assignedMonitors:  selCtx.assignedMonitors,
+			emergencyOverride: selCtx.emergencyOverride,
+			fromStatus:        ntpdb.ServerScoresStatusTesting,
+			toStatus:          ntpdb.ServerScoresStatusActive,
+			baseReason:        "active-testing swap (promote)",
+			emergencyReason:   getEmergencyReason("active-testing swap (promote)", ntpdb.ServerScoresStatusActive, false),
+		}
+
+		if promotionResult := sl.attemptPromotion(testingReq); promotionResult.success {
+			// Both moves are valid - perform the replacement
+			changes = append(changes, statusChange{
+				monitorID:  targetActive.monitor.ID,
+				fromStatus: ntpdb.ServerScoresStatusActive,
+				toStatus:   ntpdb.ServerScoresStatusTesting,
+				reason:     "active-testing swap (demote)",
+			})
+			changes = append(changes, statusChange{
+				monitorID:  testingMonitor.monitor.ID,
+				fromStatus: ntpdb.ServerScoresStatusTesting,
+				toStatus:   ntpdb.ServerScoresStatusActive,
+				reason:     "active-testing swap (promote)",
+			})
+
+			// Update working limits for future iterations
+			sl.updateAccountLimitsForPromotion(workingAccountLimits, &targetActive.monitor,
+				ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting)
+			sl.updateAccountLimitsForPromotion(workingAccountLimits, &testingMonitor.monitor,
+				ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive)
+
+			// Remove the replaced active monitor from eligible list
+			eligibleActiveMonitors = append(eligibleActiveMonitors[:targetIdx], eligibleActiveMonitors[targetIdx+1:]...)
+			replacements++
+
+			sl.log.InfoContext(ctx, "planned active-testing swap",
+				slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
+				slog.Uint64("activeMonitorID", uint64(targetActive.monitor.ID)),
+				slog.Float64("priority_improvement", targetActive.monitor.Priority-testingMonitor.monitor.Priority),
+			)
+
+			break // Move to next testing monitor
+		} else {
+			sl.log.DebugContext(ctx, "active-testing swap blocked by constraints",
+				slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
+			)
 		}
 	}
 
