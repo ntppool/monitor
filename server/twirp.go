@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/netip"
 
+	"github.com/twitchtv/twirp"
+	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/api/pb"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
@@ -24,7 +26,24 @@ func NewTwServer(srv *Server) *TwServer {
 	return &TwServer{srv: srv}
 }
 
+func (s *TwServer) checkTwirpVersionBlocking(ctx context.Context) error {
+	monitor, _, _, err := s.srv.getMonitor(ctx, "")
+	if err != nil {
+		return err
+	}
+
+	if version.CheckVersion(monitor.ClientVersion, "v4.0.0") {
+		return twirp.PermissionDenied.Error("This monitor has used ntppool-agent >= 4.0.0. Please disable ntppool-monitor and use ntppool-agent")
+	}
+
+	return nil
+}
+
 func (s *TwServer) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.Config, error) {
+	if err := s.checkTwirpVersionBlocking(ctx); err != nil {
+		return nil, err
+	}
+
 	cfg, err := s.srv.GetConfig(ctx, "")
 	if err != nil {
 		return nil, err
@@ -33,6 +52,10 @@ func (s *TwServer) GetConfig(ctx context.Context, in *pb.GetConfigParams) (*pb.C
 }
 
 func (s *TwServer) GetServers(ctx context.Context, in *pb.GetServersParams) (*pb.ServerList, error) {
+	if err := s.checkTwirpVersionBlocking(ctx); err != nil {
+		return nil, err
+	}
+
 	serverList, err := s.srv.GetServers(ctx, "")
 	if err != nil {
 		return nil, err

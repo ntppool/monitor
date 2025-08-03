@@ -326,12 +326,17 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	return list, nil
 }
 
-func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) error {
-	ua := ctx.Value(sctx.ClientVersionKey).(string)
-
+func parseClientVersion(ua string) string {
 	ua = strings.TrimPrefix(ua, "ntppool-monitor/")
 	ua = strings.TrimPrefix(ua, "ntpmon/")
 	ua = strings.TrimPrefix(ua, "ntppool-agent/")
+	return ua
+}
+
+func (srv *Server) updateUserAgent(ctx context.Context, mon *ntpdb.Monitor) error {
+	ua := ctx.Value(sctx.ClientVersionKey).(string)
+
+	ua = parseClientVersion(ua)
 
 	if ua != mon.ClientVersion {
 		if err := srv.db.UpdateMonitorVersion(ctx, ntpdb.UpdateMonitorVersionParams{
