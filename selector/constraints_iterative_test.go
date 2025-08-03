@@ -21,7 +21,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 	}
 
 	// Helper to create monitor row
-	createMonitor := func(id uint32, accountID uint32, status ntpdb.ServerScoresStatus, priority float64, limit int) ntpdb.GetMonitorPriorityRow {
+	createMonitor := func(id uint32, accountID uint32, status ntpdb.ServerScoresStatus, priority int32, limit int) ntpdb.GetMonitorPriorityRow {
 		return ntpdb.GetMonitorPriorityRow{
 			ID:              id,
 			AccountID:       sql.NullInt32{Int32: int32(accountID), Valid: true},
@@ -40,9 +40,9 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 		{
 			name: "no_violations_under_limit",
 			monitors: []ntpdb.GetMonitorPriorityRow{
-				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10.0, 2),  // account 100, active, priority 10
-				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20.0, 2),  // account 100, active, priority 20
-				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30.0, 2), // account 100, testing, priority 30
+				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10, 2),  // account 100, active, priority 10
+				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2),  // account 100, active, priority 20
+				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30, 2), // account 100, testing, priority 30
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: false,
@@ -51,9 +51,9 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 		{
 			name: "active_monitors_exceed_limit_worst_performer_flagged",
 			monitors: []ntpdb.GetMonitorPriorityRow{
-				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10.0, 2), // account 100, active, priority 10 (best)
-				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20.0, 2), // account 100, active, priority 20 (middle)
-				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30.0, 2), // account 100, active, priority 30 (worst) - should be flagged
+				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10, 2), // account 100, active, priority 10 (best)
+				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2), // account 100, active, priority 20 (middle)
+				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30, 2), // account 100, active, priority 30 (worst) - should be flagged
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: true,
@@ -62,10 +62,10 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 		{
 			name: "testing_monitors_exceed_limit_worst_performer_flagged",
 			monitors: []ntpdb.GetMonitorPriorityRow{
-				createMonitor(1, 100, ntpdb.ServerScoresStatusTesting, 10.0, 2), // account 100, testing, priority 10 (best)
-				createMonitor(2, 100, ntpdb.ServerScoresStatusTesting, 20.0, 2), // account 100, testing, priority 20 (middle)
-				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30.0, 2), // account 100, testing, priority 30 (middle)
-				createMonitor(4, 100, ntpdb.ServerScoresStatusTesting, 40.0, 2), // account 100, testing, priority 40 (worst) - should be flagged
+				createMonitor(1, 100, ntpdb.ServerScoresStatusTesting, 10, 2), // account 100, testing, priority 10 (best)
+				createMonitor(2, 100, ntpdb.ServerScoresStatusTesting, 20, 2), // account 100, testing, priority 20 (middle)
+				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30, 2), // account 100, testing, priority 30 (middle)
+				createMonitor(4, 100, ntpdb.ServerScoresStatusTesting, 40, 2), // account 100, testing, priority 40 (worst) - should be flagged
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: false, 4: true,
@@ -75,12 +75,12 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 			name: "separate_limits_per_category",
 			monitors: []ntpdb.GetMonitorPriorityRow{
 				// Account 100 - 3 active (limit 2) + 3 testing (limit 3)
-				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10.0, 2),  // active, best - keep
-				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20.0, 2),  // active, middle - keep
-				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30.0, 2),  // active, worst - flag
-				createMonitor(4, 100, ntpdb.ServerScoresStatusTesting, 15.0, 2), // testing, best - keep
-				createMonitor(5, 100, ntpdb.ServerScoresStatusTesting, 25.0, 2), // testing, middle - keep
-				createMonitor(6, 100, ntpdb.ServerScoresStatusTesting, 35.0, 2), // testing, worst - keep (under testing limit of 3)
+				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10, 2),  // active, best - keep
+				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2),  // active, middle - keep
+				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30, 2),  // active, worst - flag
+				createMonitor(4, 100, ntpdb.ServerScoresStatusTesting, 15, 2), // testing, best - keep
+				createMonitor(5, 100, ntpdb.ServerScoresStatusTesting, 25, 2), // testing, middle - keep
+				createMonitor(6, 100, ntpdb.ServerScoresStatusTesting, 35, 2), // testing, worst - keep (under testing limit of 3)
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: true, // only worst active flagged
@@ -90,11 +90,11 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 		{
 			name: "candidates_are_exempt",
 			monitors: []ntpdb.GetMonitorPriorityRow{
-				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10.0, 2),    // active
-				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20.0, 2),    // active
-				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30.0, 2),    // active - should be flagged
-				createMonitor(4, 100, ntpdb.ServerScoresStatusCandidate, 40.0, 2), // candidate - exempt
-				createMonitor(5, 100, ntpdb.ServerScoresStatusCandidate, 50.0, 2), // candidate - exempt
+				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10, 2),    // active
+				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2),    // active
+				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30, 2),    // active - should be flagged
+				createMonitor(4, 100, ntpdb.ServerScoresStatusCandidate, 40, 2), // candidate - exempt
+				createMonitor(5, 100, ntpdb.ServerScoresStatusCandidate, 50, 2), // candidate - exempt
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: true, // worst active flagged
@@ -105,12 +105,12 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 			name: "multiple_accounts_separate_limits",
 			monitors: []ntpdb.GetMonitorPriorityRow{
 				// Account 100 - 3 active (limit 2)
-				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10.0, 2), // account 100, keep
-				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20.0, 2), // account 100, keep
-				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30.0, 2), // account 100, flag
+				createMonitor(1, 100, ntpdb.ServerScoresStatusActive, 10, 2), // account 100, keep
+				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2), // account 100, keep
+				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30, 2), // account 100, flag
 				// Account 200 - 2 active (limit 2)
-				createMonitor(4, 200, ntpdb.ServerScoresStatusActive, 15.0, 2), // account 200, keep
-				createMonitor(5, 200, ntpdb.ServerScoresStatusActive, 25.0, 2), // account 200, keep
+				createMonitor(4, 200, ntpdb.ServerScoresStatusActive, 15, 2), // account 200, keep
+				createMonitor(5, 200, ntpdb.ServerScoresStatusActive, 25, 2), // account 200, keep
 			},
 			expectedViolations: map[uint32]bool{
 				1: false, 2: false, 3: true, // only account 100's worst flagged
@@ -172,7 +172,7 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 				ID:              1,
 				AccountID:       sql.NullInt32{Valid: false}, // no account
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
-				MonitorPriority: 10.0,
+				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
 			},
 		}
@@ -188,7 +188,7 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 				ID:              1,
 				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{Valid: false}, // no status
-				MonitorPriority: 10.0,
+				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
 			},
 		}
@@ -204,21 +204,21 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 				ID:              1,
 				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
-				MonitorPriority: 10.0,
+				MonitorPriority: 10,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              2,
 				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
-				MonitorPriority: 20.0,
+				MonitorPriority: 20,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              3,
 				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
-				MonitorPriority: 30.0,
+				MonitorPriority: 30,
 				AccountFlags:    nil, // no flags
 			},
 		}

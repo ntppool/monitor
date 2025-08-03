@@ -395,7 +395,7 @@ func (sl *Selector) checkAccountConstraintsIterative(
 	// Group monitors by account and category
 	type monitorInfo struct {
 		row      ntpdb.GetMonitorPriorityRow
-		priority float64
+		priority int32
 	}
 
 	accountGroups := make(map[uint32]map[ntpdb.ServerScoresStatus][]monitorInfo)

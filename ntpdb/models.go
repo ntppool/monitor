@@ -147,6 +147,7 @@ const (
 	ServerScoresStatusCandidate ServerScoresStatus = "candidate"
 	ServerScoresStatusTesting   ServerScoresStatus = "testing"
 	ServerScoresStatusActive    ServerScoresStatus = "active"
+	ServerScoresStatusPaused    ServerScoresStatus = "paused"
 )
 
 func (e *ServerScoresStatus) Scan(src interface{}) error {

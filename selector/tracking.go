@@ -160,7 +160,7 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	}
 
 	// Priority (from database calculation)
-	candidate.Priority = row.MonitorPriority
+	candidate.Priority = int(row.MonitorPriority)
 
 	// Count (number of data points)
 	candidate.Count = row.Count

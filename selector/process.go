@@ -1121,9 +1121,9 @@ func (sl *Selector) attemptPerformanceReplacement(
 			// Log consideration
 			sl.log.InfoContext(ctx, "considering performance-based swap",
 				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
-				slog.Float64("replacer_priority", replacerMonitor.monitor.Priority),
+				slog.Int("replacer_priority", replacerMonitor.monitor.Priority),
 				slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
-				slog.Float64("target_priority", targetMonitor.monitor.Priority),
+				slog.Int("target_priority", targetMonitor.monitor.Priority),
 				slog.String("replacement_type", logContext),
 			)
 
@@ -1204,7 +1204,7 @@ func (sl *Selector) attemptPerformanceReplacement(
 				sl.log.InfoContext(ctx, "planned performance-based swap",
 					slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
 					slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
-					slog.Float64("priority_improvement", targetMonitor.monitor.Priority-replacerMonitor.monitor.Priority),
+					slog.Int("priority_improvement", targetMonitor.monitor.Priority-replacerMonitor.monitor.Priority),
 				)
 
 				break // Move to next target monitor

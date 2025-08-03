@@ -491,7 +491,7 @@ CREATE TABLE `server_scores` (
   `score_ts` datetime DEFAULT NULL,
   `score_raw` double NOT NULL DEFAULT '0',
   `stratum` tinyint unsigned DEFAULT NULL,
-  `status` enum('candidate','testing','active') NOT NULL DEFAULT 'candidate',
+  `status` enum('candidate','testing','active','paused') NOT NULL DEFAULT 'candidate',
   `queue_ts` datetime DEFAULT NULL,
   `created_on` datetime NOT NULL,
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

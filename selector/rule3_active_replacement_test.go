@@ -21,7 +21,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	var evaluatedMonitors []evaluatedMonitor
 
 	// 7 active monitors with varying performance (some poor performers)
-	activePriorities := []float64{10, 15, 20, 25, 30, 100, 120} // Last two are poor performers
+	activePriorities := []int{10, 15, 20, 25, 30, 100, 120} // Last two are poor performers
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
@@ -37,7 +37,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	}
 
 	// 5 testing monitors with some excellent performers
-	testingPriorities := []float64{40, 45, 50, 55, 60} // First two are much better than worst active
+	testingPriorities := []int{40, 45, 50, 55, 60} // First two are much better than worst active
 	for i := 0; i < 5; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
@@ -78,7 +78,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 
 	t.Logf("Scenario: %d active, %d testing", len(activeMonitors), len(testingMonitors))
 	for i, em := range evaluatedMonitors {
-		t.Logf("Monitor %d: ID=%d, Status=%s, Priority=%.1f",
+		t.Logf("Monitor %d: ID=%d, Status=%s, Priority=%d",
 			i, em.monitor.ID, em.monitor.ServerStatus, em.monitor.Priority)
 	}
 

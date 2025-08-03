@@ -28,7 +28,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5), // RTT 10, 15, 20, 25, 30, 35, 40
-				Priority:     float64(10 + i*5), // Priority matches RTT for consistency
+				Priority:     int(10 + i*5),     // Priority matches RTT for consistency
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -45,7 +45,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          testingRTTs[i],
-				Priority:     testingRTTs[i], // Priority matches RTT for consistency
+				Priority:     int(testingRTTs[i]), // Priority matches RTT for consistency
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -55,7 +55,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 
 	// 3 candidate monitors with significantly better performance than some testing monitors
 	candidateRTTs := []float64{45, 55, 75}
-	candidatePriorities := []float64{25, 30, 35} // Significantly better than testing priorities 50, 60, 70
+	candidatePriorities := []int{25, 30, 35} // Significantly better than testing priorities 50, 60, 70
 	for i := 0; i < 3; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
@@ -358,6 +358,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 			ServerStatus: ntpdb.ServerScoresStatusCandidate,
 			GlobalStatus: ntpdb.MonitorsStatusActive,
 			RTT:          30, // Better than testing monitors but same account
+			Priority:     30, // Priority matches RTT
 			IsHealthy:    true,
 		},
 		recommendedState: candidateIn,
@@ -401,9 +402,9 @@ func TestCandidateOutperformsTestingMonitor(t *testing.T) {
 	tests := []struct {
 		name              string
 		candidateHealthy  bool
-		candidatePriority float64
+		candidatePriority int
 		testingHealthy    bool
-		testingPriority   float64
+		testingPriority   int
 		expectedResult    bool
 	}{
 		{
