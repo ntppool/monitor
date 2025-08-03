@@ -101,8 +101,7 @@ nfpms:
       - deb
       - rpm
       - apk
-    dependencies:
-      - chrony
+    # No global dependencies - each format specifies its own
     bindir: /usr/bin
 
     overrides:
@@ -111,10 +110,14 @@ nfpms:
           - "ntp | chrony | ntpsec | ntpd-rs"
 
       rpm:
-        # this is supposed to work, but I couldn't figure it out.
-        # so, ... chrony only on redhat flavors for now.
-        #dependencies:
-        #  - (ntp or chrony)
+        dependencies:
+          - "(ntp or chrony or ntpsec or ntpd-rs)"
+
+      apk:
+        # Alpine Linux doesn't have a virtual package for NTP services like
+        # "ntp-daemon" that multiple implementations can provide. Users should
+        # manually install one of: chrony, openntpd, ntpsec, or ntpd-rs
+        dependencies: []
 
     contents:
       - src: "scripts/ntppool-agent@.service"
