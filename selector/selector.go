@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -18,8 +19,9 @@ import (
 
 // Cmd provides the command structure for CLI integration
 type Cmd struct {
-	Server ServerCmd `cmd:"server" help:"run continously"`
-	Run    OnceCmd   `cmd:"once" help:"run once"`
+	Server   ServerCmd   `cmd:"server" help:"run continously"`
+	Run      OnceCmd     `cmd:"once" help:"run once"`
+	Simulate SimulateCmd `cmd:"simulate" help:"simulate monitor selection for a server"`
 }
 
 type (
@@ -29,6 +31,10 @@ type (
 	OnceCmd struct {
 		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
+	SimulateCmd struct {
+		ServerID uint32 `arg:"" help:"Server ID to simulate selection for"`
+		Verbose  bool   `flag:"verbose" short:"v" help:"Enable verbose debug logging"`
+	}
 )
 
 func (cmd ServerCmd) Run(ctx context.Context) error {
@@ -37,6 +43,69 @@ func (cmd ServerCmd) Run(ctx context.Context) error {
 
 func (cmd OnceCmd) Run(ctx context.Context) error {
 	return Run(ctx, false, cmd.MetricsPort)
+}
+
+func (cmd SimulateCmd) Run(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
+	// Set debug level if verbose is enabled
+	if cmd.Verbose {
+		// Create a new logger with debug level
+		debugHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
+		log = slog.New(debugHandler)
+		ctx = logger.NewContext(ctx, log)
+	}
+
+	log.InfoContext(ctx, "starting selector simulation",
+		"serverID", cmd.ServerID,
+		"verbose", cmd.Verbose)
+
+	// Open database connection
+	dbconn, err := ntpdb.OpenDB()
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer dbconn.Close()
+
+	// Create selector instance without metrics (nil)
+	sl, err := NewSelector(ctx, dbconn, log, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create selector: %w", err)
+	}
+
+	// Run simulation within read-only transaction
+	db := ntpdb.New(dbconn)
+
+	// Create a transaction and explicitly roll it back for simulation
+	tx, err := dbconn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Always rollback for simulation
+
+	txDB := db.WithTx(tx)
+
+	log.InfoContext(ctx, "simulating server processing", "serverID", cmd.ServerID)
+
+	// Call the existing processServer method
+	changed, err := sl.ProcessServerSimulation(ctx, txDB, cmd.ServerID)
+	if err != nil {
+		return fmt.Errorf("simulation failed: %w", err)
+	}
+
+	log.InfoContext(ctx, "simulation completed",
+		"serverID", cmd.ServerID,
+		"wouldHaveChanged", changed)
+
+	if changed {
+		fmt.Printf("✓ Simulation complete: Changes would be applied for server %d\n", cmd.ServerID)
+	} else {
+		fmt.Printf("✓ Simulation complete: No changes needed for server %d\n", cmd.ServerID)
+	}
+
+	return nil
 }
 
 // Run executes the selector logic either continuously or once
@@ -157,6 +226,11 @@ func (sl *Selector) Run() (int, error) {
 	}
 
 	return count, nil
+}
+
+// ProcessServerSimulation runs the selection algorithm for a single server in simulation mode
+func (sl *Selector) ProcessServerSimulation(ctx context.Context, db ntpdb.QuerierTx, serverID uint32) (bool, error) {
+	return sl.processServer(ctx, db, serverID)
 }
 
 func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID uint32) (bool, error) {
