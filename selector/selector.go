@@ -29,7 +29,8 @@ type (
 		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	OnceCmd struct {
-		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		ServerID    *uint32 `arg:"" optional:"" help:"Server ID to process (if not specified, processes all servers)"`
+		MetricsPort int     `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	SimulateCmd struct {
 		ServerID uint32 `arg:"" help:"Server ID to simulate selection for"`
@@ -38,11 +39,11 @@ type (
 )
 
 func (cmd ServerCmd) Run(ctx context.Context) error {
-	return Run(ctx, true, cmd.MetricsPort)
+	return Run(ctx, true, cmd.MetricsPort, nil)
 }
 
 func (cmd OnceCmd) Run(ctx context.Context) error {
-	return Run(ctx, false, cmd.MetricsPort)
+	return Run(ctx, false, cmd.MetricsPort, cmd.ServerID)
 }
 
 func (cmd SimulateCmd) Run(ctx context.Context) error {
@@ -109,7 +110,7 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 }
 
 // Run executes the selector logic either continuously or once
-func Run(ctx context.Context, continuous bool, metricsPort int) error {
+func Run(ctx context.Context, continuous bool, metricsPort int, serverID *uint32) error {
 	log := logger.FromContext(ctx)
 
 	log.InfoContext(ctx, "selector starting", "version", version.Version())
@@ -139,6 +140,52 @@ func Run(ctx context.Context, continuous bool, metricsPort int) error {
 	expback := backoff.NewExponentialBackOff()
 	expback.InitialInterval = time.Second * 3
 	expback.MaxInterval = time.Second * 60
+
+	// Handle single server processing
+	if serverID != nil {
+		log.InfoContext(ctx, "processing single server", "serverID", *serverID)
+
+		db := ntpdb.New(sl.dbconn)
+		var changed bool
+		err := database.WithTransaction(ctx, db, func(ctx context.Context, db ntpdb.QuerierTx) error {
+			var err error
+			changed, err = sl.processServer(ctx, db, *serverID)
+			if err != nil {
+				return fmt.Errorf("failed to process server %d: %w", *serverID, err)
+			}
+
+			// Update review timestamp like the main Run() method does
+			if changed {
+				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
+					ServerID:   *serverID,
+					NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
+				})
+				if err != nil {
+					return err
+				}
+			} else {
+				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
+					ServerID:   *serverID,
+					NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
+				})
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		if changed {
+			log.InfoContext(ctx, "server processing completed with changes", "serverID", *serverID)
+		} else {
+			log.InfoContext(ctx, "server processing completed without changes", "serverID", *serverID)
+		}
+		return nil
+	}
 
 	for {
 
