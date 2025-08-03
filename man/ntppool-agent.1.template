@@ -88,6 +88,9 @@ Directory for storing persistent state and configuration files. Equivalent to th
 .B MONITOR_DEBUG
 Enable debug logging when set to "true". Equivalent to the \-\-debug flag.
 .TP
+.B MONITOR_DEBUG_NTP_QUERIES
+Enable verbose NTP query debug logging when set to "true". Shows detailed information for each NTP query including RTT, offset, and error details.
+.TP
 .B DEVEL_API_SERVER
 Override the default API server endpoint (development use only).
 .SH FILES

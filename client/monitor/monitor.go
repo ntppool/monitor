@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +24,18 @@ import (
 	"go.ntppool.org/monitor/client/metrics"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
+
+var (
+	debugNTPQueries     bool
+	debugNTPQueriesOnce sync.Once
+)
+
+func isNTPQueryDebugEnabled() bool {
+	debugNTPQueriesOnce.Do(func() {
+		debugNTPQueries = os.Getenv("MONITOR_DEBUG_NTP_QUERIES") == "true"
+	})
+	return debugNTPQueries
+}
 
 type response struct {
 	Response *ntp.Response
@@ -144,14 +158,18 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 			responses = append(responses, r)
 
 			// span.RecordError(err) // errors are expected, so don't consider them such
-			log.DebugContext(ctx, "ntp query error", "host", ip.String(), "iteration", i, "error", err)
+			if isNTPQueryDebugEnabled() {
+				log.DebugContext(ctx, "ntp query error", "host", ip.String(), "iteration", i, "error", err)
+			}
 
 			continue
 		}
 
 		status := ntpResponseToApiStatus(ip, resp)
 
-		log.DebugContext(ctx, "ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
+		if isNTPQueryDebugEnabled() {
+			log.DebugContext(ctx, "ntp query", "host", ip.String(), "iteration", i, "rtt", resp.RTT.String(), "offset", resp.ClockOffset, "error", err)
+		}
 
 		// if we get an explicit bad response in any of the samples, we error out
 		if resp.Stratum == 0 || resp.Stratum == 16 {
