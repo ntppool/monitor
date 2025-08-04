@@ -356,9 +356,26 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 		dynamicTestingTarget := baseTestingTarget + activeGap
 		testingCapacity := max(0, dynamicTestingTarget-workingTestingCount)
 
+		sl.log.InfoContext(ctx, "Rule 5 Phase 1: capacity-based promotion analysis",
+			slog.Int("changesRemaining", changesRemaining),
+			slog.Int("candidates", len(candidateMonitors)),
+			slog.Int("testing", len(testingMonitors)),
+			slog.Int("workingActiveCount", workingActiveCount),
+			slog.Int("workingTestingCount", workingTestingCount),
+			slog.Int("targetNumber", selCtx.targetNumber),
+			slog.Int("activeGap", activeGap),
+			slog.Int("baseTestingTarget", baseTestingTarget),
+			slog.Int("dynamicTestingTarget", dynamicTestingTarget),
+			slog.Int("testingCapacity", testingCapacity),
+		)
+
 		// Phase 1: Capacity-based promotion (existing logic)
 		promotionsNeeded := min(min(changesRemaining, 2), testingCapacity) // Respect testing capacity
 		promoted := 0
+
+		sl.log.InfoContext(ctx, "Rule 5 Phase 1: promotion budget",
+			slog.Int("promotionsNeeded", promotionsNeeded),
+		)
 
 		// Try globally active candidates first, then globally testing (they are pre-sorted by performance)
 		for _, em := range candidateMonitors {
@@ -400,7 +417,16 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 		// Only attempt replacement if we have budget remaining and viable candidates
 		// Calculate remaining budget after capacity promotions
 		remainingBudget := selCtx.limits.promotions - promoted
+
+		sl.log.DebugContext(ctx, "Rule 5 Phase 2: performance replacement analysis",
+			slog.Int("promoted_in_phase1", promoted),
+			slog.Int("remainingBudget", remainingBudget),
+			slog.Int("candidates", len(candidateMonitors)),
+			slog.Int("testing", len(testingMonitors)),
+		)
+
 		if remainingBudget > 0 && len(candidateMonitors) > 0 && len(testingMonitors) > 0 {
+			sl.log.DebugContext(ctx, "Rule 5 Phase 2: attempting performance-based replacement")
 			replacementChanges := sl.attemptPerformanceReplacement(
 				ctx,
 				selCtx,
@@ -412,6 +438,16 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 			)
 			changes = append(changes, replacementChanges...)
 			// Note: workingTestingCount doesn't change for replacements (1 out, 1 in)
+
+			sl.log.InfoContext(ctx, "Rule 5 Phase 2: replacement results",
+				slog.Int("replacementChanges", len(replacementChanges)),
+			)
+		} else {
+			sl.log.InfoContext(ctx, "Rule 5 Phase 2: skipping replacement",
+				slog.Bool("hasBudget", remainingBudget > 0),
+				slog.Bool("hasCandidates", len(candidateMonitors) > 0),
+				slog.Bool("hasTesting", len(testingMonitors) > 0),
+			)
 		}
 	}
 
@@ -803,6 +839,11 @@ func (sl *Selector) applySelectionRules(
 	state.testingCount = rule1_5Result.testingCount
 
 	// Rule 3 (Testing to Active Promotion): Promote from testing to active
+	sl.log.InfoContext(ctx, "Rule 3: starting testing to active promotion",
+		slog.Int("promotion_budget_before", selCtx.limits.promotions),
+		slog.Int("active_count", state.activeCount),
+		slog.Int("testing_count", state.testingCount),
+	)
 	rule3Result := sl.applyRule3TestingToActivePromotion(ctx, selCtx, testingMonitors, activeMonitors, workingAccountLimits, state.activeCount, state.testingCount)
 	allChanges = append(allChanges, rule3Result.changes...)
 	state.activeCount = rule3Result.activeCount
@@ -812,7 +853,17 @@ func (sl *Selector) applySelectionRules(
 	promotionsUsedByRule3 := len(rule3Result.changes)
 	selCtx.limits.promotions = max(0, selCtx.limits.promotions-promotionsUsedByRule3)
 
+	sl.log.InfoContext(ctx, "Rule 3: completed testing to active promotion",
+		slog.Int("promotions_used", promotionsUsedByRule3),
+		slog.Int("promotion_budget_remaining", selCtx.limits.promotions),
+	)
+
 	// Rule 5 (Candidate to Testing Promotion): Promote candidates to testing
+	sl.log.InfoContext(ctx, "Rule 5: starting candidate to testing promotion",
+		slog.Int("promotion_budget", selCtx.limits.promotions),
+		slog.Int("candidates", len(candidateMonitors)),
+		slog.Int("testing", len(testingMonitors)),
+	)
 	rule5Result := sl.applyRule5CandidateToTestingPromotion(ctx, selCtx, candidateMonitors, testingMonitors, workingAccountLimits, state.activeCount, state.testingCount)
 	allChanges = append(allChanges, rule5Result.changes...)
 	state.testingCount = rule5Result.testingCount
@@ -1064,14 +1115,48 @@ func (sl *Selector) attemptPerformanceReplacement(
 
 	// Filter eligible replacer monitors - both rules filter to GlobalStatus active || testing
 	eligibleReplacerMonitors := make([]evaluatedMonitor, 0)
+	sl.log.InfoContext(ctx, "filtering replacer monitors",
+		slog.Int("total_replacers", len(replacerMonitors)),
+	)
 	for _, em := range replacerMonitors {
+		// Special attention to monitors 106 and 160
+		isSpecialMonitor := em.monitor.ID == 106 || em.monitor.ID == 160
+		logLevel := slog.LevelDebug
+		if isSpecialMonitor {
+			logLevel = slog.LevelInfo
+		}
+
+		sl.log.LogAttrs(ctx, logLevel, "evaluating replacer monitor eligibility",
+			slog.Uint64("monitorID", uint64(em.monitor.ID)),
+			slog.String("globalStatus", string(em.monitor.GlobalStatus)),
+			slog.Int("priority", em.monitor.Priority),
+			slog.Int64("count", em.monitor.Count),
+			slog.Bool("isEligible", em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting),
+			slog.Bool("isSpecialMonitor", isSpecialMonitor),
+		)
+
 		if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
 			eligibleReplacerMonitors = append(eligibleReplacerMonitors, em)
+			if isSpecialMonitor {
+				sl.log.DebugContext(ctx, "SPECIAL MONITOR PASSED ELIGIBILITY",
+					slog.Uint64("monitorID", uint64(em.monitor.ID)),
+				)
+			}
+		} else if isSpecialMonitor {
+			sl.log.DebugContext(ctx, "SPECIAL MONITOR FAILED ELIGIBILITY",
+				slog.Uint64("monitorID", uint64(em.monitor.ID)),
+				slog.String("globalStatus", string(em.monitor.GlobalStatus)),
+				slog.String("expected", "active or testing"),
+			)
 		}
 	}
 
+	sl.log.InfoContext(ctx, "replacer monitor filtering results",
+		slog.Int("eligible_replacers", len(eligibleReplacerMonitors)),
+	)
+
 	if len(eligibleReplacerMonitors) == 0 {
-		sl.log.DebugContext(ctx, "no eligible replacer monitors for replacement")
+		sl.log.InfoContext(ctx, "no eligible replacer monitors for replacement - all filtered out")
 		return changes
 	}
 
@@ -1098,20 +1183,66 @@ func (sl *Selector) attemptPerformanceReplacement(
 		var swapExecuted bool
 
 		for idx, replacer := range eligibleReplacerMonitors {
+			isSpecialReplacer := replacer.monitor.ID == 106 || replacer.monitor.ID == 160
+
+			if isSpecialReplacer {
+				sl.log.DebugContext(ctx, "EVALUATING SPECIAL MONITOR FOR REPLACEMENT",
+					slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+					slog.Int("replacer_priority", replacer.monitor.Priority),
+					slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+					slog.Int("target_priority", targetMonitor.monitor.Priority),
+				)
+			}
+
 			if !sl.monitorOutperformsMonitor(ctx, replacer, targetMonitor) {
+				if isSpecialReplacer {
+					sl.log.DebugContext(ctx, "SPECIAL MONITOR FAILED PERFORMANCE CHECK",
+						slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+						slog.Int("replacer_priority", replacer.monitor.Priority),
+						slog.Int("target_priority", targetMonitor.monitor.Priority),
+					)
+				}
 				// Since replacers are sorted best first, if this one doesn't outperform,
 				// none of the remaining ones will either
 				break
+			} else if isSpecialReplacer {
+				sl.log.DebugContext(ctx, "SPECIAL MONITOR PASSED PERFORMANCE CHECK",
+					slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+					slog.Int("priority_improvement", targetMonitor.monitor.Priority-replacer.monitor.Priority),
+				)
 			}
 
 			// Check count requirements for promotion
+			var minRequiredCount int64
 			switch repType {
 			case candidateToTesting:
-				if replacer.monitor.Count < int64(minCountForTesting) {
+				minRequiredCount = int64(minCountForTesting)
+				if replacer.monitor.Count < minRequiredCount {
+					logMsg := "replacer skipped: insufficient data points"
+					if isSpecialReplacer {
+						logMsg = "SPECIAL MONITOR SKIPPED: insufficient data points"
+					}
+					sl.log.InfoContext(ctx, logMsg,
+						slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+						slog.Int64("count", replacer.monitor.Count),
+						slog.Int64("minRequired", minRequiredCount),
+					)
 					continue // Skip this replacer, insufficient data points
+				} else if isSpecialReplacer {
+					sl.log.DebugContext(ctx, "SPECIAL MONITOR PASSED COUNT CHECK",
+						slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+						slog.Int64("count", replacer.monitor.Count),
+						slog.Int64("minRequired", minRequiredCount),
+					)
 				}
 			case testingToActive:
-				if replacer.monitor.Count < int64(minCountForActive) {
+				minRequiredCount = int64(minCountForActive)
+				if replacer.monitor.Count < minRequiredCount {
+					sl.log.InfoContext(ctx, "replacer skipped: insufficient data points",
+						slog.Uint64("replacerMonitorID", uint64(replacer.monitor.ID)),
+						slog.Int64("count", replacer.monitor.Count),
+						slog.Int64("minRequired", minRequiredCount),
+					)
 					continue // Skip this replacer, insufficient data points
 				}
 			}
@@ -1209,8 +1340,11 @@ func (sl *Selector) attemptPerformanceReplacement(
 
 				break // Move to next target monitor
 			} else {
-				sl.log.DebugContext(ctx, "performance-based swap blocked by constraints",
+				sl.log.InfoContext(ctx, "performance-based swap blocked by constraints",
 					slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+					slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+					slog.Int("replacer_priority", replacerMonitor.monitor.Priority),
+					slog.Int("target_priority", targetMonitor.monitor.Priority),
 				)
 				// Continue to next replacer
 			}

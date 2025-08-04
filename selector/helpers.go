@@ -157,18 +157,38 @@ func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse
 
 	// Calculate performance improvement (lower priority = better performance)
 	priorityDiff := better.monitor.Priority - worse.monitor.Priority
-	percentImprovement := float64(priorityDiff) / float64(worse.monitor.Priority) * 100
+
+	// Handle division by zero case
+	var percentImprovement float64
+	if worse.monitor.Priority == 0 {
+		// If worse monitor has priority 0, any better priority is infinite improvement
+		if better.monitor.Priority < 0 {
+			percentImprovement = -100.0 // Treat as significant improvement
+		} else {
+			percentImprovement = 100.0 // Worse performance
+		}
+	} else {
+		percentImprovement = float64(priorityDiff) / float64(worse.monitor.Priority) * 100
+	}
 
 	// Require significant improvement: -5% AND at least -5 priority points (negative because lower is better)
 	meetsThreshold := percentImprovement <= -5.0 && float64(priorityDiff) <= -5.0
 
-	sl.log.DebugContext(ctx, "evaluating monitor replacement",
+	// Special logging for monitors 106 and 160
+	logLevel := slog.LevelDebug
+	if better.monitor.ID == 106 || better.monitor.ID == 160 || worse.monitor.ID == 106 || worse.monitor.ID == 160 {
+		logLevel = slog.LevelInfo
+	}
+
+	sl.log.LogAttrs(ctx, logLevel, "evaluating monitor replacement",
 		slog.Uint64("betterMonitorID", uint64(better.monitor.ID)),
 		slog.Int("better_priority", better.monitor.Priority),
 		slog.Uint64("worseMonitorID", uint64(worse.monitor.ID)),
 		slog.Int("worse_priority", worse.monitor.Priority),
 		slog.Int("priority_diff", priorityDiff),
 		slog.String("percent_improvement", fmt.Sprintf("%.1f%%", percentImprovement)),
+		slog.Bool("percent_check", percentImprovement <= -5.0),
+		slog.Bool("point_check", float64(priorityDiff) <= -5.0),
 		slog.Bool("meets_threshold", meetsThreshold),
 	)
 
