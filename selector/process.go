@@ -16,6 +16,14 @@ const (
 	bootStrapModeLimit         = 4 // If active monitors <= this, add new ones faster
 )
 
+// replacementType defines the type of performance-based replacement
+type replacementType int8
+
+const (
+	candidateToTesting replacementType = iota // Rule 5: candidates replace testing monitors
+	testingToActive                           // Rule 3: testing monitors replace active monitors
+)
+
 // statusChange represents a planned status transition
 type statusChange struct {
 	monitorID  uint32
@@ -299,9 +307,9 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 	// Phase 2: Performance-based replacement (new logic)
 	remainingBudget := selCtx.limits.promotions - len(changes)
 	if remainingBudget > 0 && len(testingMonitors) > 0 && len(activeMonitors) > 0 {
-		replacementChanges := sl.attemptActiveReplacements(
+		replacementChanges := sl.attemptPerformanceReplacement(
 			ctx, selCtx, testingMonitors, activeMonitors,
-			workingAccountLimits, remainingBudget,
+			workingAccountLimits, remainingBudget, testingToActive,
 		)
 		changes = append(changes, replacementChanges...)
 
@@ -345,33 +353,34 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 		promotionsNeeded := min(min(changesRemaining, 2), testingCapacity) // Respect testing capacity
 		promoted := 0
 
-		// Try globally active monitors first, then globally testing
-		candidateGroups := createCandidateGroups(candidateMonitors)
+		// Try globally active candidates first, then globally testing (they are pre-sorted by performance)
+		for _, em := range candidateMonitors {
+			if promoted >= promotionsNeeded {
+				break
+			}
 
-		for _, group := range candidateGroups {
-			for _, em := range group.monitors {
-				if promoted >= promotionsNeeded {
-					break
-				}
+			// Only consider globally active or testing candidates
+			if em.monitor.GlobalStatus != ntpdb.MonitorsStatusActive && em.monitor.GlobalStatus != ntpdb.MonitorsStatusTesting {
+				continue
+			}
 
-				req := promotionRequest{
-					monitor:           &em.monitor,
-					server:            selCtx.server,
-					workingLimits:     workingAccountLimits,
-					assignedMonitors:  selCtx.assignedMonitors,
-					emergencyOverride: selCtx.emergencyOverride,
-					fromStatus:        ntpdb.ServerScoresStatusCandidate,
-					toStatus:          ntpdb.ServerScoresStatusTesting,
-					baseReason:        "candidate to testing",
-					emergencyReason:   getEmergencyReason("candidate to testing", ntpdb.ServerScoresStatusTesting, false),
-				}
+			req := promotionRequest{
+				monitor:           &em.monitor,
+				server:            selCtx.server,
+				workingLimits:     workingAccountLimits,
+				assignedMonitors:  selCtx.assignedMonitors,
+				emergencyOverride: selCtx.emergencyOverride,
+				fromStatus:        ntpdb.ServerScoresStatusCandidate,
+				toStatus:          ntpdb.ServerScoresStatusTesting,
+				baseReason:        "candidate to testing",
+				emergencyReason:   getEmergencyReason("candidate to testing", ntpdb.ServerScoresStatusTesting, false),
+			}
 
-				if result := sl.attemptPromotion(req); result.success {
-					changes = append(changes, *result.change)
-					workingTestingCount += result.testingIncrement
-					promoted++
-					changesRemaining--
-				}
+			if result := sl.attemptPromotion(req); result.success {
+				changes = append(changes, *result.change)
+				workingTestingCount += result.testingIncrement
+				promoted++
+				changesRemaining--
 			}
 		}
 
@@ -380,13 +389,14 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 		// Calculate remaining budget after capacity promotions
 		remainingBudget := selCtx.limits.promotions - promoted
 		if remainingBudget > 0 && len(candidateMonitors) > 0 && len(testingMonitors) > 0 {
-			replacementChanges := sl.attemptTestingReplacements(
+			replacementChanges := sl.attemptPerformanceReplacement(
 				ctx,
 				selCtx,
 				candidateMonitors,
 				testingMonitors,
 				workingAccountLimits,
 				remainingBudget,
+				candidateToTesting,
 			)
 			changes = append(changes, replacementChanges...)
 			// Note: workingTestingCount doesn't change for replacements (1 out, 1 in)
@@ -977,254 +987,179 @@ func (sl *Selector) handleOutOfOrder(
 	return changes
 }
 
-// attemptTestingReplacements compares candidates with existing testing monitors
-// and replaces worse-performing testing monitors with better candidates
-func (sl *Selector) attemptTestingReplacements(
+// attemptPerformanceReplacement is the unified function for performance-based monitor replacements.
+// It handles both candidate->testing (Rule 5) and testing->active (Rule 3) replacements.
+func (sl *Selector) attemptPerformanceReplacement(
 	ctx context.Context,
 	selCtx selectionContext,
-	candidateMonitors []evaluatedMonitor,
-	testingMonitors []evaluatedMonitor,
+	replacerMonitors []evaluatedMonitor, // candidates or testing monitors (pre-sorted by performance)
+	targetMonitors []evaluatedMonitor, // testing or active monitors
 	workingAccountLimits map[uint32]*accountLimit,
 	changesRemaining int,
+	repType replacementType,
 ) []statusChange {
 	var changes []statusChange
 	replacements := 0
 
-	// Only consider healthy testing monitors for replacement (not ones with violations)
-	eligibleTestingMonitors := make([]evaluatedMonitor, 0)
-	for _, em := range testingMonitors {
-		if em.recommendedState != candidateOut &&
-			(em.currentViolation == nil || em.currentViolation.Type == violationNone) {
-			eligibleTestingMonitors = append(eligibleTestingMonitors, em)
-		}
+	// Determine status transitions and logging context based on replacement type
+	var (
+		logContext                                string
+		replacerFromStatus, replacerToStatus      ntpdb.ServerScoresStatus
+		targetFromStatus, targetToStatus          ntpdb.ServerScoresStatus
+		replacerPromoteReason, targetDemoteReason string
+	)
+
+	switch repType {
+	case candidateToTesting:
+		logContext = "Rule 5 Phase 2: attempting candidate-testing replacements"
+		replacerFromStatus = ntpdb.ServerScoresStatusCandidate
+		replacerToStatus = ntpdb.ServerScoresStatusTesting
+		targetFromStatus = ntpdb.ServerScoresStatusTesting
+		targetToStatus = ntpdb.ServerScoresStatusCandidate
+		replacerPromoteReason = "replacement promotion"
+		targetDemoteReason = "replaced by better candidate"
+	case testingToActive:
+		logContext = "attempting active-testing replacements"
+		replacerFromStatus = ntpdb.ServerScoresStatusTesting
+		replacerToStatus = ntpdb.ServerScoresStatusActive
+		targetFromStatus = ntpdb.ServerScoresStatusActive
+		targetToStatus = ntpdb.ServerScoresStatusTesting
+		replacerPromoteReason = "active-testing swap (promote)"
+		targetDemoteReason = "active-testing swap (demote)"
 	}
-
-	if len(eligibleTestingMonitors) == 0 {
-		return changes
-	}
-
-	// Try globally active candidates first, then globally testing
-	candidateGroups := createCandidateGroups(candidateMonitors)
-
-	for _, group := range candidateGroups {
-		for _, candidate := range group.monitors {
-			if replacements >= changesRemaining {
-				break
-			}
-
-			// Check if candidate can be promoted to testing
-			candidateReq := promotionRequest{
-				monitor:           &candidate.monitor,
-				server:            selCtx.server,
-				workingLimits:     workingAccountLimits,
-				assignedMonitors:  selCtx.assignedMonitors,
-				emergencyOverride: selCtx.emergencyOverride,
-				fromStatus:        ntpdb.ServerScoresStatusCandidate,
-				toStatus:          ntpdb.ServerScoresStatusTesting,
-				baseReason:        "candidate replacement",
-				emergencyReason:   getEmergencyReason("candidate replacement", ntpdb.ServerScoresStatusTesting, false),
-			}
-
-			if !sl.attemptPromotion(candidateReq).success {
-				continue // This candidate can't be promoted due to constraints
-			}
-
-			// Find the worst-performing testing monitor that this candidate can replace
-			// We iterate from the end (worst performers) to find the first one we can replace
-			for i := len(eligibleTestingMonitors) - 1; i >= 0; i-- {
-				testingMonitor := eligibleTestingMonitors[i]
-
-				// Skip if this testing monitor is already better than the candidate
-				// Since monitors are sorted by performance, if candidate is at position X in candidates
-				// and testing monitor is at position Y in testing, we can only replace if candidate
-				// outperforms the testing monitor (appears earlier in the combined sorted order)
-				if !sl.candidateOutperformsTestingMonitor(ctx, candidate, testingMonitor) {
-					continue
-				}
-
-				// Create a temporary copy of working limits to test the replacement
-				tempWorkingLimits := sl.copyAccountLimits(workingAccountLimits)
-
-				// Apply the demotion to temp limits
-				// Note: For demotion from testing to candidate, we don't need constraint checking
-				// since candidates have no constraints. We just update the account limits.
-				sl.updateAccountLimitsForPromotion(tempWorkingLimits, &testingMonitor.monitor,
-					ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusCandidate)
-
-				// Now test if the candidate can be promoted with the updated limits
-				candidateReq.workingLimits = tempWorkingLimits
-				if promotionResult := sl.attemptPromotion(candidateReq); promotionResult.success {
-					// Both moves are valid - perform the replacement
-					changes = append(changes, statusChange{
-						monitorID:  testingMonitor.monitor.ID,
-						fromStatus: ntpdb.ServerScoresStatusTesting,
-						toStatus:   ntpdb.ServerScoresStatusCandidate,
-						reason:     "replaced by better candidate",
-					})
-					changes = append(changes, statusChange{
-						monitorID:  candidate.monitor.ID,
-						fromStatus: ntpdb.ServerScoresStatusCandidate,
-						toStatus:   ntpdb.ServerScoresStatusTesting,
-						reason:     "replacement promotion",
-					})
-
-					// Update working limits for future iterations
-					sl.updateAccountLimitsForPromotion(workingAccountLimits, &testingMonitor.monitor,
-						ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusCandidate)
-					sl.updateAccountLimitsForPromotion(workingAccountLimits, &candidate.monitor,
-						ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting)
-
-					// Remove the replaced testing monitor from eligible list
-					eligibleTestingMonitors = append(eligibleTestingMonitors[:i], eligibleTestingMonitors[i+1:]...)
-					replacements++
-
-					break // Move to next candidate
-				}
-			}
-		}
-	}
-
-	return changes
-}
-
-// attemptActiveReplacements compares testing monitors with existing active monitors
-// and replaces worse-performing active monitors with better testing monitors
-func (sl *Selector) attemptActiveReplacements(
-	ctx context.Context,
-	selCtx selectionContext,
-	testingMonitors []evaluatedMonitor,
-	activeMonitors []evaluatedMonitor,
-	workingAccountLimits map[uint32]*accountLimit,
-	changesRemaining int,
-) []statusChange {
-	var changes []statusChange
-	replacements := 0
 
 	// Log entry
-	sl.log.InfoContext(ctx, "attempting active-testing replacements",
+	sl.log.InfoContext(ctx, logContext,
 		slog.Uint64("serverID", uint64(selCtx.server.ID)),
-		slog.Int("testing_count", len(testingMonitors)),
-		slog.Int("active_count", len(activeMonitors)),
+		slog.Int("replacer_count", len(replacerMonitors)),
+		slog.Int("target_count", len(targetMonitors)),
 		slog.Int("budget", changesRemaining),
 	)
 
-	// Only consider healthy active monitors for replacement (not ones with violations)
-	eligibleActiveMonitors := make([]evaluatedMonitor, 0)
-	for _, em := range activeMonitors {
+	// Filter eligible target monitors (same logic for both rules)
+	eligibleTargetMonitors := make([]evaluatedMonitor, 0)
+	for _, em := range targetMonitors {
 		if em.recommendedState != candidateOut &&
 			(em.currentViolation == nil || em.currentViolation.Type == violationNone) {
-			eligibleActiveMonitors = append(eligibleActiveMonitors, em)
+			eligibleTargetMonitors = append(eligibleTargetMonitors, em)
 		}
 	}
 
-	if len(eligibleActiveMonitors) == 0 {
-		sl.log.DebugContext(ctx, "no eligible active monitors for replacement")
+	if len(eligibleTargetMonitors) == 0 {
+		sl.log.DebugContext(ctx, "no eligible target monitors for replacement")
 		return changes
 	}
 
-	// Only consider globally active or testing monitors (not candidates)
-	eligibleTestingMonitors := make([]evaluatedMonitor, 0)
-	for _, em := range testingMonitors {
+	// Filter eligible replacer monitors - both rules filter to GlobalStatus active || testing
+	eligibleReplacerMonitors := make([]evaluatedMonitor, 0)
+	for _, em := range replacerMonitors {
 		if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive || em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting {
-			eligibleTestingMonitors = append(eligibleTestingMonitors, em)
+			eligibleReplacerMonitors = append(eligibleReplacerMonitors, em)
 		}
 	}
 
-	if len(eligibleTestingMonitors) == 0 {
-		sl.log.DebugContext(ctx, "no eligible testing monitors for replacement")
+	if len(eligibleReplacerMonitors) == 0 {
+		sl.log.DebugContext(ctx, "no eligible replacer monitors for replacement")
 		return changes
 	}
 
-	// Try each testing monitor (they are pre-sorted by performance, best first)
-	for _, testingMonitor := range eligibleTestingMonitors {
-		if replacements*2 >= changesRemaining {
-			sl.log.DebugContext(ctx, "active replacement budget exhausted",
+	// Process each eligible replacer monitor (they are pre-sorted by performance, best first)
+	for _, replacerMonitor := range eligibleReplacerMonitors {
+		// Check budget - candidate->testing uses 1 per replacement, testing->active uses 2
+		budgetNeeded := 1
+		if repType == testingToActive {
+			budgetNeeded = 2
+		}
+
+		if replacements*budgetNeeded >= changesRemaining {
+			sl.log.DebugContext(ctx, "replacement budget exhausted",
 				slog.Int("replacements", replacements),
-				slog.Int("budget_used", replacements*2),
+				slog.Int("budget_used", replacements*budgetNeeded),
 			)
 			break
 		}
 
-		// Find worst active monitor that testing outperforms
-		var targetActive *evaluatedMonitor
+		// Find worst target monitor that replacer outperforms
+		var targetMonitor *evaluatedMonitor
 		var targetIdx int
 
-		for idx, activeMonitor := range eligibleActiveMonitors {
-			if sl.monitorOutperformsMonitor(ctx, testingMonitor, activeMonitor) {
-				if targetActive == nil || activeMonitor.monitor.Priority > targetActive.monitor.Priority {
-					targetActive = &activeMonitor
+		for idx, target := range eligibleTargetMonitors {
+			if sl.monitorOutperformsMonitor(ctx, replacerMonitor, target) {
+				if targetMonitor == nil || target.monitor.Priority > targetMonitor.monitor.Priority {
+					targetMonitor = &target
 					targetIdx = idx
 				}
 			}
 		}
 
-		if targetActive == nil {
+		if targetMonitor == nil {
 			continue
 		}
 
 		// Log consideration
-		sl.log.InfoContext(ctx, "considering active-testing swap",
-			slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
-			slog.Float64("testing_priority", testingMonitor.monitor.Priority),
-			slog.Uint64("activeMonitorID", uint64(targetActive.monitor.ID)),
-			slog.Float64("active_priority", targetActive.monitor.Priority),
+		sl.log.InfoContext(ctx, "considering performance-based swap",
+			slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+			slog.Float64("replacer_priority", replacerMonitor.monitor.Priority),
+			slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+			slog.Float64("target_priority", targetMonitor.monitor.Priority),
+			slog.String("replacement_type", logContext),
 		)
 
-		// Create a temporary copy of working limits to test the replacement
+		// Create temporary copy of working limits to test the replacement
 		tempWorkingLimits := sl.copyAccountLimits(workingAccountLimits)
 
-		// Apply the demotion to temp limits (active -> testing)
-		sl.updateAccountLimitsForPromotion(tempWorkingLimits, &targetActive.monitor,
-			ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting)
+		// Apply the target demotion to temp limits first
+		sl.updateAccountLimitsForPromotion(tempWorkingLimits, &targetMonitor.monitor,
+			targetFromStatus, targetToStatus)
 
-		// Now test if the testing monitor can be promoted with the updated limits
-		testingReq := promotionRequest{
-			monitor:           &testingMonitor.monitor,
+		// Now test if the replacer can be promoted with the updated limits
+		replacerReq := promotionRequest{
+			monitor:           &replacerMonitor.monitor,
 			server:            selCtx.server,
 			workingLimits:     tempWorkingLimits,
 			assignedMonitors:  selCtx.assignedMonitors,
 			emergencyOverride: selCtx.emergencyOverride,
-			fromStatus:        ntpdb.ServerScoresStatusTesting,
-			toStatus:          ntpdb.ServerScoresStatusActive,
-			baseReason:        "active-testing swap (promote)",
-			emergencyReason:   getEmergencyReason("active-testing swap (promote)", ntpdb.ServerScoresStatusActive, false),
+			fromStatus:        replacerFromStatus,
+			toStatus:          replacerToStatus,
+			baseReason:        replacerPromoteReason,
+			emergencyReason:   getEmergencyReason(replacerPromoteReason, replacerToStatus, false),
 		}
 
-		if promotionResult := sl.attemptPromotion(testingReq); promotionResult.success {
+		if promotionResult := sl.attemptPromotion(replacerReq); promotionResult.success {
 			// Both moves are valid - perform the replacement
 			changes = append(changes, statusChange{
-				monitorID:  targetActive.monitor.ID,
-				fromStatus: ntpdb.ServerScoresStatusActive,
-				toStatus:   ntpdb.ServerScoresStatusTesting,
-				reason:     "active-testing swap (demote)",
+				monitorID:  targetMonitor.monitor.ID,
+				fromStatus: targetFromStatus,
+				toStatus:   targetToStatus,
+				reason:     targetDemoteReason,
 			})
 			changes = append(changes, statusChange{
-				monitorID:  testingMonitor.monitor.ID,
-				fromStatus: ntpdb.ServerScoresStatusTesting,
-				toStatus:   ntpdb.ServerScoresStatusActive,
-				reason:     "active-testing swap (promote)",
+				monitorID:  replacerMonitor.monitor.ID,
+				fromStatus: replacerFromStatus,
+				toStatus:   replacerToStatus,
+				reason:     replacerPromoteReason,
 			})
 
 			// Update working limits for future iterations
-			sl.updateAccountLimitsForPromotion(workingAccountLimits, &targetActive.monitor,
-				ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting)
-			sl.updateAccountLimitsForPromotion(workingAccountLimits, &testingMonitor.monitor,
-				ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive)
+			sl.updateAccountLimitsForPromotion(workingAccountLimits, &targetMonitor.monitor,
+				targetFromStatus, targetToStatus)
+			sl.updateAccountLimitsForPromotion(workingAccountLimits, &replacerMonitor.monitor,
+				replacerFromStatus, replacerToStatus)
 
-			// Remove the replaced active monitor from eligible list
-			eligibleActiveMonitors = append(eligibleActiveMonitors[:targetIdx], eligibleActiveMonitors[targetIdx+1:]...)
+			// Remove the replaced target monitor from eligible list
+			eligibleTargetMonitors = append(eligibleTargetMonitors[:targetIdx], eligibleTargetMonitors[targetIdx+1:]...)
 			replacements++
 
-			sl.log.InfoContext(ctx, "planned active-testing swap",
-				slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
-				slog.Uint64("activeMonitorID", uint64(targetActive.monitor.ID)),
-				slog.Float64("priority_improvement", targetActive.monitor.Priority-testingMonitor.monitor.Priority),
+			sl.log.InfoContext(ctx, "planned performance-based swap",
+				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+				slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+				slog.Float64("priority_improvement", targetMonitor.monitor.Priority-replacerMonitor.monitor.Priority),
 			)
 
-			break // Move to next testing monitor
+			break // Move to next replacer monitor
 		} else {
-			sl.log.DebugContext(ctx, "active-testing swap blocked by constraints",
-				slog.Uint64("testingMonitorID", uint64(testingMonitor.monitor.ID)),
+			sl.log.DebugContext(ctx, "performance-based swap blocked by constraints",
+				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
 			)
 		}
 	}

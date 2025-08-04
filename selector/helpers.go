@@ -2,6 +2,7 @@ package selector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"go.ntppool.org/monitor/ntpdb"
@@ -137,20 +138,6 @@ func filterBootstrapCandidates(monitors []evaluatedMonitor) (healthy, other []ev
 	return
 }
 
-// candidateGroup represents a group of candidate monitors with metadata
-type candidateGroup struct {
-	monitors []evaluatedMonitor
-	name     string
-}
-
-// createCandidateGroups creates ordered groups of candidate monitors for promotion
-func createCandidateGroups(candidateMonitors []evaluatedMonitor) []candidateGroup {
-	return []candidateGroup{
-		{filterMonitorsByGlobalStatus(candidateMonitors, ntpdb.MonitorsStatusActive), "active"},
-		{filterMonitorsByGlobalStatus(candidateMonitors, ntpdb.MonitorsStatusTesting), "testing"},
-	}
-}
-
 // monitorOutperformsMonitor compares performance between two monitors using the database-calculated priority
 // Returns true if the better monitor significantly outperforms the worse monitor
 func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse evaluatedMonitor) bool {
@@ -168,12 +155,12 @@ func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse
 		return false
 	}
 
-	// Calculate performance improvement
-	priorityDiff := worse.monitor.Priority - better.monitor.Priority
+	// Calculate performance improvement (lower priority = better performance)
+	priorityDiff := better.monitor.Priority - worse.monitor.Priority
 	percentImprovement := (priorityDiff / worse.monitor.Priority) * 100
 
-	// Require significant improvement: 5% AND at least 5 priority points
-	meetsThreshold := percentImprovement >= 5.0 && priorityDiff >= 5.0
+	// Require significant improvement: -5% AND at least -5 priority points (negative because lower is better)
+	meetsThreshold := percentImprovement <= -5.0 && priorityDiff <= -5.0
 
 	sl.log.DebugContext(ctx, "evaluating monitor replacement",
 		slog.Uint64("betterMonitorID", uint64(better.monitor.ID)),
@@ -181,7 +168,7 @@ func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse
 		slog.Uint64("worseMonitorID", uint64(worse.monitor.ID)),
 		slog.Float64("worse_priority", worse.monitor.Priority),
 		slog.Float64("priority_diff", priorityDiff),
-		slog.Float64("percent_improvement", percentImprovement),
+		slog.String("percent_improvement", fmt.Sprintf("%.1f%%", percentImprovement)),
 		slog.Bool("meets_threshold", meetsThreshold),
 	)
 

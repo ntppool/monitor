@@ -2,13 +2,16 @@ package selector
 
 import (
 	"database/sql"
+	"log/slog"
 	"testing"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
 
 func TestCheckNetworkConstraint(t *testing.T) {
-	sl := &Selector{}
+	sl := &Selector{
+		log: slog.Default(),
+	}
 
 	tests := []struct {
 		name      string
@@ -237,7 +240,9 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 }
 
 func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
-	sl := &Selector{}
+	sl := &Selector{
+		log: slog.Default(),
+	}
 
 	// Helper function to create monitor candidate
 	createMonitor := func(id uint32, accountID uint32, ip string, globalStatus ntpdb.MonitorsStatus, serverStatus ntpdb.ServerScoresStatus) *monitorCandidate {

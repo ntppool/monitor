@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"log/slog"
 	"testing"
 
 	"go.ntppool.org/monitor/ntpdb"
@@ -136,40 +137,11 @@ func TestFilterBootstrapCandidates(t *testing.T) {
 	}
 }
 
-func TestCreateCandidateGroups(t *testing.T) {
-	candidates := []evaluatedMonitor{
-		{monitor: monitorCandidate{ID: 1, GlobalStatus: ntpdb.MonitorsStatusActive}},
-		{monitor: monitorCandidate{ID: 2, GlobalStatus: ntpdb.MonitorsStatusTesting}},
-		{monitor: monitorCandidate{ID: 3, GlobalStatus: ntpdb.MonitorsStatusActive}},
-		{monitor: monitorCandidate{ID: 4, GlobalStatus: ntpdb.MonitorsStatusPaused}}, // Should be ignored
-	}
-
-	groups := createCandidateGroups(candidates)
-
-	if len(groups) != 2 {
-		t.Errorf("Expected 2 groups, got %d", len(groups))
-	}
-
-	// First group should be active monitors
-	if groups[0].name != "active" {
-		t.Errorf("Expected first group to be 'active', got '%s'", groups[0].name)
-	}
-	if len(groups[0].monitors) != 2 {
-		t.Errorf("Expected 2 active monitors, got %d", len(groups[0].monitors))
-	}
-
-	// Second group should be testing monitors
-	if groups[1].name != "testing" {
-		t.Errorf("Expected second group to be 'testing', got '%s'", groups[1].name)
-	}
-	if len(groups[1].monitors) != 1 {
-		t.Errorf("Expected 1 testing monitor, got %d", len(groups[1].monitors))
-	}
-}
-
 func TestAttemptPromotion(t *testing.T) {
 	// Create a minimal selector for testing
-	sl := &Selector{}
+	sl := &Selector{
+		log: slog.Default(),
+	}
 
 	// Mock data
 	monitor := &monitorCandidate{
