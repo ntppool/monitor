@@ -1063,8 +1063,11 @@ func (sl *Selector) attemptPerformanceReplacement(
 		return changes
 	}
 
-	// Process each eligible replacer monitor (they are pre-sorted by performance, best first)
-	for _, replacerMonitor := range eligibleReplacerMonitors {
+	// Process each eligible target monitor (worst first) - iterate backwards since they're sorted best first
+	for i := len(eligibleTargetMonitors) - 1; i >= 0; i-- {
+		targetMonitor := eligibleTargetMonitors[i]
+		targetIdx := i
+
 		// Check budget - candidate->testing uses 1 per replacement, testing->active uses 2
 		budgetNeeded := 1
 		if repType == testingToActive {
@@ -1079,88 +1082,121 @@ func (sl *Selector) attemptPerformanceReplacement(
 			break
 		}
 
-		// Find worst target monitor that replacer outperforms
-		var targetMonitor *evaluatedMonitor
-		var targetIdx int
+		// Try each replacer (best first) that outperforms this target until one passes constraints
+		var swapExecuted bool
 
-		for idx, target := range eligibleTargetMonitors {
-			if sl.monitorOutperformsMonitor(ctx, replacerMonitor, target) {
-				if targetMonitor == nil || target.monitor.Priority > targetMonitor.monitor.Priority {
-					targetMonitor = &target
-					targetIdx = idx
+		for idx, replacer := range eligibleReplacerMonitors {
+			if !sl.monitorOutperformsMonitor(ctx, replacer, targetMonitor) {
+				// Since replacers are sorted best first, if this one doesn't outperform,
+				// none of the remaining ones will either
+				break
+			}
+
+			replacerMonitor := replacer
+
+			// Log consideration
+			sl.log.InfoContext(ctx, "considering performance-based swap",
+				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+				slog.Float64("replacer_priority", replacerMonitor.monitor.Priority),
+				slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+				slog.Float64("target_priority", targetMonitor.monitor.Priority),
+				slog.String("replacement_type", logContext),
+			)
+
+			// Create temporary copy of working limits to test the replacement
+			tempWorkingLimits := sl.copyAccountLimits(workingAccountLimits)
+
+			// Debug: Log original account limits for the replacer's account
+			if replacerMonitor.monitor.AccountID != nil {
+				if originalLimit, exists := workingAccountLimits[*replacerMonitor.monitor.AccountID]; exists {
+					sl.log.DebugContext(ctx, "original account limits before replacement",
+						slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+						slog.Uint64("accountID", uint64(*replacerMonitor.monitor.AccountID)),
+						slog.Int("originalActive", originalLimit.ActiveCount),
+						slog.Int("originalTesting", originalLimit.TestingCount),
+						slog.Int("originalTotal", originalLimit.ActiveCount+originalLimit.TestingCount),
+					)
 				}
+			}
+
+			// Apply the target demotion to temp limits first
+			sl.updateAccountLimitsForPromotion(tempWorkingLimits, &targetMonitor.monitor,
+				targetFromStatus, targetToStatus)
+
+			// Debug: Log temp account limits after simulated demotion
+			if replacerMonitor.monitor.AccountID != nil {
+				if tempLimit, exists := tempWorkingLimits[*replacerMonitor.monitor.AccountID]; exists {
+					sl.log.DebugContext(ctx, "temp account limits after simulated demotion",
+						slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+						slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+						slog.Uint64("accountID", uint64(*replacerMonitor.monitor.AccountID)),
+						slog.Int("tempActive", tempLimit.ActiveCount),
+						slog.Int("tempTesting", tempLimit.TestingCount),
+						slog.Int("tempTotal", tempLimit.ActiveCount+tempLimit.TestingCount),
+						slog.String("demotionTransition", fmt.Sprintf("%s->%s", targetFromStatus, targetToStatus)),
+					)
+				}
+			}
+
+			// Now test if the replacer can be promoted with the updated limits
+			replacerReq := promotionRequest{
+				monitor:           &replacerMonitor.monitor,
+				server:            selCtx.server,
+				workingLimits:     tempWorkingLimits,
+				assignedMonitors:  selCtx.assignedMonitors,
+				emergencyOverride: selCtx.emergencyOverride,
+				fromStatus:        replacerFromStatus,
+				toStatus:          replacerToStatus,
+				baseReason:        replacerPromoteReason,
+				emergencyReason:   getEmergencyReason(replacerPromoteReason, replacerToStatus, false),
+			}
+
+			if promotionResult := sl.attemptPromotion(replacerReq); promotionResult.success {
+				// Both moves are valid - perform the replacement
+				changes = append(changes, statusChange{
+					monitorID:  targetMonitor.monitor.ID,
+					fromStatus: targetFromStatus,
+					toStatus:   targetToStatus,
+					reason:     targetDemoteReason,
+				})
+				changes = append(changes, statusChange{
+					monitorID:  replacerMonitor.monitor.ID,
+					fromStatus: replacerFromStatus,
+					toStatus:   replacerToStatus,
+					reason:     replacerPromoteReason,
+				})
+
+				// Update working limits for future iterations
+				sl.updateAccountLimitsForPromotion(workingAccountLimits, &targetMonitor.monitor,
+					targetFromStatus, targetToStatus)
+				sl.updateAccountLimitsForPromotion(workingAccountLimits, &replacerMonitor.monitor,
+					replacerFromStatus, replacerToStatus)
+
+				// Remove used replacer from eligible list to prevent double-use
+				eligibleReplacerMonitors = append(eligibleReplacerMonitors[:idx], eligibleReplacerMonitors[idx+1:]...)
+				replacements++
+				swapExecuted = true
+
+				sl.log.InfoContext(ctx, "planned performance-based swap",
+					slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+					slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
+					slog.Float64("priority_improvement", targetMonitor.monitor.Priority-replacerMonitor.monitor.Priority),
+				)
+
+				break // Move to next target monitor
+			} else {
+				sl.log.DebugContext(ctx, "performance-based swap blocked by constraints",
+					slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
+				)
+				// Continue to next replacer
 			}
 		}
 
-		if targetMonitor == nil {
-			continue
-		}
-
-		// Log consideration
-		sl.log.InfoContext(ctx, "considering performance-based swap",
-			slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
-			slog.Float64("replacer_priority", replacerMonitor.monitor.Priority),
-			slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
-			slog.Float64("target_priority", targetMonitor.monitor.Priority),
-			slog.String("replacement_type", logContext),
-		)
-
-		// Create temporary copy of working limits to test the replacement
-		tempWorkingLimits := sl.copyAccountLimits(workingAccountLimits)
-
-		// Apply the target demotion to temp limits first
-		sl.updateAccountLimitsForPromotion(tempWorkingLimits, &targetMonitor.monitor,
-			targetFromStatus, targetToStatus)
-
-		// Now test if the replacer can be promoted with the updated limits
-		replacerReq := promotionRequest{
-			monitor:           &replacerMonitor.monitor,
-			server:            selCtx.server,
-			workingLimits:     tempWorkingLimits,
-			assignedMonitors:  selCtx.assignedMonitors,
-			emergencyOverride: selCtx.emergencyOverride,
-			fromStatus:        replacerFromStatus,
-			toStatus:          replacerToStatus,
-			baseReason:        replacerPromoteReason,
-			emergencyReason:   getEmergencyReason(replacerPromoteReason, replacerToStatus, false),
-		}
-
-		if promotionResult := sl.attemptPromotion(replacerReq); promotionResult.success {
-			// Both moves are valid - perform the replacement
-			changes = append(changes, statusChange{
-				monitorID:  targetMonitor.monitor.ID,
-				fromStatus: targetFromStatus,
-				toStatus:   targetToStatus,
-				reason:     targetDemoteReason,
-			})
-			changes = append(changes, statusChange{
-				monitorID:  replacerMonitor.monitor.ID,
-				fromStatus: replacerFromStatus,
-				toStatus:   replacerToStatus,
-				reason:     replacerPromoteReason,
-			})
-
-			// Update working limits for future iterations
-			sl.updateAccountLimitsForPromotion(workingAccountLimits, &targetMonitor.monitor,
-				targetFromStatus, targetToStatus)
-			sl.updateAccountLimitsForPromotion(workingAccountLimits, &replacerMonitor.monitor,
-				replacerFromStatus, replacerToStatus)
-
-			// Remove the replaced target monitor from eligible list
+		// If we executed a swap, remove the replaced target from eligible list
+		if swapExecuted {
+			// We need to adjust the target index since we're iterating backwards
+			// and we've already removed a replacer which doesn't affect target indices
 			eligibleTargetMonitors = append(eligibleTargetMonitors[:targetIdx], eligibleTargetMonitors[targetIdx+1:]...)
-			replacements++
-
-			sl.log.InfoContext(ctx, "planned performance-based swap",
-				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
-				slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
-				slog.Float64("priority_improvement", targetMonitor.monitor.Priority-replacerMonitor.monitor.Priority),
-			)
-
-			break // Move to next replacer monitor
-		} else {
-			sl.log.DebugContext(ctx, "performance-based swap blocked by constraints",
-				slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
-			)
 		}
 	}
 
