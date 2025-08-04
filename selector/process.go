@@ -10,10 +10,12 @@ import (
 
 // Constants for monitor selection
 const (
-	targetActiveMonitors       = 7 // Target number of active monitors per server
-	baseTestingTarget          = 5 // Base number of testing monitors
-	minGloballyActiveInTesting = 4 // Minimum globally active monitors in testing pool
-	bootStrapModeLimit         = 4 // If active monitors <= this, add new ones faster
+	targetActiveMonitors       = 7  // Target number of active monitors per server
+	baseTestingTarget          = 5  // Base number of testing monitors
+	minGloballyActiveInTesting = 4  // Minimum globally active monitors in testing pool
+	bootStrapModeLimit         = 4  // If active monitors <= this, add new ones faster
+	minCountForTesting         = 9  // Minimum data points required for candidate->testing promotion
+	minCountForActive          = 32 // Minimum data points required for testing->active promotion
 )
 
 // replacementType defines the type of performance-based replacement
@@ -283,6 +285,11 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 				break
 			}
 
+			// Check count requirement for testing->active promotion
+			if em.monitor.Count < int64(minCountForActive) {
+				continue // Skip this monitor, insufficient data points
+			}
+
 			req := promotionRequest{
 				monitor:           &em.monitor,
 				server:            selCtx.server,
@@ -362,6 +369,11 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 			// Only consider globally active or testing candidates
 			if em.monitor.GlobalStatus != ntpdb.MonitorsStatusActive && em.monitor.GlobalStatus != ntpdb.MonitorsStatusTesting {
 				continue
+			}
+
+			// Check count requirement for candidate->testing promotion
+			if em.monitor.Count < int64(minCountForTesting) {
+				continue // Skip this monitor, insufficient data points
 			}
 
 			req := promotionRequest{
@@ -1090,6 +1102,18 @@ func (sl *Selector) attemptPerformanceReplacement(
 				// Since replacers are sorted best first, if this one doesn't outperform,
 				// none of the remaining ones will either
 				break
+			}
+
+			// Check count requirements for promotion
+			switch repType {
+			case candidateToTesting:
+				if replacer.monitor.Count < int64(minCountForTesting) {
+					continue // Skip this replacer, insufficient data points
+				}
+			case testingToActive:
+				if replacer.monitor.Count < int64(minCountForActive) {
+					continue // Skip this replacer, insufficient data points
+				}
 			}
 
 			replacerMonitor := replacer

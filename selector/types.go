@@ -49,6 +49,7 @@ type monitorCandidate struct {
 	IsHealthy                bool
 	RTT                      float64
 	Priority                 float64 // Database-calculated monitor priority (RTT + step accuracy)
+	Count                    int64   // Number of data points from GetMonitorPriority query
 	ConstraintViolationType  *string
 	ConstraintViolationSince *time.Time
 }

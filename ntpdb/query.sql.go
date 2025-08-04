@@ -77,7 +77,7 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     m.id = ls.monitor_id
   and ls.server_id = ?
   and m.type = 'monitor'
-  and ls.ts > date_sub(now(), interval 12 hour)
+  and ls.ts > date_sub(now(), interval 24 hour)
   group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt

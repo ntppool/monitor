@@ -162,6 +162,9 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	// Priority (from database calculation)
 	candidate.Priority = row.MonitorPriority
 
+	// Count (number of data points)
+	candidate.Count = row.Count
+
 	// If priority is invalid (0 or negative), mark monitor as unhealthy
 	if candidate.Priority <= 0 {
 		candidate.IsHealthy = false
