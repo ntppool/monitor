@@ -210,8 +210,8 @@ func (sl *Selector) checkAccountConstraints(
 				return fmt.Errorf("account %d at active limit (%d/%d)",
 					limit.AccountID, activeCount, maxActive)
 			}
-			// Also check total limit
-			if activeCount+testingCount >= maxTotal {
+			// Also check total limit (allow swaps at limit boundary, block only when over limit)
+			if activeCount+testingCount > maxTotal {
 				return fmt.Errorf("account %d at total limit (%d/%d)",
 					limit.AccountID, activeCount+testingCount, maxTotal)
 			}
@@ -221,8 +221,8 @@ func (sl *Selector) checkAccountConstraints(
 				return fmt.Errorf("account %d at testing limit (%d/%d)",
 					limit.AccountID, testingCount, maxTesting)
 			}
-			// Also check total limit
-			if activeCount+testingCount >= maxTotal {
+			// Also check total limit (allow swaps at limit boundary, block only when over limit)
+			if activeCount+testingCount > maxTotal {
 				return fmt.Errorf("account %d at total limit (%d/%d)",
 					limit.AccountID, activeCount+testingCount, maxTotal)
 			}

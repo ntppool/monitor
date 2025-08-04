@@ -172,6 +172,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
+				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -182,6 +183,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
+				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -192,6 +194,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
+				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -271,9 +274,10 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           3,
 				AccountID:    ptr(uint32(3)),
-				GlobalStatus: ntpdb.MonitorsStatusTesting, // Not globally active
+				GlobalStatus: ntpdb.MonitorsStatusActive, // Must be globally active for emergency promotion
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
+				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},

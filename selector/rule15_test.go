@@ -93,8 +93,11 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 				ID:           uint32(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
+				IsHealthy:    true,
+				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
 		}
 	}
 
@@ -303,6 +306,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
+				Count:        int64(minCountForTesting), // Ensure candidates meet minimum data points requirement
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},

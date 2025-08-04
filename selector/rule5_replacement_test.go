@@ -65,6 +65,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				RTT:          candidateRTTs[i],
 				Priority:     candidatePriorities[i], // 50%+ better than corresponding testing monitors
 				IsHealthy:    true,
+				Count:        int64(minCountForTesting), // Ensure candidates meet minimum data points requirement
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -272,6 +273,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(60 + i*5),
 				IsHealthy:    true,
+				Count:        int64(minCountForTesting), // Ensure candidates meet minimum data points requirement
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
