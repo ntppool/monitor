@@ -7,17 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
-	defaultBatchSize = 500
-	mainScorer       = "recentmedian"
+	defaultBatchSize      = 50
+	mainScorer            = "recentmedian"
+	deadlockRetryDuration = 10 * time.Minute // Continue retrying for 10 minutes total
+	initialDeadlockDelay  = 5 * time.Second  // Start with 5-second delay
+	maxDeadlockDelay      = 60 * time.Second // Cap at 60 seconds between attempts
 )
 
 type ScorerSettings struct {
@@ -28,6 +35,10 @@ type metrics struct {
 	processed *prometheus.CounterVec
 	errcount  prometheus.Counter
 	runs      prometheus.Counter
+	batchTime *prometheus.HistogramVec
+	batchSize *prometheus.HistogramVec
+	deadlocks prometheus.Counter
+	retries   *prometheus.CounterVec
 }
 
 type runner struct {
@@ -70,11 +81,33 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 			Name: "scorer_runs",
 			Help: "scorer batches executed",
 		}),
+		batchTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "scorer_batch_duration_seconds",
+			Help:    "Time taken to process each batch",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 10), // 10ms to ~10s
+		}, []string{"scorer"}),
+		batchSize: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "scorer_batch_size",
+			Help:    "Number of records processed per batch",
+			Buckets: prometheus.LinearBuckets(10, 10, 20), // 10 to 200 records
+		}, []string{"scorer"}),
+		deadlocks: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "scorer_deadlocks_total",
+			Help: "Total number of database deadlocks encountered",
+		}),
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "scorer_retries_total",
+			Help: "Total number of retry attempts by reason",
+		}, []string{"scorer", "reason"}),
 	}
 
 	prom.MustRegister(met.processed)
 	prom.MustRegister(met.errcount)
 	prom.MustRegister(met.runs)
+	prom.MustRegister(met.batchTime)
+	prom.MustRegister(met.batchSize)
+	prom.MustRegister(met.deadlocks)
+	prom.MustRegister(met.retries)
 
 	return &runner{
 		ctx:      ctx,
@@ -149,11 +182,53 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 			continue
 		}
 		log.DebugContext(ctx, "processing", "from_id", sm.LastID)
-		scount, err := r.process(ctx, name, sm, settings.BatchSize)
+
+		// Process with deadlock retry logic
+		var scount int
+		var err error
+		startTime := time.Now()
+
+		operation := func() (int, error) {
+			attemptCount, attemptErr := r.process(ctx, name, sm, settings.BatchSize)
+			if attemptErr != nil && isDeadlockError(attemptErr) {
+				// Record deadlock metrics but continue retrying
+				r.m.deadlocks.Inc()
+				r.m.retries.WithLabelValues(name, "deadlock").Inc()
+
+				elapsed := time.Since(startTime)
+				log.Warn("deadlock detected, will retry",
+					"err", attemptErr,
+					"elapsed", elapsed,
+					"max_duration", deadlockRetryDuration)
+				return 0, attemptErr // Return error to trigger retry
+			}
+			return attemptCount, attemptErr // Return success or non-deadlock error
+		}
+
+		// Configure exponential backoff for deadlock retries
+		bo := backoff.NewExponentialBackOff()
+		bo.InitialInterval = initialDeadlockDelay
+		bo.MaxInterval = maxDeadlockDelay
+		bo.Multiplier = 1.5 // More gradual increase than default 2.0
+
+		// Execute with retries using max elapsed time option
+		scount, err = backoff.Retry(ctx, operation,
+			backoff.WithBackOff(bo),
+			backoff.WithMaxElapsedTime(deadlockRetryDuration))
+
 		r.m.processed.WithLabelValues(name).Add(float64(scount))
 		count += scount
 		if err != nil {
-			log.Error("process error", "err", err)
+			elapsed := time.Since(startTime)
+			if isDeadlockError(err) {
+				r.m.deadlocks.Inc()
+				log.Error("deadlock error after retry period expired",
+					"err", err,
+					"retry_duration", deadlockRetryDuration,
+					"elapsed", elapsed)
+			} else {
+				log.Error("process error", "err", err)
+			}
 			r.m.errcount.Add(1)
 			return count, err
 		}
@@ -200,10 +275,22 @@ func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.
 }
 
 func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchSize int32) (int, error) {
+	tracer := otel.Tracer("monitor/scorer")
+	ctx, span := tracer.Start(ctx, "scorer.process_batch")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("scorer.name", name),
+		attribute.Int("scorer.batch_size", int(batchSize)),
+		attribute.Int("scorer.last_id", int(sm.LastID)),
+	)
+
+	startTime := time.Now()
 	log := r.log.With("name", name)
 
 	// Validate connection before starting transaction
 	if err := r.validateConnection(ctx); err != nil {
+		span.RecordError(err)
 		return 0, fmt.Errorf("connection validation failed: %w", err)
 	}
 
@@ -310,8 +397,23 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 	err = tx.Commit()
 	if err != nil {
+		span.RecordError(err)
+		// Check if this is a deadlock error
+		if isDeadlockError(err) {
+			r.m.deadlocks.Inc()
+		}
 		return 0, err
 	}
+
+	// Record successful batch metrics
+	duration := time.Since(startTime)
+	r.m.batchTime.WithLabelValues(name).Observe(duration.Seconds())
+	r.m.batchSize.WithLabelValues(name).Observe(float64(count))
+
+	span.SetAttributes(
+		attribute.Int("scorer.processed_count", count),
+		attribute.Float64("scorer.duration_seconds", duration.Seconds()),
+	)
 
 	return count, nil
 }
@@ -359,4 +461,22 @@ func (r *runner) validateConnection(ctx context.Context) error {
 	defer cancel()
 
 	return r.dbconn.PingContext(ctx)
+}
+
+// isDeadlockError checks if the error is a MySQL deadlock error (Error 1213)
+func isDeadlockError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MySQL deadlock error message contains "Error 1213"
+	return errors.Is(err, sql.ErrTxDone) ||
+		(err.Error() != "" && (containsIgnoreCase(err.Error(), "deadlock") ||
+			containsIgnoreCase(err.Error(), "Error 1213")))
+}
+
+// containsIgnoreCase performs case-insensitive substring search
+func containsIgnoreCase(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(len(substr) == 0 ||
+			strings.Contains(strings.ToLower(s), strings.ToLower(substr)))
 }
