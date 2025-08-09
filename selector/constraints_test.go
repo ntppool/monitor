@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"testing"
+	"time"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -398,6 +399,274 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 			gotPromote := sl.canPromoteToTesting(tt.monitor, tt.server, tt.accountLimits, tt.existingMonitors, tt.emergencyOverride)
 			if gotPromote != tt.wantPromote {
 				t.Errorf("canPromoteToTesting() = %v, want %v", gotPromote, tt.wantPromote)
+			}
+		})
+	}
+}
+
+func TestIsUnchangeableConstraint(t *testing.T) {
+	tests := []struct {
+		name           string
+		violationType  constraintViolationType
+		wantUnchangeable bool
+	}{
+		{
+			name:             "network_same_subnet_is_unchangeable",
+			violationType:    violationNetworkSameSubnet,
+			wantUnchangeable: true,
+		},
+		{
+			name:             "account_violation_is_unchangeable",
+			violationType:    violationAccount,
+			wantUnchangeable: true,
+		},
+		{
+			name:             "limit_violation_is_changeable",
+			violationType:    violationLimit,
+			wantUnchangeable: false,
+		},
+		{
+			name:             "network_diversity_violation_is_changeable",
+			violationType:    violationNetworkDiversity,
+			wantUnchangeable: false,
+		},
+		{
+			name:             "no_violation_is_changeable",
+			violationType:    violationNone,
+			wantUnchangeable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isUnchangeableConstraint(tt.violationType)
+			if got != tt.wantUnchangeable {
+				t.Errorf("isUnchangeableConstraint(%v) = %v, want %v", tt.violationType, got, tt.wantUnchangeable)
+			}
+		})
+	}
+}
+
+func TestShouldCheckConstraintResolution(t *testing.T) {
+	sl := &Selector{
+		log: slog.Default(),
+	}
+
+	now := time.Now()
+
+	tests := []struct {
+		name            string
+		monitor         monitorCandidate
+		pauseReason     pauseReason
+		wantCheck       bool
+	}{
+		{
+			name: "non_paused_monitor_should_not_check",
+			monitor: monitorCandidate{
+				ServerStatus:        ntpdb.ServerScoresStatusActive,
+				LastConstraintCheck: nil,
+			},
+			pauseReason: pauseConstraintViolation,
+			wantCheck:   false,
+		},
+		{
+			name: "paused_monitor_never_checked_should_check",
+			monitor: monitorCandidate{
+				ServerStatus:        ntpdb.ServerScoresStatusPaused,
+				LastConstraintCheck: nil,
+			},
+			pauseReason: pauseConstraintViolation,
+			wantCheck:   true,
+		},
+		{
+			name: "paused_constraint_monitor_checked_recently_should_not_check",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				LastConstraintCheck: func() *time.Time {
+					t := now.Add(-4 * time.Hour) // 4 hours ago, less than 8 hour threshold
+					return &t
+				}(),
+			},
+			pauseReason: pauseConstraintViolation,
+			wantCheck:   false,
+		},
+		{
+			name: "paused_constraint_monitor_checked_long_ago_should_check",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				LastConstraintCheck: func() *time.Time {
+					t := now.Add(-10 * time.Hour) // 10 hours ago, more than 8 hour threshold
+					return &t
+				}(),
+			},
+			pauseReason: pauseConstraintViolation,
+			wantCheck:   true,
+		},
+		{
+			name: "paused_excess_monitor_checked_recently_should_not_check",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				LastConstraintCheck: func() *time.Time {
+					t := now.Add(-100 * time.Hour) // 100 hours ago, less than 120 hour threshold
+					return &t
+				}(),
+			},
+			pauseReason: pauseExcess,
+			wantCheck:   false,
+		},
+		{
+			name: "paused_excess_monitor_checked_long_ago_should_check",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				LastConstraintCheck: func() *time.Time {
+					t := now.Add(-130 * time.Hour) // 130 hours ago, more than 120 hour threshold
+					return &t
+				}(),
+			},
+			pauseReason: pauseExcess,
+			wantCheck:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sl.shouldCheckConstraintResolution(tt.monitor, tt.pauseReason)
+			if got != tt.wantCheck {
+				t.Errorf("shouldCheckConstraintResolution() = %v, want %v", got, tt.wantCheck)
+			}
+		})
+	}
+}
+
+func TestCheckConstraintResolution(t *testing.T) {
+	sl := &Selector{
+		log: slog.Default(),
+	}
+
+	tests := []struct {
+		name             string
+		monitor          monitorCandidate
+		server           *serverInfo
+		wantResolved     bool
+	}{
+		{
+			name: "non_paused_monitor_should_not_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusActive,
+				ConstraintViolationType: func() *string {
+					s := string(violationNetworkSameSubnet)
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				IP: "192.168.2.1", // Different subnet
+			},
+			wantResolved: false,
+		},
+		{
+			name: "paused_monitor_no_violation_type_should_resolve",
+			monitor: monitorCandidate{
+				ServerStatus:            ntpdb.ServerScoresStatusPaused,
+				ConstraintViolationType: nil,
+			},
+			server: &serverInfo{
+				IP: "192.168.1.1",
+			},
+			wantResolved: true,
+		},
+		{
+			name: "paused_monitor_changeable_violation_should_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				ConstraintViolationType: func() *string {
+					s := string(violationLimit) // Changeable constraint
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				IP: "192.168.1.1",
+			},
+			wantResolved: true,
+		},
+		{
+			name: "paused_monitor_network_constraint_resolved_should_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				IP:           "192.168.1.10",
+				ConstraintViolationType: func() *string {
+					s := string(violationNetworkSameSubnet)
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				IP: "192.168.2.1", // Different /24 subnet
+			},
+			wantResolved: true,
+		},
+		{
+			name: "paused_monitor_network_constraint_still_violated_should_not_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				IP:           "192.168.1.10",
+				ConstraintViolationType: func() *string {
+					s := string(violationNetworkSameSubnet)
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				IP: "192.168.1.20", // Same /24 subnet
+			},
+			wantResolved: false,
+		},
+		{
+			name: "paused_monitor_account_constraint_resolved_should_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				AccountID: func() *uint32 {
+					id := uint32(1)
+					return &id
+				}(),
+				ConstraintViolationType: func() *string {
+					s := string(violationAccount)
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				AccountID: func() *uint32 {
+					id := uint32(2) // Different account
+					return &id
+				}(),
+			},
+			wantResolved: true,
+		},
+		{
+			name: "paused_monitor_account_constraint_still_violated_should_not_resolve",
+			monitor: monitorCandidate{
+				ServerStatus: ntpdb.ServerScoresStatusPaused,
+				AccountID: func() *uint32 {
+					id := uint32(1)
+					return &id
+				}(),
+				ConstraintViolationType: func() *string {
+					s := string(violationAccount)
+					return &s
+				}(),
+			},
+			server: &serverInfo{
+				AccountID: func() *uint32 {
+					id := uint32(1) // Same account
+					return &id
+				}(),
+			},
+			wantResolved: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sl.checkConstraintResolution(tt.monitor, tt.server, nil, nil)
+			if got != tt.wantResolved {
+				t.Errorf("checkConstraintResolution() = %v, want %v", got, tt.wantResolved)
 			}
 		})
 	}

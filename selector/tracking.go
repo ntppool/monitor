@@ -21,6 +21,7 @@ func (sl *Selector) trackConstraintViolations(
 		shouldUpdate := false
 		var newViolationType sql.NullString
 		var newViolationSince sql.NullTime
+		var shouldPause bool
 
 		if violation.Type != violationNone {
 			// Defensive programming: candidates should not have limit violations,
@@ -42,6 +43,12 @@ func (sl *Selector) trackConstraintViolations(
 			// We have a current violation
 			violationType := string(violation.Type)
 			newViolationType = sql.NullString{String: violationType, Valid: true}
+
+			// Check if this is an unchangeable constraint that should result in paused status
+			if isUnchangeableConstraint(violation.Type) && monitor.ServerStatus != ntpdb.ServerScoresStatusPaused {
+				shouldPause = true
+				shouldUpdate = true
+			}
 
 			if monitor.ConstraintViolationType == nil || *monitor.ConstraintViolationType != violationType {
 				// New violation or type changed
@@ -102,6 +109,80 @@ func (sl *Selector) trackConstraintViolations(
 					"serverID", serverID,
 					"monitorID", monitor.ID,
 					"violationType", violation.Type)
+			}
+
+			// If this is an unchangeable constraint, pause the monitor
+			if shouldPause {
+				err := db.UpdateServerScoreStatus(sl.ctx, ntpdb.UpdateServerScoreStatusParams{
+					Status:    ntpdb.ServerScoresStatusPaused,
+					MonitorID: monitor.ID,
+					ServerID:  serverID,
+				})
+				if err != nil {
+					sl.log.Error("failed to pause monitor for unchangeable constraint",
+						"serverID", serverID,
+						"monitorID", monitor.ID,
+						"violationType", violation.Type,
+						"error", err)
+					continue
+				}
+
+				// Update pause reason and last constraint check
+				err = db.UpdateServerScorePauseReason(sl.ctx, ntpdb.UpdateServerScorePauseReasonParams{
+					PauseReason: sql.NullString{String: string(pauseConstraintViolation), Valid: true},
+					ServerID:    serverID,
+					MonitorID:   monitor.ID,
+				})
+				if err != nil {
+					sl.log.Error("failed to update pause reason",
+						"serverID", serverID,
+						"monitorID", monitor.ID,
+						"error", err)
+					continue
+				}
+
+				sl.log.Info("paused monitor due to unchangeable constraint",
+					"serverID", serverID,
+					"monitorID", monitor.ID,
+					"violationType", violation.Type,
+					"previousStatus", monitor.ServerStatus)
+			}
+		}
+	}
+
+	return nil
+}
+
+// updateConstraintCheckTimestamps updates the last_constraint_check timestamp for evaluated paused monitors
+func (sl *Selector) updateConstraintCheckTimestamps(
+	db ntpdb.QuerierTx,
+	serverID uint32,
+	evaluatedPausedMonitors []evaluatedMonitor,
+) error {
+	for _, eval := range evaluatedPausedMonitors {
+		monitor := eval.monitor
+
+		// Get pause reason from the monitor
+		var pauseReasonValue pauseReason
+		if monitor.PauseReason != nil {
+			pauseReasonValue = pauseReason(*monitor.PauseReason)
+		} else {
+			// Default to constraint violation for backward compatibility
+			pauseReasonValue = pauseConstraintViolation
+		}
+
+		// Check if we evaluated this monitor for constraint resolution
+		if sl.shouldCheckConstraintResolution(monitor, pauseReasonValue) {
+			err := db.UpdateServerScoreLastConstraintCheck(sl.ctx, ntpdb.UpdateServerScoreLastConstraintCheckParams{
+				ServerID:  serverID,
+				MonitorID: monitor.ID,
+			})
+			if err != nil {
+				sl.log.Error("failed to update last constraint check",
+					"serverID", serverID,
+					"monitorID", monitor.ID,
+					"error", err)
+				continue
 			}
 		}
 	}
@@ -177,6 +258,16 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	}
 	if row.ConstraintViolationSince.Valid {
 		candidate.ConstraintViolationSince = &row.ConstraintViolationSince.Time
+	}
+
+	// Last constraint check (new field)
+	if row.LastConstraintCheck.Valid {
+		candidate.LastConstraintCheck = &row.LastConstraintCheck.Time
+	}
+
+	// Pause reason (new field)
+	if row.PauseReason.Valid {
+		candidate.PauseReason = &row.PauseReason.String
 	}
 
 	return candidate

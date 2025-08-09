@@ -213,7 +213,9 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     count(*) as count,
     a.flags as account_flags,
     ss.constraint_violation_type,
-    ss.constraint_violation_since
+    ss.constraint_violation_since,
+    ss.last_constraint_check,
+    ss.pause_reason
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
@@ -224,7 +226,7 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 24 hour)
   group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
-           ss.constraint_violation_type, ss.constraint_violation_since
+           ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt;
 
 -- name: GetServersMonitorReview :many
@@ -255,7 +257,20 @@ WHERE server_id = ? AND monitor_id = ?;
 -- name: ClearServerScoreConstraintViolation :exec
 UPDATE server_scores
 SET constraint_violation_type = NULL,
-    constraint_violation_since = NULL
+    constraint_violation_since = NULL,
+    last_constraint_check = NOW(),
+    pause_reason = NULL
+WHERE server_id = ? AND monitor_id = ?;
+
+-- name: UpdateServerScorePauseReason :exec
+UPDATE server_scores
+SET pause_reason = ?,
+    last_constraint_check = NOW()
+WHERE server_id = ? AND monitor_id = ?;
+
+-- name: UpdateServerScoreLastConstraintCheck :exec
+UPDATE server_scores
+SET last_constraint_check = NOW()
 WHERE server_id = ? AND monitor_id = ?;
 
 

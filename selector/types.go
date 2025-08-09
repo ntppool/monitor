@@ -52,6 +52,8 @@ type monitorCandidate struct {
 	Count                    int64 // Number of data points from GetMonitorPriority query
 	ConstraintViolationType  *string
 	ConstraintViolationSince *time.Time
+	LastConstraintCheck      *time.Time // When constraint resolution was last checked
+	PauseReason              *string    // Reason why monitor was paused
 }
 
 // serverInfo contains server details needed for constraint checking

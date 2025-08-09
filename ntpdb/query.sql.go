@@ -16,7 +16,9 @@ import (
 const clearServerScoreConstraintViolation = `-- name: ClearServerScoreConstraintViolation :exec
 UPDATE server_scores
 SET constraint_violation_type = NULL,
-    constraint_violation_since = NULL
+    constraint_violation_since = NULL,
+    last_constraint_check = NOW(),
+    pause_reason = NULL
 WHERE server_id = ? AND monitor_id = ?
 `
 
@@ -68,7 +70,9 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     count(*) as count,
     a.flags as account_flags,
     ss.constraint_violation_type,
-    ss.constraint_violation_since
+    ss.constraint_violation_since,
+    ss.last_constraint_check,
+    ss.pause_reason
   from log_scores ls
   inner join monitors m
   left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
@@ -79,7 +83,7 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   and m.type = 'monitor'
   and ls.ts > date_sub(now(), interval 24 hour)
   group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
-           ss.constraint_violation_type, ss.constraint_violation_since
+           ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
   order by healthy desc, monitor_priority, avg_step desc, avg_rtt
 `
 
@@ -99,6 +103,8 @@ type GetMonitorPriorityRow struct {
 	AccountFlags             *json.RawMessage       `json:"account_flags"`
 	ConstraintViolationType  sql.NullString         `json:"constraint_violation_type"`
 	ConstraintViolationSince sql.NullTime           `json:"constraint_violation_since"`
+	LastConstraintCheck      sql.NullTime           `json:"last_constraint_check"`
+	PauseReason              sql.NullString         `json:"pause_reason"`
 }
 
 func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error) {
@@ -126,6 +132,8 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 			&i.AccountFlags,
 			&i.ConstraintViolationType,
 			&i.ConstraintViolationSince,
+			&i.LastConstraintCheck,
+			&i.PauseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -547,7 +555,7 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 }
 
 const getServerScore = `-- name: GetServerScore :one
-SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since FROM server_scores
+SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since, last_constraint_check, pause_reason FROM server_scores
   WHERE
     server_id=? AND
     monitor_id=?
@@ -574,6 +582,8 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 		&i.ModifiedOn,
 		&i.ConstraintViolationType,
 		&i.ConstraintViolationSince,
+		&i.LastConstraintCheck,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -919,6 +929,40 @@ func (q *Queries) UpdateServerScoreConstraintViolation(ctx context.Context, arg 
 		arg.ServerID,
 		arg.MonitorID,
 	)
+	return err
+}
+
+const updateServerScoreLastConstraintCheck = `-- name: UpdateServerScoreLastConstraintCheck :exec
+UPDATE server_scores
+SET last_constraint_check = NOW()
+WHERE server_id = ? AND monitor_id = ?
+`
+
+type UpdateServerScoreLastConstraintCheckParams struct {
+	ServerID  uint32 `json:"server_id"`
+	MonitorID uint32 `json:"monitor_id"`
+}
+
+func (q *Queries) UpdateServerScoreLastConstraintCheck(ctx context.Context, arg UpdateServerScoreLastConstraintCheckParams) error {
+	_, err := q.db.ExecContext(ctx, updateServerScoreLastConstraintCheck, arg.ServerID, arg.MonitorID)
+	return err
+}
+
+const updateServerScorePauseReason = `-- name: UpdateServerScorePauseReason :exec
+UPDATE server_scores
+SET pause_reason = ?,
+    last_constraint_check = NOW()
+WHERE server_id = ? AND monitor_id = ?
+`
+
+type UpdateServerScorePauseReasonParams struct {
+	PauseReason sql.NullString `json:"pause_reason"`
+	ServerID    uint32         `json:"server_id"`
+	MonitorID   uint32         `json:"monitor_id"`
+}
+
+func (q *Queries) UpdateServerScorePauseReason(ctx context.Context, arg UpdateServerScorePauseReasonParams) error {
+	_, err := q.db.ExecContext(ctx, updateServerScorePauseReason, arg.PauseReason, arg.ServerID, arg.MonitorID)
 	return err
 }
 

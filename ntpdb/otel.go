@@ -759,6 +759,52 @@ func (_d QuerierTxWithTracing) UpdateServerScoreConstraintViolation(ctx context.
 	return _d.QuerierTx.UpdateServerScoreConstraintViolation(ctx, arg)
 }
 
+// UpdateServerScoreLastConstraintCheck implements QuerierTx
+func (_d QuerierTxWithTracing) UpdateServerScoreLastConstraintCheck(ctx context.Context, arg UpdateServerScoreLastConstraintCheckParams) (err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.UpdateServerScoreLastConstraintCheck")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"err": err})
+		} else if err != nil {
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.UpdateServerScoreLastConstraintCheck(ctx, arg)
+}
+
+// UpdateServerScorePauseReason implements QuerierTx
+func (_d QuerierTxWithTracing) UpdateServerScorePauseReason(ctx context.Context, arg UpdateServerScorePauseReasonParams) (err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.UpdateServerScorePauseReason")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"err": err})
+		} else if err != nil {
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.UpdateServerScorePauseReason(ctx, arg)
+}
+
 // UpdateServerScoreQueue implements QuerierTx
 func (_d QuerierTxWithTracing) UpdateServerScoreQueue(ctx context.Context, arg UpdateServerScoreQueueParams) (err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.UpdateServerScoreQueue")

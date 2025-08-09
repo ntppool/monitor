@@ -308,4 +308,6 @@ type ServerScore struct {
 	ModifiedOn               time.Time          `json:"modified_on"`
 	ConstraintViolationType  sql.NullString     `json:"constraint_violation_type"`
 	ConstraintViolationSince sql.NullTime       `json:"constraint_violation_since"`
+	LastConstraintCheck      sql.NullTime       `json:"last_constraint_check"`
+	PauseReason              sql.NullString     `json:"pause_reason"`
 }

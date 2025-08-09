@@ -45,6 +45,8 @@ type Querier interface {
 	UpdateServer(ctx context.Context, arg UpdateServerParams) error
 	UpdateServerScore(ctx context.Context, arg UpdateServerScoreParams) error
 	UpdateServerScoreConstraintViolation(ctx context.Context, arg UpdateServerScoreConstraintViolationParams) error
+	UpdateServerScoreLastConstraintCheck(ctx context.Context, arg UpdateServerScoreLastConstraintCheckParams) error
+	UpdateServerScorePauseReason(ctx context.Context, arg UpdateServerScorePauseReasonParams) error
 	UpdateServerScoreQueue(ctx context.Context, arg UpdateServerScoreQueueParams) error
 	UpdateServerScoreStatus(ctx context.Context, arg UpdateServerScoreStatusParams) error
 	UpdateServerScoreStratum(ctx context.Context, arg UpdateServerScoreStratumParams) error

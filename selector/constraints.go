@@ -18,6 +18,10 @@ const (
 	// Network diversity constraints
 	diversitySubnetV4 = 20 // IPv4 network diversity constraint (/20)
 	diversitySubnetV6 = 44 // IPv6 network diversity constraint (/44)
+
+	// Constraint resolution intervals
+	constraintRecheckInterval = 8 * time.Hour   // Network/account constraints might resolve
+	excessRecheckInterval     = 120 * time.Hour // Excess candidates (5 days for system stability)
 )
 
 // accountFlags represents the JSON structure in accounts.flags column
@@ -33,6 +37,21 @@ type accountLimit struct {
 	MaxPerServer int
 	ActiveCount  int // Current active monitors for this account on this server
 	TestingCount int // Current testing monitors for this account on this server
+}
+
+// pauseReason represents the reason why a monitor was paused
+type pauseReason string
+
+const (
+	pauseConstraintViolation pauseReason = "constraint" // Network/account constraints
+	pauseExcess             pauseReason = "excess"      // Too many candidates (future use)
+)
+
+// isUnchangeableConstraint determines if a constraint violation type represents
+// an unchangeable constraint that should result in paused status
+func isUnchangeableConstraint(violationType constraintViolationType) bool {
+	return violationType == violationNetworkSameSubnet ||
+		violationType == violationAccount
 }
 
 // checkNetworkConstraint verifies that monitor and server are not in the same subnet
@@ -667,4 +686,60 @@ func (sl *Selector) updateAccountLimitsForPromotion(
 	case ntpdb.ServerScoresStatusTesting:
 		limit.TestingCount++
 	}
+}
+
+// shouldCheckConstraintResolution determines if we should check constraint resolution
+// for a paused monitor based on the pause reason and timing intervals
+func (sl *Selector) shouldCheckConstraintResolution(monitor monitorCandidate, pauseReasonValue pauseReason) bool {
+	if monitor.ServerStatus != ntpdb.ServerScoresStatusPaused {
+		return false
+	}
+
+	if monitor.LastConstraintCheck == nil {
+		return true // Never checked before, safe to evaluate
+	}
+
+	timeSinceLastCheck := time.Since(*monitor.LastConstraintCheck)
+
+	switch pauseReasonValue {
+	case pauseConstraintViolation:
+		return timeSinceLastCheck > constraintRecheckInterval // 8 hours
+	case pauseExcess:
+		return timeSinceLastCheck > excessRecheckInterval // 120 hours
+	}
+
+	return false
+}
+
+// checkConstraintResolution verifies if previously violated constraints are now resolved
+func (sl *Selector) checkConstraintResolution(
+	monitor monitorCandidate,
+	server *serverInfo,
+	accountLimits map[uint32]*accountLimit,
+	existingMonitors []ntpdb.GetMonitorPriorityRow,
+) bool {
+	// Only check if monitor is currently paused due to unchangeable constraint
+	if monitor.ServerStatus != ntpdb.ServerScoresStatusPaused {
+		return false
+	}
+
+	if monitor.ConstraintViolationType == nil {
+		return true // No recorded violation, can unpause
+	}
+
+	violationType := constraintViolationType(*monitor.ConstraintViolationType)
+	if !isUnchangeableConstraint(violationType) {
+		return true // Not an unchangeable constraint, can unpause
+	}
+
+	// Re-check specific constraint types
+	switch violationType {
+	case violationNetworkSameSubnet:
+		return sl.checkNetworkConstraint(monitor.IP, server.IP) == nil
+	case violationAccount:
+		return !(monitor.AccountID != nil && server.AccountID != nil &&
+			*monitor.AccountID == *server.AccountID)
+	}
+
+	return false
 }

@@ -600,12 +600,64 @@ func (sl *Selector) applyRule6BootstrapPromotion(
 	}
 }
 
-// Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (currently disabled)
-func (sl *Selector) applyRule7OutOfOrderOptimization(
+// Rule 7 (Constraint Resolution): Check paused monitors for constraint resolution
+func (sl *Selector) applyRule7ConstraintResolution(
+	ctx context.Context,
+	selCtx selectionContext,
+	pausedMonitors []evaluatedMonitor,
+) []statusChange {
+	var changes []statusChange
+
+	for _, eval := range pausedMonitors {
+		monitor := eval.monitor
+
+		// Get pause reason from the monitor
+		var pauseReasonValue pauseReason
+		if monitor.PauseReason != nil {
+			pauseReasonValue = pauseReason(*monitor.PauseReason)
+		} else {
+			// Default to constraint violation for backward compatibility
+			pauseReasonValue = pauseConstraintViolation
+		}
+
+		// Check if we should evaluate this monitor based on timing
+		if !sl.shouldCheckConstraintResolution(monitor, pauseReasonValue) {
+			continue
+		}
+
+		// Check if constraints are now resolved
+		if sl.checkConstraintResolution(monitor, selCtx.server, selCtx.accountLimits, selCtx.assignedMonitors) {
+			changes = append(changes, statusChange{
+				monitorID:  monitor.ID,
+				fromStatus: ntpdb.ServerScoresStatusPaused,
+				toStatus:   ntpdb.ServerScoresStatusCandidate,
+				reason:     "constraint resolution: unpausing resolved constraint",
+			})
+
+			sl.log.Info("unpausing monitor due to constraint resolution",
+				"serverID", selCtx.server.ID,
+				"monitorID", monitor.ID,
+				"pauseReason", pauseReasonValue,
+				"violationType", monitor.ConstraintViolationType)
+
+			// Limit constraint resolution changes per run to prevent oscillation
+			if len(changes) >= 2 {
+				break
+			}
+		}
+		// Always update last constraint check timestamp for evaluated monitors
+		// Note: This will be handled by the status change tracking or in the main selector loop
+	}
+
+	return changes
+}
+
+// Rule 8 (Out-of-Order Optimization): Handle out-of-order situations (currently disabled)
+func (sl *Selector) applyRule8OutOfOrderOptimization(
 	ctx context.Context,
 	selCtx selectionContext,
 ) ruleResult {
-	// Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now to respect change limits)
+	// Rule 8 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now to respect change limits)
 	// TODO: Implement out-of-order logic that respects allowedChanges limits
 	return ruleResult{
 		changes:      []statusChange{},
@@ -723,7 +775,8 @@ func (sl *Selector) performFinalValidation(
 //	Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
 //	Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target
 //	Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
-//	Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
+//	Rule 7 (Constraint Resolution): Check paused monitors for constraint resolution
+//	Rule 8 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
 func (sl *Selector) applySelectionRules(
 	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
@@ -736,6 +789,7 @@ func (sl *Selector) applySelectionRules(
 		activeMonitors    []evaluatedMonitor
 		testingMonitors   []evaluatedMonitor
 		candidateMonitors []evaluatedMonitor
+		pausedMonitors    []evaluatedMonitor
 	)
 
 	for _, em := range evaluatedMonitors {
@@ -746,6 +800,8 @@ func (sl *Selector) applySelectionRules(
 			testingMonitors = append(testingMonitors, em)
 		case ntpdb.ServerScoresStatusCandidate:
 			candidateMonitors = append(candidateMonitors, em)
+		case ntpdb.ServerScoresStatusPaused:
+			pausedMonitors = append(pausedMonitors, em)
 		}
 	}
 
@@ -873,13 +929,17 @@ func (sl *Selector) applySelectionRules(
 	allChanges = append(allChanges, rule2_5Result.changes...)
 	state.testingCount = rule2_5Result.testingCount
 
+	// Rule 7 (Constraint Resolution): Check paused monitors for constraint resolution
+	rule7Changes := sl.applyRule7ConstraintResolution(ctx, selCtx, pausedMonitors)
+	allChanges = append(allChanges, rule7Changes...)
+
 	// Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates
 	rule6Result := sl.applyRule6BootstrapPromotion(ctx, selCtx, testingMonitors, candidateMonitors, workingAccountLimits, state.activeCount, state.testingCount)
 	allChanges = append(allChanges, rule6Result.changes...)
 	state.testingCount = rule6Result.testingCount
 
-	// Rule 7 (Out-of-Order Optimization): Handle out-of-order situations (disabled)
-	_ = sl.applyRule7OutOfOrderOptimization(ctx, selCtx)
+	// Rule 8 (Out-of-Order Optimization): Handle out-of-order situations (disabled)
+	_ = sl.applyRule8OutOfOrderOptimization(ctx, selCtx)
 
 	// Final safety validation
 	sl.performFinalValidation(ctx, state, targetNumber, server)

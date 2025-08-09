@@ -379,6 +379,20 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		// Don't fail the whole operation for tracking errors
 	}
 
+	// Update constraint check timestamps for evaluated paused monitors
+	pausedMonitors := make([]evaluatedMonitor, 0)
+	for _, em := range evaluatedMonitors {
+		if em.monitor.ServerStatus == ntpdb.ServerScoresStatusPaused {
+			pausedMonitors = append(pausedMonitors, em)
+		}
+	}
+	if len(pausedMonitors) > 0 {
+		if err := sl.updateConstraintCheckTimestamps(db, serverID, pausedMonitors); err != nil {
+			sl.log.Error("failed to update constraint check timestamps", "error", err)
+			// Don't fail the whole operation for tracking errors
+		}
+	}
+
 	// Track performance metrics
 	if sl.metrics != nil {
 		duration := time.Since(start).Seconds()
@@ -395,6 +409,7 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		activeCount := 0
 		testingCount := 0
 		candidateCount := 0
+		pausedCount := 0
 		for _, em := range evaluatedMonitors {
 			switch em.monitor.ServerStatus {
 			case ntpdb.ServerScoresStatusActive:
@@ -403,6 +418,8 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 				testingCount++
 			case ntpdb.ServerScoresStatusCandidate:
 				candidateCount++
+			case ntpdb.ServerScoresStatusPaused:
+				pausedCount++
 			}
 		}
 
@@ -428,6 +445,7 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		"serverID", serverID,
 		"assignedMonitors", len(assignedMonitors),
 		"evaluatedMonitors", len(evaluatedMonitors),
+		"pausedMonitors", len(pausedMonitors),
 		"plannedChanges", len(changes),
 		"appliedChanges", changeCount,
 		"failedChanges", failedChanges)

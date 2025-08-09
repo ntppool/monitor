@@ -497,11 +497,14 @@ CREATE TABLE `server_scores` (
   `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `constraint_violation_type` varchar(50) DEFAULT NULL,
   `constraint_violation_since` datetime DEFAULT NULL,
+  `last_constraint_check` datetime DEFAULT NULL,
+  `pause_reason` varchar(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `server_id` (`server_id`,`monitor_id`),
   KEY `monitor_id` (`monitor_id`,`server_id`),
   KEY `monitor_id_2` (`monitor_id`,`score_ts`),
   KEY `idx_constraint_violation` (`constraint_violation_type`,`constraint_violation_since`),
+  KEY `idx_paused_monitors` (`status`,`last_constraint_check`,`pause_reason`),
   CONSTRAINT `server_score_monitor_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
   CONSTRAINT `server_score_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
@@ -898,4 +901,4 @@ CREATE TABLE `zones` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-08-03  0:43:29
+-- Dump completed on 2025-08-06  4:26:05
