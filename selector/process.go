@@ -34,6 +34,23 @@ type statusChange struct {
 	reason     string
 }
 
+// monitorRemovalConfig configures the gradual removal process for a set of monitors
+type monitorRemovalConfig struct {
+	monitors      []evaluatedMonitor
+	fromStatus    ntpdb.ServerScoresStatus
+	toStatus      ntpdb.ServerScoresStatus
+	currentCount  int
+	safeThreshold int
+	removalLimit  int
+}
+
+// safetyCheckResult contains analysis of monitors that need removal
+type safetyCheckResult struct {
+	constraintViolations int
+	performanceIssues    int
+	totalIssues          int
+}
+
 // changeLimits defines separate limits for different types of status changes
 type changeLimits struct {
 	activeRemovals  int // active → testing demotions
@@ -130,6 +147,122 @@ func (sl *Selector) applyRule1ImmediateBlocking(
 	return changes
 }
 
+// analyzeSafetyViolations analyzes monitors to categorize removal reasons
+func (sl *Selector) analyzeSafetyViolations(monitors []evaluatedMonitor) safetyCheckResult {
+	result := safetyCheckResult{}
+	for _, em := range monitors {
+		if em.recommendedState == candidateOut {
+			if em.currentViolation != nil && em.currentViolation.Type != violationNone {
+				result.constraintViolations++
+			} else {
+				result.performanceIssues++
+			}
+		}
+	}
+	result.totalIssues = result.constraintViolations + result.performanceIssues
+	return result
+}
+
+// processRemovals handles gradual removal for monitors
+func (sl *Selector) processRemovals(
+	ctx context.Context,
+	monitors []evaluatedMonitor,
+	fromStatus, toStatus ntpdb.ServerScoresStatus,
+	currentCount, safeThreshold, removalLimit, activeCount int,
+) []statusChange {
+	safety := sl.analyzeSafetyViolations(monitors)
+	if safety.totalIssues == 0 {
+		return nil
+	}
+
+	countAfterConstraints := currentCount - safety.constraintViolations
+	skipPerformance := countAfterConstraints <= safeThreshold && safety.performanceIssues > 0
+
+	// Calculate and apply removals
+	removalsAllowed := sl.calculateRemovalLimit(
+		ctx, fromStatus, currentCount, safeThreshold, removalLimit,
+		safety, skipPerformance, activeCount,
+	)
+	return sl.applyRemovals(monitors, fromStatus, toStatus, safety, skipPerformance, removalsAllowed)
+}
+
+// calculateRemovalLimit determines safe removal count
+func (sl *Selector) calculateRemovalLimit(
+	ctx context.Context,
+	fromStatus ntpdb.ServerScoresStatus,
+	currentCount, safeThreshold, removalLimit int,
+	safety safetyCheckResult,
+	skipPerformance bool,
+	activeCount int,
+) int {
+	// Special: zero active allows aggressive testing cleanup
+	if fromStatus == ntpdb.ServerScoresStatusTesting && activeCount == 0 && currentCount > safeThreshold {
+		return min(min(safety.totalIssues, removalLimit), currentCount-safeThreshold)
+	}
+
+	// Skip if at/below threshold with only performance issues
+	if (currentCount <= safeThreshold && safety.constraintViolations == 0 && safety.totalIssues > 0) ||
+		(skipPerformance && safety.constraintViolations == 0) {
+		statusName := "active"
+		if fromStatus == ntpdb.ServerScoresStatusTesting {
+			statusName = "testing"
+		}
+		sl.log.WarnContext(ctx, fmt.Sprintf("skipping %s monitor removal due to safety threshold", statusName),
+			"current", currentCount, "safeThreshold", safeThreshold,
+			"performanceRemovals", safety.performanceIssues,
+			"constraintViolations", safety.constraintViolations)
+		return 0
+	}
+
+	// Calculate based on constraints and performance
+	if safety.constraintViolations > 0 && (currentCount <= safeThreshold || skipPerformance) {
+		return min(removalLimit, safety.constraintViolations)
+	}
+
+	maxSafeRemovals := currentCount - safeThreshold
+	if safety.constraintViolations > 0 || !skipPerformance {
+		return min(removalLimit, maxSafeRemovals)
+	}
+	return 0
+}
+
+// applyRemovals applies removal logic to monitors
+func (sl *Selector) applyRemovals(
+	monitors []evaluatedMonitor,
+	fromStatus, toStatus ntpdb.ServerScoresStatus,
+	safety safetyCheckResult,
+	skipPerformance bool,
+	removalsAllowed int,
+) []statusChange {
+	if removalsAllowed <= 0 {
+		return nil
+	}
+
+	var changes []statusChange
+	// Iterate backwards to demote worst performers first
+	for i := len(monitors) - 1; i >= 0 && removalsAllowed > 0; i-- {
+		em := monitors[i]
+		if em.recommendedState != candidateOut {
+			continue
+		}
+
+		// Skip performance-based removals if only allowing constraint removals
+		if skipPerformance && (em.currentViolation == nil || em.currentViolation.Type == violationNone) {
+			continue
+		}
+
+		changes = append(changes, statusChange{
+			monitorID:  em.monitor.ID,
+			fromStatus: fromStatus,
+			toStatus:   toStatus,
+			reason:     "gradual removal (health or constraints)",
+		})
+		removalsAllowed--
+	}
+
+	return changes
+}
+
 // Rule 2 (Gradual Constraint Removal): Gradual removal of candidateOut monitors
 func (sl *Selector) applyRule2GradualConstraintRemoval(
 	ctx context.Context,
@@ -138,186 +271,27 @@ func (sl *Selector) applyRule2GradualConstraintRemoval(
 	testingMonitors []evaluatedMonitor,
 	currentActiveMonitors int,
 ) []statusChange {
-	var changes []statusChange
+	// Process active removals
+	activeChanges := sl.processRemovals(ctx, activeMonitors,
+		ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting,
+		currentActiveMonitors, max(1, selCtx.targetNumber-2),
+		selCtx.limits.activeRemovals, currentActiveMonitors)
 
-	// Safety check: Don't remove active monitors if we're at or below (target - 2)
-	// This ensures we maintain a minimum viable set even when all monitors are performing poorly
-	// However, we still allow removal of monitors with constraint violations (not just poor performance)
-	safeActiveThreshold := max(1, selCtx.targetNumber-2)
-
-	// Count monitors that need removal due to constraint violations vs performance
-	activeConstraintViolations := 0
-	activePerformanceIssues := 0
-	for _, em := range activeMonitors {
-		if em.recommendedState == candidateOut {
-			if em.currentViolation != nil && em.currentViolation.Type != violationNone {
-				activeConstraintViolations++
-			} else {
-				activePerformanceIssues++
-			}
+	// Calculate testing count after demotions
+	testingCount := len(testingMonitors)
+	for _, c := range activeChanges {
+		if c.toStatus == ntpdb.ServerScoresStatusTesting {
+			testingCount++
 		}
 	}
 
-	// After constraint removals, check if we'd still be above threshold for performance removals
-	activeCountAfterConstraints := currentActiveMonitors - activeConstraintViolations
-	skipPerformanceRemovals := activeCountAfterConstraints <= safeActiveThreshold && activePerformanceIssues > 0
+	// Process testing removals with updated count
+	testingChanges := sl.processRemovals(ctx, testingMonitors,
+		ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusCandidate,
+		testingCount, max(1, baseTestingTarget-2),
+		selCtx.limits.testingRemovals, currentActiveMonitors)
 
-	// Only completely skip removals if we're at/below threshold with only performance issues (no constraints)
-	// and we actually have something to remove
-	totalActiveRemovals := activeConstraintViolations + activePerformanceIssues
-
-	if currentActiveMonitors <= safeActiveThreshold && activeConstraintViolations == 0 && totalActiveRemovals > 0 {
-		sl.log.WarnContext(ctx, "skipping active monitor removal due to safety threshold",
-			"currentActive", currentActiveMonitors,
-			"safeThreshold", safeActiveThreshold,
-			"targetNumber", selCtx.targetNumber,
-			"performanceRemovals", activePerformanceIssues,
-			"constraintViolations", activeConstraintViolations)
-		// Skip active removals but continue to process testing removals
-	} else if totalActiveRemovals > 0 {
-		// We have monitors to remove (either constraints or performance issues)
-		// First remove active monitors (demote to testing) - use activeRemovals limit
-		activeRemovalsRemaining := selCtx.limits.activeRemovals
-
-		// Calculate how many removals we can safely make
-		if activeConstraintViolations > 0 {
-			// Always allow constraint removals, even if it takes us below threshold
-			// But limit to actual constraint violations
-			// When we're at threshold, we should allow constraint removals regardless
-			if currentActiveMonitors <= safeActiveThreshold {
-				// At or below threshold - only allow constraint removals
-				activeRemovalsRemaining = min(activeRemovalsRemaining, activeConstraintViolations)
-			} else if skipPerformanceRemovals {
-				// Above threshold but would go below after constraints - only allow constraints
-				activeRemovalsRemaining = min(activeRemovalsRemaining, activeConstraintViolations)
-			} else {
-				// Above threshold with room for all removals
-				maxSafeRemovals := currentActiveMonitors - safeActiveThreshold
-				activeRemovalsRemaining = min(activeRemovalsRemaining, maxSafeRemovals)
-			}
-		} else if !skipPerformanceRemovals {
-			// No constraints, just performance issues - respect threshold
-			maxSafeRemovals := currentActiveMonitors - safeActiveThreshold
-			activeRemovalsRemaining = min(activeRemovalsRemaining, maxSafeRemovals)
-		} else {
-			// At threshold with only performance issues - no removals
-			activeRemovalsRemaining = 0
-		}
-
-		for i := len(activeMonitors) - 1; i >= 0; i-- {
-			if activeRemovalsRemaining <= 0 {
-				break
-			}
-			em := activeMonitors[i]
-			if em.recommendedState == candidateOut {
-				// At safety threshold, skip performance-based removals if we have constraint violations to handle
-				if skipPerformanceRemovals && (em.currentViolation == nil || em.currentViolation.Type == violationNone) {
-					continue // Skip performance-based removal
-				}
-				changes = append(changes, statusChange{
-					monitorID:  em.monitor.ID,
-					fromStatus: ntpdb.ServerScoresStatusActive,
-					toStatus:   ntpdb.ServerScoresStatusTesting,
-					reason:     "gradual removal (health or constraints)",
-				})
-				activeRemovalsRemaining--
-			}
-		}
-	}
-
-	// Then remove testing monitors (demote to candidate)
-	// Calculate current testing count after active demotions
-	currentTestingMonitors := len(testingMonitors)
-	for _, change := range changes {
-		if change.toStatus == ntpdb.ServerScoresStatusTesting {
-			currentTestingMonitors++
-		}
-	}
-
-	// Safety check: Don't remove testing monitors if we're at or below a safe threshold
-	// Use a similar logic: maintain at least (baseTestingTarget - 2) monitors
-	safeTestingThreshold := max(1, baseTestingTarget-2)
-
-	// Count monitors that need removal due to constraint violations vs performance
-	testingConstraintViolations := 0
-	testingPerformanceIssues := 0
-	for _, em := range testingMonitors {
-		if em.recommendedState == candidateOut {
-			if em.currentViolation != nil && em.currentViolation.Type != violationNone {
-				testingConstraintViolations++
-			} else {
-				testingPerformanceIssues++
-			}
-		}
-	}
-
-	testingRemovalsRemaining := selCtx.limits.testingRemovals
-	// After constraint removals, check if we'd still be above threshold for performance removals
-	testingCountAfterConstraints := currentTestingMonitors - testingConstraintViolations
-	skipTestingPerformanceRemovals := testingCountAfterConstraints <= safeTestingThreshold && testingPerformanceIssues > 0
-
-	// When zero active monitors, allow more aggressive cleanup of testing violations
-	// but still respect the safety threshold for performance issues
-	if currentActiveMonitors == 0 && currentTestingMonitors > safeTestingThreshold {
-		testingViolationCount := testingConstraintViolations + testingPerformanceIssues
-		testingRemovalsRemaining = min(testingViolationCount, selCtx.limits.testingRemovals)
-		// Apply safety limit
-		maxSafeTestingRemovals := currentTestingMonitors - safeTestingThreshold
-		testingRemovalsRemaining = min(testingRemovalsRemaining, maxSafeTestingRemovals)
-	} else if skipTestingPerformanceRemovals && testingConstraintViolations == 0 {
-		sl.log.WarnContext(ctx, "skipping testing monitor removal due to safety threshold",
-			"currentTesting", currentTestingMonitors,
-			"safeThreshold", safeTestingThreshold,
-			"performanceRemovals", testingPerformanceIssues,
-			"constraintViolations", testingConstraintViolations)
-		testingRemovalsRemaining = 0
-	} else {
-		// Calculate removals based on constraints and performance
-		if testingConstraintViolations > 0 {
-			// When at threshold, allow constraint removals regardless
-			if currentTestingMonitors <= safeTestingThreshold {
-				// At or below threshold - only allow constraint removals
-				testingRemovalsRemaining = min(testingRemovalsRemaining, testingConstraintViolations)
-			} else if skipTestingPerformanceRemovals {
-				// Above threshold but would go below after constraints - only allow constraints
-				testingRemovalsRemaining = min(testingRemovalsRemaining, testingConstraintViolations)
-			} else {
-				// Above threshold with room for all removals
-				maxSafeTestingRemovals := currentTestingMonitors - safeTestingThreshold
-				testingRemovalsRemaining = min(testingRemovalsRemaining, maxSafeTestingRemovals)
-			}
-		} else if !skipTestingPerformanceRemovals {
-			// No constraints, just performance - respect threshold
-			maxSafeTestingRemovals := currentTestingMonitors - safeTestingThreshold
-			testingRemovalsRemaining = min(testingRemovalsRemaining, maxSafeTestingRemovals)
-		} else {
-			// At threshold with only performance issues - no removals
-			testingRemovalsRemaining = 0
-		}
-	}
-
-	// Iterate backwards to demote worst performers first
-	for i := len(testingMonitors) - 1; i >= 0; i-- {
-		if testingRemovalsRemaining <= 0 {
-			break
-		}
-		em := testingMonitors[i]
-		if em.recommendedState == candidateOut {
-			// At safety threshold, skip performance-based removals if we're only allowing constraint removals
-			if skipTestingPerformanceRemovals && (em.currentViolation == nil || em.currentViolation.Type == violationNone) {
-				continue // Skip performance-based removal
-			}
-			changes = append(changes, statusChange{
-				monitorID:  em.monitor.ID,
-				fromStatus: ntpdb.ServerScoresStatusTesting,
-				toStatus:   ntpdb.ServerScoresStatusCandidate,
-				reason:     "gradual removal (health or constraints)",
-			})
-			testingRemovalsRemaining--
-		}
-	}
-
-	return changes
+	return append(activeChanges, testingChanges...)
 }
 
 // Rule 1.5 (Active Excess Demotion): Demote excess healthy active monitors when over target
