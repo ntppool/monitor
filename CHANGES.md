@@ -1,5 +1,26 @@
 # NTP Pool Monitor Changes
 
+## v4.0.3
+
+### Monitor Selection
+- **Performance-based replacement**: Testing monitors can replace worse-performing active monitors
+- **Safety thresholds**: Prevent removing all monitors when performance is universally poor
+- **Auto-pause for constraint violations**: Monitors with unchangeable constraints (subnet/account) are paused instead of repeatedly failing
+- **Data point requirements**: Minimum 9 measurements for testing promotion, 60 for active promotion
+- **Account limit fixes**: Allow monitor swaps at account boundaries
+- **Priority 0 fix**: Optimal performance monitors can now be promoted correctly
+
+### Scoring & Reliability
+- **Deadlock retry**: Exponential backoff for database deadlocks with telemetry
+- **Paused server scores**: Added support for paused status in scoring
+
+### Developer Tools
+- **Simulation mode**: `selector simulate` command for safe algorithm testing
+- **Server targeting**: `--server-id` parameter for processing specific servers
+
+### Build
+- **32-bit support**: Added 386 architecture builds with softfloat
+
 ## v4.0.2
 
 ### Packaging Improvements
