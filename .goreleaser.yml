@@ -7,6 +7,8 @@ builds:
     binary: ntppool-agent
     env:
       - CGO_ENABLED=0
+      # https://community.ntppool.org/t/ntp-pool-agent-v4-0-2/3998/2
+      - GO386=softfloat
     goos:
       - linux
       - freebsd
