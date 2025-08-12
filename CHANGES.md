@@ -1,9 +1,10 @@
 # NTP Pool Monitor Changes
 
-## v4.0.4
+## v4.0.5
 
 ### MQTT & Ad Hoc Requests
 - **Handler registration fix**: Restored MQTT ad hoc NTP query functionality broken in router migration
+- **MQTT connection fix**: Fix immediate disconnnections in the client
 - **Version filtering**: Ad hoc requests now only sent to clients on version 4.0.4+ or exactly 3.8.6
 
 ## v4.0.3

@@ -137,7 +137,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 					}
 					return
 				}
-				log.Debug("mqtt subscription setup")
+				log.Info("MQTT subscription completed successfully", "reasons", suback.Reasons)
 			}
 
 			publishOnlineMessage(cm)
@@ -176,7 +176,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		mqttcfg.Router = router
 	} else {
 		mqttcfg.Router = paho.NewStandardRouterWithDefault(func(m *paho.Publish) {
-			log.Info("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
+			log.Info("mqtt message received by DEFAULT HANDLER (this indicates routing problem)", "topic", m.Topic, "payload", string(m.Payload))
 			// h.handle(m)
 		})
 	}
@@ -213,7 +213,7 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	go func() {
 		for {
 			select {
-			case <-time.After(1 * time.Hour):
+			case <-time.After(5 * time.Minute):
 				publishOnlineMessage(cm)
 			case <-cm.Done():
 				return
