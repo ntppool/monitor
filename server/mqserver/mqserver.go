@@ -184,11 +184,27 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		if mqs.db != nil { // for running tests without the DB
 			mons, err := mqs.db.GetMonitorsTLSName(ctx, sql.NullString{String: name, Valid: true})
 			if err != nil {
-				mqs.log.Error("fetching monitor details", "err", err)
+				mqs.log.Error("fetching monitor details", "err", err, "tls_name", name)
+			} else {
+				mqs.log.Debug("fetched monitor data", "tls_name", name, "monitor_count", len(mons))
+				for i, m := range mons {
+					ipVer := "invalid"
+					if m.IpVersion.Valid {
+						ipVer = m.IpVersion.MonitorsIpVersion.String()
+					}
+					mqs.log.Debug("monitor entry",
+						"index", i,
+						"id", m.ID,
+						"hostname", m.Hostname,
+						"ip_version", ipVer,
+						"status", string(m.Status))
+				}
 			}
 			if len(mons) > 0 {
 				cs.Data = mons
 				cs.Name = mons[0].TlsName.String
+			} else {
+				mqs.log.Debug("no monitors found for TLS name", "tls_name", name)
 			}
 		}
 
@@ -442,13 +458,26 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 		wg.Go(func() error {
 			i := 0
 
-			for _, cl := range mqs.seenClients() {
+			clients := mqs.seenClients()
+			log.Info("starting ad hoc NTP check", "target_ip", ip.String(), "total_clients", len(clients))
+
+			for _, cl := range clients {
 
 				log := log.With("name", cl.Name)
 
-				log.Debug("considering mqtt client", "client", cl.Name)
+				log.Debug("considering mqtt client",
+					"client", cl.Name,
+					"online", cl.Online,
+					"data_count", len(cl.Data),
+					"version", cl.Version.Version)
 
-				if !cl.Online || cl.Data == nil {
+				if !cl.Online {
+					log.Debug("client offline, skipping")
+					continue
+				}
+
+				if cl.Data == nil {
+					log.Debug("client has no monitor data, skipping")
 					continue
 				}
 
@@ -457,14 +486,26 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					ipVersion = "v6"
 				}
 
+				// Log available IP versions for this client
+				availableVersions := []string{}
+				for _, m := range cl.Data {
+					if m.IpVersion.Valid {
+						availableVersions = append(availableVersions, m.IpVersion.MonitorsIpVersion.String())
+					}
+				}
+				log.Debug("client IP version check",
+					"needed", ipVersion,
+					"available", availableVersions)
+
 				if !slices.ContainsFunc(cl.Data, func(m ntpdb.Monitor) bool {
 					return m.IpVersion.MonitorsIpVersion.String() == ipVersion
 				}) {
+					log.Debug("client does not support required IP version, skipping", "needed", ipVersion)
 					continue
 				}
 
 				if !supportsAdHocNTPCheck(cl.Version.Version) {
-					// log.Debug("version too old", "v", cl.Version.Version)
+					log.Debug("client version does not support ad hoc checks, skipping", "version", cl.Version.Version)
 					continue
 				}
 
@@ -483,13 +524,16 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 
 				i++
 
-				log.Info("sending request", "name", cl.Name)
+				log.Info("sending ad hoc NTP request",
+					"client", cl.Name,
+					"target_ip", ip.String(),
+					"request_index", i)
 				span.AddEvent(fmt.Sprintf("sending request for %s", cl.Name))
 
 				topic := topics.Request(cl.Name, "ntp")
 				responseTopic := topics.DataResponse(cl.Name, id.String())
 
-				log.Debug("topics", "topic", topic, "responseTopic", responseTopic)
+				log.Info("mqtt topics", "request_topic", topic, "response_topic", responseTopic)
 
 				data := struct {
 					IP string
@@ -522,11 +566,13 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 				counter.Add(1)
 				pubResp, err := mqs.cm.Publish(ctx, publishPacket)
 				if err != nil {
-					log.Warn("error sending request", "err", err)
+					log.Error("failed to send MQTT request", "err", err, "topic", topic)
 					counter.Done()
+				} else {
+					log.Info("MQTT request sent successfully", "topic", topic)
 				}
 				if pubResp != nil && pubResp.ReasonCode != 0 {
-					log.Warn("unexpected reasoncode in mqtt response", "code", pubResp.ReasonCode)
+					log.Warn("unexpected reasoncode in mqtt response", "code", pubResp.ReasonCode, "topic", topic)
 				}
 			}
 			counter.Done()
@@ -656,26 +702,46 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 	r.GET("/monitors/metrics", mqs.Metrics(ctx))
 	r.GET("/monitors/online", func(c echo.Context) error {
 		type onlineJSON struct {
-			Name      string
-			IpVersion string
-			Version   version.Info `json:",omitempty"`
-			UpdatedMQ time.Time    `json:",omitempty"`
-			LastSeen  time.Time
-			Online    bool
+			Name       string
+			IpVersions []string     `json:"IpVersions"`
+			IpVersion  string       `json:"IpVersion,omitempty"` // Deprecated, for compatibility
+			Version    version.Info `json:",omitempty"`
+			UpdatedMQ  time.Time    `json:",omitempty"`
+			LastSeen   time.Time
+			Online     bool
 		}
 		r := []onlineJSON{}
 
 		for _, o := range mqs.seenClients() {
 			if o.Data != nil {
+				// Collect unique IP versions for this monitor
+				ipVersions := []string{}
+				ipVersionSet := make(map[string]bool)
+
+				for _, m := range o.Data {
+					if m.IpVersion.Valid {
+						ipVer := m.IpVersion.MonitorsIpVersion.String()
+						if !ipVersionSet[ipVer] {
+							ipVersionSet[ipVer] = true
+							ipVersions = append(ipVersions, ipVer)
+						}
+					}
+				}
+
+				// For backward compatibility, set IpVersion to first version if only one
+				legacyIpVersion := ""
+				if len(ipVersions) == 1 {
+					legacyIpVersion = ipVersions[0]
+				}
+
 				r = append(r, onlineJSON{
-					Name: o.Name,
-					// todo: put this back if it's useful
-					// Name:      o.Data.TlsName.String,
-					// IpVersion: o.Data.IpVersion.MonitorsIpVersion.String(),
-					Version:   o.Version,
-					Online:    o.Online,
-					LastSeen:  o.LastSeen,
-					UpdatedMQ: o.UpdatedMQ,
+					Name:       o.Name,
+					IpVersions: ipVersions,
+					IpVersion:  legacyIpVersion,
+					Version:    o.Version,
+					Online:     o.Online,
+					LastSeen:   o.LastSeen,
+					UpdatedMQ:  o.UpdatedMQ,
 				})
 			}
 		}
