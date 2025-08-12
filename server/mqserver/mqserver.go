@@ -379,10 +379,23 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 	}
 }
 
+// supportsAdHocNTPCheck returns true if the client version supports ad hoc NTP checks.
+// This requires version 4.0.4 or newer, OR exactly version 3.8.6.
+func supportsAdHocNTPCheck(clientVersion string) bool {
+	// Check for version 4.0.4 or newer
+	if version.CheckVersion(clientVersion, "v4.0.4") {
+		return true
+	}
+	// Check for exactly version 3.8.6
+	if version.CheckVersion(clientVersion, "v3.8.6") && !version.CheckVersion(clientVersion, "v3.8.7") {
+		return true
+	}
+	return false
+}
+
 func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
-	minimumVersion := "v3.5.0-rc0"
 
 	return func(c echo.Context) error {
 		id, err := ulid.MakeULID(time.Now())
@@ -450,7 +463,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				if !version.CheckVersion(cl.Version.Version, minimumVersion) {
+				if !supportsAdHocNTPCheck(cl.Version.Version) {
 					// log.Debug("version too old", "v", cl.Version.Version)
 					continue
 				}

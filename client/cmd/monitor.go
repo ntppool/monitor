@@ -240,7 +240,13 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 			log := log.WithGroup("mqtt")
 
 			mqc := monitor.NewMQClient(log, topics, mqconfigger)
-			router := paho.NewStandardRouterWithDefault(mqc.Handler)
+			router := paho.NewStandardRouterWithDefault(func(m *paho.Publish) {
+				log.Debug("mqtt message (unhandled)", "topic", m.Topic, "payload", m.Payload)
+			})
+
+			// Register explicit handler for request topics
+			requestSubscription := topics.RequestSubscription(cli.Config.TLSName())
+			router.RegisterHandler(requestSubscription, mqc.Handler)
 
 			var err error
 			mq, err = mqttcm.Setup(
