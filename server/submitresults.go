@@ -222,17 +222,21 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 
 		if status.Stratum > 0 {
 			nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
-			if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
-				ID:      serverScore.ID,
-				Stratum: nullStratum,
-			}); err != nil {
-				return fmt.Errorf("updating server score stratum: %w", err)
+			if !serverScore.Stratum.Valid || serverScore.Stratum.Int16 != nullStratum.Int16 {
+				if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
+					ID:      serverScore.ID,
+					Stratum: nullStratum,
+				}); err != nil {
+					return fmt.Errorf("updating server score stratum: %w", err)
+				}
 			}
-			if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
-				ID:      server.ID,
-				Stratum: nullStratum,
-			}); err != nil {
-				return fmt.Errorf("updating server stratum: %w", err)
+			if !server.Stratum.Valid || int32(server.Stratum.Int16) != status.Stratum {
+				if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
+					ID:      server.ID,
+					Stratum: nullStratum,
+				}); err != nil {
+					return fmt.Errorf("updating server stratum: %w", err)
+				}
 			}
 		}
 
