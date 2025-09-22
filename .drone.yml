@@ -49,14 +49,14 @@ steps:
       - |
         echo "Waiting for database to be ready..."
         for i in $(seq 1 30); do
-          if mysql -h database -u monitor -ptest123 -e "SELECT 1" monitor_test 2>/dev/null; then
+          if mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false -e "SELECT 1" monitor_test 2>/dev/null; then
             echo "Database is ready!"
             break
           fi
           echo "Waiting for database... ($i/30)"
           sleep 2
         done
-      - mysql -h database -u monitor -ptest123 monitor_test < schema.sql
+      - mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false monitor_test < schema.sql
       - go build ./...
       - go test -v ./... -short
       - make test-integration
@@ -166,6 +166,7 @@ volumes:
 
 trigger:
   event:
+    - custom
     - push
     - tag
     - pull_request
@@ -233,6 +234,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 1e4ec98a0ecac6ef560be0a5503600d804b9b510d1888cffe00dafff04a3cdde
+hmac: 33044cb2318d835a3d4d7c206d75d8eefe121405df99741f811c5f57f2470677
 
 ...
