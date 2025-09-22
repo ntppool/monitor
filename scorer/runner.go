@@ -334,6 +334,13 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
+			if ls.Ts.Before(time.Now().Add(-3 * time.Hour)) {
+				log.WarnContext(ctx, "could not calculate score, skipping old entry",
+					"server_id", ls.ServerID, "log_score_id", ls.ID,
+					"ls_ts", ls.Ts.String(), "err", err,
+				)
+				continue
+			}
 			return 0, fmt.Errorf("scorer %q: %s", name, err)
 		}
 
@@ -376,7 +383,6 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 				return 0, err
 			}
 		}
-
 	}
 
 	// b, err := json.MarshalIndent(newScores, "", "  ")
