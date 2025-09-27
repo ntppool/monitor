@@ -32,13 +32,14 @@ type ScorerSettings struct {
 }
 
 type metrics struct {
-	processed *prometheus.CounterVec
-	errcount  prometheus.Counter
-	runs      prometheus.Counter
-	batchTime *prometheus.HistogramVec
-	batchSize *prometheus.HistogramVec
-	deadlocks prometheus.Counter
-	retries   *prometheus.CounterVec
+	processed  *prometheus.CounterVec
+	errcount   prometheus.Counter
+	runs       prometheus.Counter
+	batchTime  *prometheus.HistogramVec
+	batchSize  *prometheus.HistogramVec
+	deadlocks  prometheus.Counter
+	retries    *prometheus.CounterVec
+	sqlUpdates *prometheus.CounterVec
 }
 
 type runner struct {
@@ -99,6 +100,10 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 			Name: "scorer_retries_total",
 			Help: "Total number of retry attempts by reason",
 		}, []string{"scorer", "reason"}),
+		sqlUpdates: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "scorer_sql_updates_total",
+			Help: "Total number of SQL update operations by type",
+		}, []string{"operation"}),
 	}
 
 	prom.MustRegister(met.processed)
@@ -108,6 +113,7 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 	prom.MustRegister(met.batchSize)
 	prom.MustRegister(met.deadlocks)
 	prom.MustRegister(met.retries)
+	prom.MustRegister(met.sqlUpdates)
 
 	return &runner{
 		ctx:      ctx,
@@ -331,6 +337,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			}); err != nil {
 				return 0, fmt.Errorf("updating server score status: %w", err)
 			}
+			r.m.sqlUpdates.WithLabelValues("update_server_score_status").Inc()
 		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
@@ -362,6 +369,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			if err != nil {
 				return 0, err
 			}
+			r.m.sqlUpdates.WithLabelValues("insert_log_score").Inc()
 		}
 
 		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{
@@ -372,6 +380,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		if err != nil {
 			return 0, err
 		}
+		r.m.sqlUpdates.WithLabelValues("update_server_score").Inc()
 
 		if name == mainScorer {
 			err := db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
@@ -382,6 +391,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			if err != nil {
 				return 0, err
 			}
+			r.m.sqlUpdates.WithLabelValues("update_server").Inc()
 		}
 	}
 
@@ -400,6 +410,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	if err != nil {
 		return 0, err
 	}
+	r.m.sqlUpdates.WithLabelValues("update_scorer_status").Inc()
 
 	err = tx.Commit()
 	if err != nil {
@@ -456,6 +467,7 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (
 	if err != nil {
 		return serverScore, err
 	}
+	r.m.sqlUpdates.WithLabelValues("insert_server_score").Inc()
 
 	return db.GetServerScore(ctx, p)
 }
