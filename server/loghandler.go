@@ -16,7 +16,15 @@ func WithLogger(h http.Handler, l *slog.Logger) http.Handler {
 		start := time.Now()
 		h.ServeHTTP(w, r)
 		dur := time.Since(start)
+
+		// Extract monitor name from authentication context
+		monitorName := getCertificateName(ctx)
+		if monitorName == "" {
+			monitorName = "unknown"
+		}
+
 		l.InfoContext(ctx, "",
+			"monitor", monitorName,
 			"path", r.URL.RequestURI(),
 			"method", r.Method,
 			"url", r.URL.String(),

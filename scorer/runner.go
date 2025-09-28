@@ -353,7 +353,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 		if sm.IsNew(&ls) {
 			// only store the new calculated score in log_scores if it's
-			// changed (or we haven't for 10 minutes)
+			// changed (or we haven't for a number of minutes)
 
 			p := ntpdb.InsertLogScoreParams{
 				ServerID:   ns.ServerID,
