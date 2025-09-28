@@ -16,7 +16,7 @@ func TestLastScore(t *testing.T) {
 	ts1 := first.Add(0 * time.Minute)
 	ts2 := first.Add(1 * time.Minute)
 	ts3 := first.Add(15 * time.Minute)
-	ts4 := first.Add(5 * time.Minute)
+	ts4 := first.Add(20 * time.Minute)
 
 	ls := &ntpdb.LogScore{ServerID: 1, Score: 19.8022327058068}
 
