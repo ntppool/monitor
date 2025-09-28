@@ -222,13 +222,13 @@ func (srv *Server) Run() error {
 	mux.Handle(
 		urlpath,
 		otelhttp.NewMiddleware("monitor-api")(
-			WithLogger(
-				srv.dualAuthMiddleware(
+			srv.dualAuthMiddleware(
+				WithLogger(
 					WithUserAgent(
 						apiHandler,
 					),
+					log,
 				),
-				log,
 			),
 		),
 	)
