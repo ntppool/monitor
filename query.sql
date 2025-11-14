@@ -189,9 +189,8 @@ INSERT INTO log_scores
 SELECT s.*
     FROM servers s
     LEFT JOIN server_scores ss
-        ON (s.id=ss.server_id)
-WHERE (monitor_id = sqlc.arg('monitor_id')
-    AND s.ip_version = sqlc.arg('ip_version')
+        ON (s.id = ss.server_id AND ss.monitor_id = sqlc.arg('monitor_id'))
+WHERE s.ip_version = sqlc.arg('ip_version')
     AND (ss.queue_ts IS NULL
           OR (ss.score_raw > -90 AND ss.status = "active"
                AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds') second))
@@ -200,7 +199,7 @@ WHERE (monitor_id = sqlc.arg('monitor_id')
           OR (ss.queue_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL sqlc.arg('interval_seconds_all') second) ))
-    AND (deletion_on IS NULL or deletion_on > NOW()))
+    AND (deletion_on IS NULL OR deletion_on > NOW())
 ORDER BY ss.queue_ts
 LIMIT  ?
 OFFSET ?;
