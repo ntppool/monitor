@@ -61,9 +61,9 @@ func (q *Queries) GetMinLogScoreID(ctx context.Context) (int64, error) {
 
 const getMonitorPriority = `-- name: GetMonitorPriority :many
 SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
-    avg(ls.rtt) / 1000 as avg_rtt,
-    0 + round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step))))) as monitor_priority,
-    avg(ls.step) as avg_step,
+    (avg(ls.rtt) / 1000)::integer as avg_rtt,
+    round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step)))))::integer as monitor_priority,
+    avg(ls.step)::float8 as avg_step,
     CASE WHEN avg(ls.step) < 0 THEN false ELSE true END as healthy,
     m.status as monitor_status, ss.status as status,
     count(*) as count,

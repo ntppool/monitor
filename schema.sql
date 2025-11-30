@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JrXmdpwfgrZ3hPsF1HhDavlypKeXBg7Tbu8oGE4HaBPH4PJsOgK0pVSUbzYpnXZ
+\restrict hegjoDWhYzb1G6uvHNQIG8SW7N0XtgNb8RuzztjhPsk20m2SllImVX6pMvgL1F3
 
 -- Dumped from database version 18.1 (Postgres.app)
 -- Dumped by pg_dump version 18.1 (Postgres.app)
@@ -270,7 +270,7 @@ CREATE TABLE public.accounts (
     organization_url character varying(150),
     public_profile boolean DEFAULT false NOT NULL,
     url_slug character varying(150),
-    flags json,
+    flags jsonb,
     created_on timestamp with time zone NOT NULL,
     modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     stripe_customer_id character varying(255)
@@ -2934,4 +2934,4 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JrXmdpwfgrZ3hPsF1HhDavlypKeXBg7Tbu8oGE4HaBPH4PJsOgK0pVSUbzYpnXZ
+\unrestrict hegjoDWhYzb1G6uvHNQIG8SW7N0XtgNb8RuzztjhPsk20m2SllImVX6pMvgL1F3

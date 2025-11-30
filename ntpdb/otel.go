@@ -7,11 +7,12 @@ package ntpdb
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	_codes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // QuerierTxWithTracing implements QuerierTx interface instrumented with open telemetry spans
