@@ -176,12 +176,13 @@ make test           # Run comprehensive test suite
 ### Database Management Targets
 
 **`make test-db-start`** - Start test database
-- Starts MySQL 8.0 container on port 3308
+- Creates PostgreSQL test database on localhost:5432
+- Requires PostgreSQL to be running locally
 - Loads schema automatically
 - Database persists until explicitly stopped
 
 **`make test-db-stop`** - Stop test database
-- Cleanly shuts down and removes test database container
+- Drops the test database
 - Use when finished with integration testing
 
 **`make test-db-restart`** - Restart test database
@@ -208,7 +209,7 @@ make test           # Run comprehensive test suite
 
 **`./scripts/test-scorer-integration.sh`** - Scorer-specific debugging
 - **When to use**: Debugging scorer-specific issues in isolation
-- **Port conflict detection**: Checks for existing database on port 3308
+- **Port conflict detection**: Checks for existing database on port 5432
 - **Guidance**: Use `make test-db-stop` first if port conflicts occur
 - **Cleanup**: Automatically cleans up its own database container
 - **Alternative**: Use `make test-db-start && go test ./scorer -tags=integration -v`
@@ -264,7 +265,7 @@ go test ./scorer -tags=integration -v
 - `server/` - API server with JWT auth and Connect RPC endpoints
 - `api/` - Protocol definitions using Protocol Buffers and Connect RPC
 - `scorer/` - Server performance scoring algorithms
-- `ntpdb/` - Database layer using MySQL with sqlc for type-safe queries
+- `ntpdb/` - Database layer using PostgreSQL with sqlc for type-safe queries
 
 ### Monitor Types
 
@@ -437,14 +438,14 @@ if !ipc.IsLive() {
 
 ### Database
 
-- **MySQL** backend with **sqlc** for compile-time verified SQL
+- **PostgreSQL** backend with **sqlc** for compile-time verified SQL (using pgx/v5 driver)
 - **ClickHouse** support for analytics and traceroute data
 
 ### Database Schema Management
 
 - **Schema Changes**: Database schema changes are handled automatically by the deployment system
-- **Schema File**: `schema.sql` contains the current database schema
-- **Local Development**: Use MySQL 8 in Docker (available via `make test-db-start` or `./scripts/test-db.sh start`)
+- **Schema File**: `schema.sql` contains the current PostgreSQL database schema
+- **Local Development**: Use PostgreSQL 16 in Docker (available via `make test-db-start` or `./scripts/test-db.sh start`)
 - **No Manual Migrations**: The codebase handles schema updates automatically during deployment
 - **Version Tracking**: Schema versions always increment forward and are managed separately from the code
 
@@ -453,14 +454,14 @@ if !ipc.IsLive() {
 When implementing database operations that might be called concurrently:
 
 1. **Check for Duplicate Key Constraints**: Review table schemas for unique constraints
-2. **Use Idempotent Operations**: Prefer `INSERT ... ON DUPLICATE KEY UPDATE` over plain `INSERT`
+2. **Use Idempotent Operations**: Prefer `INSERT ... ON CONFLICT ... DO UPDATE` over plain `INSERT`
 3. **Test Concurrent Scenarios**: Integration tests should include concurrent operation tests
 4. **Regenerate After SQL Changes**: Always run `make sqlc` after modifying query.sql
 
 Example pattern for safe inserts:
 ```sql
-INSERT INTO table (col1, col2) VALUES (?, ?)
-ON DUPLICATE KEY UPDATE col2 = VALUES(col2);
+INSERT INTO table (col1, col2) VALUES ($1, $2)
+ON CONFLICT (col1) DO UPDATE SET col2 = EXCLUDED.col2;
 ```
 
 ## Environment Configuration
@@ -468,7 +469,7 @@ ON DUPLICATE KEY UPDATE col2 = VALUES(col2);
 Key environment variables:
 
 - `DEPLOYMENT_MODE` - Environment (devel/test/prod)
-- `DATABASE_DSN` - MySQL connection string
+- `DATABASE_URL` - PostgreSQL connection string (e.g., `postgres://user:pass@host:5432/dbname?sslmode=disable`)
 - `JWT_KEY` - JWT signing key for MQTT auth
 - `VAULT_ADDR` - Vault server URL for secrets
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OpenTelemetry collector
@@ -476,9 +477,12 @@ Key environment variables:
 Database credentials can be provided via `database.yaml`:
 
 ```yaml
-mysql:
+postgres:
+  host: localhost
+  port: 5432
   user: some-db-user
-  pass: password
+  password: password
+  database: ntppool
 ```
 
 ## Incremental Development Methodology
@@ -576,13 +580,14 @@ For complex changes, break work into distinct phases:
 ## CI Tools and Testing Infrastructure
 
 **Key scripts in `scripts/` directory:**
-- `test-db.sh` - Primary test database management (MySQL 8.0 on port 3308)
+- `test-db.sh` - Primary test database management (PostgreSQL on localhost:5432)
 - `test-ci-local.sh` - Full CI environment emulation
 - `test-scorer-integration.sh` - Component-specific testing
 - `diagnose-ci.sh` - CI failure diagnostics
 
-**Database port:**
-- 3308: All test databases (unified port for consistency)
+**Prerequisites:**
+- PostgreSQL running on localhost:5432
+- PostgreSQL admin access (default user: postgres)
 
 **Local workflow:**
 1. `make test-db-start` (for integration tests)
@@ -592,6 +597,7 @@ For complex changes, break work into distinct phases:
 ## Recent Architecture Changes
 
 **Key recent changes (2025):**
+- **PostgreSQL Migration**: Migrated from MySQL to PostgreSQL 16 with pgx/v5 driver and pgxpool connection pooling
 - **JWT Authentication**: Complete JWT authentication with JWKS support replacing planned API key auth (commits: 10e2a70, deb9a16, 304cc1c)
 - **OpenTelemetry Migration**: Client metrics fully migrated to OpenTelemetry from Prometheus (commit: 9aa4d39)
 - **Database Consolidation**: Migrated to shared common/database package reducing code duplication (commits: 650aeb9, 393a251, c86adf2)

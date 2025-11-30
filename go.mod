@@ -25,7 +25,6 @@ require (
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/evanphx/json-patch v0.5.2
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/hashicorp/vault/api v1.22.0
 	github.com/jackc/pgx/v5 v5.7.6
@@ -96,6 +95,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

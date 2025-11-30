@@ -40,7 +40,7 @@ test-integration:
 		echo "Starting test database..."; \
 		./scripts/test-db.sh start > /dev/null 2>&1 || true; \
 		echo "Running integration tests..."; \
-		TEST_DATABASE_URL="monitor:test123@tcp(localhost:3308)/monitor_test?parseTime=true&multiStatements=true" go test ./... -tags=integration -v; \
+		TEST_DATABASE_URL="postgres://monitor:test123@localhost:5432/monitor_test?sslmode=disable" go test ./... -tags=integration -v; \
 	else \
 		echo "Using existing TEST_DATABASE_URL..."; \
 		go test ./... -tags=integration -v; \
@@ -52,7 +52,7 @@ test-load:
 		echo "Starting test database..."; \
 		./scripts/test-db.sh start > /dev/null 2>&1 || true; \
 		echo "Running load tests..."; \
-		TEST_DATABASE_URL="monitor:test123@tcp(localhost:3308)/monitor_test?parseTime=true&multiStatements=true" go test ./... -tags=load -v -timeout=30m; \
+		TEST_DATABASE_URL="postgres://monitor:test123@localhost:5432/monitor_test?sslmode=disable" go test ./... -tags=load -v -timeout=30m; \
 	else \
 		echo "Using existing TEST_DATABASE_URL..."; \
 		go test ./... -tags=load -v -timeout=30m; \

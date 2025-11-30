@@ -1,904 +1,2937 @@
-/*M!999999\- enable the sandbox mode */
--- MariaDB dump 10.19-11.4.5-MariaDB, for Linux (x86_64)
---
--- Host: ntpdb-haproxy.ntpdb.svc.cluster.local    Database: askntp
--- ------------------------------------------------------
--- Server version	8.0.42-33
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8 */;
-/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-/*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-/*M!100616 SET @OLD_NOTE_VERBOSITY=@@NOTE_VERBOSITY, NOTE_VERBOSITY=0 */;
-
---
--- Table structure for table `account_invites`
---
-
-DROP TABLE IF EXISTS `account_invites`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `account_invites` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `account_id` int unsigned NOT NULL,
-  `email` varchar(255) NOT NULL,
-  `status` enum('pending','accepted','expired') DEFAULT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `sent_by_id` int unsigned NOT NULL,
-  `code` varchar(25) NOT NULL,
-  `expires_on` datetime NOT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `account_id` (`account_id`,`email`),
-  UNIQUE KEY `code` (`code`),
-  KEY `account_invites_user_fk` (`user_id`),
-  KEY `account_invites_sent_by_fk` (`sent_by_id`),
-  CONSTRAINT `account_invites_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `account_invites_sent_by_fk` FOREIGN KEY (`sent_by_id`) REFERENCES `users` (`id`),
-  CONSTRAINT `account_invites_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `account_subscriptions`
---
-
-DROP TABLE IF EXISTS `account_subscriptions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `account_subscriptions` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `account_id` int unsigned NOT NULL,
-  `stripe_subscription_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin DEFAULT NULL,
-  `status` enum('incomplete','incomplete_expired','trialing','active','past_due','canceled','unpaid','ended') DEFAULT NULL,
-  `name` varchar(255) NOT NULL,
-  `max_zones` int unsigned NOT NULL,
-  `max_devices` int unsigned NOT NULL,
-  `created_on` datetime NOT NULL,
-  `ended_on` datetime DEFAULT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `stripe_subscription_id` (`stripe_subscription_id`),
-  KEY `account_subscriptions_account_fk` (`account_id`),
-  CONSTRAINT `account_subscriptions_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `account_users`
---
-
-DROP TABLE IF EXISTS `account_users`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `account_users` (
-  `account_id` int unsigned NOT NULL,
-  `user_id` int unsigned NOT NULL,
-  PRIMARY KEY (`account_id`,`user_id`),
-  KEY `account_users_user_fk` (`user_id`),
-  CONSTRAINT `account_users_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `account_users_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `accounts`
---
-
-DROP TABLE IF EXISTS `accounts`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `accounts` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `id_token` varchar(36) DEFAULT NULL,
-  `name` varchar(255) DEFAULT NULL,
-  `organization_name` varchar(150) DEFAULT NULL,
-  `organization_url` varchar(150) DEFAULT NULL,
-  `public_profile` tinyint(1) NOT NULL DEFAULT '0',
-  `url_slug` varchar(150) DEFAULT NULL,
-  `flags` json DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `stripe_customer_id` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `url_slug_idx` (`url_slug`),
-  UNIQUE KEY `stripe_customer_id` (`stripe_customer_id`),
-  UNIQUE KEY `id_token` (`id_token`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `api_keys`
---
-
-DROP TABLE IF EXISTS `api_keys`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `api_keys` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `account_id` int unsigned DEFAULT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `api_key` varchar(255) DEFAULT NULL,
-  `grants` text,
-  `audience` text NOT NULL,
-  `token_lookup` varchar(16) NOT NULL,
-  `token_hashed` varchar(256) NOT NULL,
-  `last_seen` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `api_key` (`api_key`),
-  KEY `api_keys_account_fk` (`account_id`),
-  KEY `api_keys_user_fk` (`user_id`),
-  CONSTRAINT `api_keys_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `api_keys_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `api_keys_monitors`
---
-
-DROP TABLE IF EXISTS `api_keys_monitors`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `api_keys_monitors` (
-  `api_key_id` int unsigned NOT NULL,
-  `monitor_id` int unsigned NOT NULL,
-  PRIMARY KEY (`api_key_id`,`monitor_id`),
-  KEY `api_keys_monitors_monitors_fk` (`monitor_id`),
-  CONSTRAINT `api_keys_monitors_api_keys_fk` FOREIGN KEY (`api_key_id`) REFERENCES `api_keys` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `api_keys_monitors_monitors_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `combust_cache`
---
-
-DROP TABLE IF EXISTS `combust_cache`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `combust_cache` (
-  `id` varchar(64) NOT NULL,
-  `type` varchar(20) NOT NULL DEFAULT '',
-  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `purge_key` varchar(16) DEFAULT NULL,
-  `data` mediumblob NOT NULL,
-  `metadata` mediumblob,
-  `serialized` tinyint(1) NOT NULL DEFAULT '0',
-  `expire` datetime NOT NULL DEFAULT '1970-01-01 00:00:00',
-  PRIMARY KEY (`id`,`type`),
-  KEY `expire_idx` (`expire`),
-  KEY `purge_idx` (`purge_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `combust_secrets`
---
-
-DROP TABLE IF EXISTS `combust_secrets`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `combust_secrets` (
-  `secret_ts` int unsigned NOT NULL,
-  `expires_ts` int unsigned NOT NULL,
-  `type` varchar(32) NOT NULL,
-  `secret` char(32) DEFAULT NULL,
-  PRIMARY KEY (`type`,`secret_ts`),
-  KEY `expires_ts` (`expires_ts`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `dns_roots`
---
-
-DROP TABLE IF EXISTS `dns_roots`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dns_roots` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `origin` varchar(255) NOT NULL,
-  `vendor_available` tinyint NOT NULL DEFAULT '0',
-  `general_use` tinyint NOT NULL DEFAULT '0',
-  `ns_list` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `origin` (`origin`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `log_scores`
---
-
-DROP TABLE IF EXISTS `log_scores`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `log_scores` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `monitor_id` int unsigned DEFAULT NULL,
-  `server_id` int unsigned NOT NULL,
-  `ts` datetime NOT NULL,
-  `score` double NOT NULL DEFAULT '0',
-  `step` double NOT NULL DEFAULT '0',
-  `offset` double DEFAULT NULL,
-  `rtt` mediumint DEFAULT NULL,
-  `attributes` text,
-  PRIMARY KEY (`id`),
-  KEY `log_scores_server_ts_idx` (`server_id`,`ts`),
-  KEY `ts` (`ts`),
-  KEY `log_score_monitor_id_fk` (`monitor_id`),
-  CONSTRAINT `log_score_monitor_id_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
-  CONSTRAINT `log_scores_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `log_scores_archive_status`
---
-
-DROP TABLE IF EXISTS `log_scores_archive_status`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `log_scores_archive_status` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `archiver` varchar(255) NOT NULL,
-  `log_score_id` bigint unsigned DEFAULT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `archiver` (`archiver`),
-  KEY `log_score_id` (`log_score_id`),
-  CONSTRAINT `log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `logs`
---
-
-DROP TABLE IF EXISTS `logs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `logs` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `account_id` int unsigned DEFAULT NULL,
-  `server_id` int unsigned DEFAULT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `vendor_zone_id` int unsigned DEFAULT NULL,
-  `type` varchar(50) DEFAULT NULL,
-  `message` text,
-  `changes` text,
-  `created_on` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `server_id` (`server_id`,`type`),
-  KEY `server_logs_user_id` (`user_id`),
-  KEY `logs_vendor_zone_id` (`vendor_zone_id`),
-  KEY `account_id_idx` (`account_id`),
-  CONSTRAINT `account_id_idx` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `logs_vendor_zone_id` FOREIGN KEY (`vendor_zone_id`) REFERENCES `vendor_zones` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `server_logs_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `server_logs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `monitor_registrations`
---
-
-DROP TABLE IF EXISTS `monitor_registrations`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `monitor_registrations` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `monitor_id` int unsigned DEFAULT NULL,
-  `request_token` varchar(128) NOT NULL,
-  `verification_token` varchar(32) NOT NULL,
-  `ip4` varchar(15) NOT NULL DEFAULT '',
-  `ip6` varchar(39) NOT NULL DEFAULT '',
-  `tls_name` varchar(255) DEFAULT '',
-  `hostname` varchar(256) NOT NULL DEFAULT '',
-  `location_code` varchar(5) NOT NULL DEFAULT '',
-  `account_id` int unsigned DEFAULT NULL,
-  `client` varchar(256) NOT NULL DEFAULT '',
-  `status` enum('pending','accepted','completed','rejected','cancelled') NOT NULL,
-  `last_seen` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `created_on` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `request_token` (`request_token`),
-  UNIQUE KEY `verification_token` (`verification_token`),
-  KEY `monitor_registrations_monitor_id_fk` (`monitor_id`),
-  KEY `monitor_registrations_account_fk` (`account_id`),
-  CONSTRAINT `monitor_registrations_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `monitor_registrations_monitor_id_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `monitors`
---
-
-DROP TABLE IF EXISTS `monitors`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `monitors` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `id_token` varchar(36) DEFAULT NULL,
-  `type` enum('monitor','score') NOT NULL DEFAULT 'monitor',
-  `user_id` int unsigned DEFAULT NULL,
-  `account_id` int unsigned DEFAULT NULL,
-  `hostname` varchar(255) NOT NULL DEFAULT '',
-  `location` varchar(255) NOT NULL DEFAULT '',
-  `ip` varchar(40) DEFAULT NULL,
-  `ip_version` enum('v4','v6') DEFAULT NULL,
-  `tls_name` varchar(255) DEFAULT NULL,
-  `api_key` varchar(64) DEFAULT NULL,
-  `status` enum('pending','testing','active','paused','deleted') NOT NULL,
-  `config` text NOT NULL,
-  `client_version` varchar(255) NOT NULL DEFAULT '',
-  `last_seen` datetime(6) DEFAULT NULL,
-  `last_submit` datetime(6) DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `deleted_on` datetime DEFAULT NULL,
-  `is_current` tinyint(1) DEFAULT '1',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `api_key` (`api_key`),
-  UNIQUE KEY `monitors_tls_name` (`tls_name`,`ip_version`),
-  UNIQUE KEY `token_id` (`id_token`),
-  UNIQUE KEY `id_token` (`id_token`),
-  UNIQUE KEY `ip` (`ip`,`is_current`),
-  KEY `monitors_user_id` (`user_id`),
-  KEY `monitors_account_fk` (`account_id`),
-  KEY `type_status` (`type`,`status`),
-  CONSTRAINT `monitors_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `monitors_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Temporary table structure for view `monitors_data`
---
-
-DROP TABLE IF EXISTS `monitors_data`;
-/*!50001 DROP VIEW IF EXISTS `monitors_data`*/;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8mb4;
-/*!50001 CREATE VIEW `monitors_data` AS SELECT
- 1 AS `id`,
-  1 AS `account_id`,
-  1 AS `type`,
-  1 AS `name`,
-  1 AS `ip`,
-  1 AS `ip_version`,
-  1 AS `status`,
-  1 AS `client_version`,
-  1 AS `last_seen`,
-  1 AS `last_submit` */;
-SET character_set_client = @saved_cs_client;
-
---
--- Table structure for table `oidc_public_keys`
---
-
-DROP TABLE IF EXISTS `oidc_public_keys`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `oidc_public_keys` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `kid` varchar(255) NOT NULL,
-  `public_key` text NOT NULL,
-  `algorithm` varchar(20) NOT NULL,
-  `created_at` timestamp NOT NULL,
-  `expires_at` timestamp NULL DEFAULT NULL,
-  `active` tinyint(1) NOT NULL DEFAULT '1',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `kid` (`kid`),
-  KEY `idx_kid` (`kid`),
-  KEY `idx_active_expires` (`active`,`expires_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `schema_revision`
---
-
-DROP TABLE IF EXISTS `schema_revision`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `schema_revision` (
-  `revision` smallint unsigned NOT NULL DEFAULT '0',
-  `schema_name` varchar(30) NOT NULL,
-  PRIMARY KEY (`schema_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `scorer_status`
---
-
-DROP TABLE IF EXISTS `scorer_status`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `scorer_status` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `scorer_id` int unsigned NOT NULL,
-  `log_score_id` bigint unsigned NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `scorer_log_score_id` (`log_score_id`),
-  KEY `scores_status_monitor_id_fk` (`scorer_id`),
-  CONSTRAINT `scorer_log_score_id` FOREIGN KEY (`log_score_id`) REFERENCES `log_scores` (`id`),
-  CONSTRAINT `scores_status_monitor_id_fk` FOREIGN KEY (`scorer_id`) REFERENCES `monitors` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_alerts`
---
-
-DROP TABLE IF EXISTS `server_alerts`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_alerts` (
-  `server_id` int unsigned NOT NULL,
-  `last_score` double NOT NULL,
-  `first_email_time` datetime NOT NULL,
-  `last_email_time` datetime DEFAULT NULL,
-  PRIMARY KEY (`server_id`),
-  CONSTRAINT `server_alerts_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_notes`
---
-
-DROP TABLE IF EXISTS `server_notes`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_notes` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `server_id` int unsigned NOT NULL,
-  `name` varchar(255) NOT NULL DEFAULT '',
-  `note` text NOT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `server` (`server_id`,`name`),
-  KEY `name` (`name`),
-  CONSTRAINT `server_notes_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_scores`
---
-
-DROP TABLE IF EXISTS `server_scores`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_scores` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `monitor_id` int unsigned NOT NULL,
-  `server_id` int unsigned NOT NULL,
-  `score_ts` datetime DEFAULT NULL,
-  `score_raw` double NOT NULL DEFAULT '0',
-  `stratum` tinyint unsigned DEFAULT NULL,
-  `status` enum('candidate','testing','active','paused') NOT NULL DEFAULT 'candidate',
-  `queue_ts` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `constraint_violation_type` varchar(50) DEFAULT NULL,
-  `constraint_violation_since` datetime DEFAULT NULL,
-  `last_constraint_check` datetime DEFAULT NULL,
-  `pause_reason` varchar(20) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `server_id` (`server_id`,`monitor_id`),
-  KEY `monitor_id` (`monitor_id`,`server_id`),
-  KEY `monitor_id_2` (`monitor_id`,`score_ts`),
-  KEY `idx_constraint_violation` (`constraint_violation_type`,`constraint_violation_since`),
-  KEY `idx_paused_monitors` (`status`,`last_constraint_check`,`pause_reason`),
-  CONSTRAINT `server_score_monitor_fk` FOREIGN KEY (`monitor_id`) REFERENCES `monitors` (`id`),
-  CONSTRAINT `server_score_server_id` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_urls`
---
-
-DROP TABLE IF EXISTS `server_urls`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_urls` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `server_id` int unsigned NOT NULL,
-  `url` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `server` (`server_id`),
-  CONSTRAINT `server_urls_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_verifications`
---
-
-DROP TABLE IF EXISTS `server_verifications`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_verifications` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `server_id` int unsigned NOT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `user_ip` varchar(45) NOT NULL DEFAULT '',
-  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
-  `verified_on` datetime DEFAULT NULL,
-  `token` varchar(36) DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `server` (`server_id`),
-  UNIQUE KEY `token` (`token`),
-  KEY `server_verifications_ibfk_2` (`user_id`),
-  CONSTRAINT `server_verifications_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `server_verifications_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_verifications_history`
---
-
-DROP TABLE IF EXISTS `server_verifications_history`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_verifications_history` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `server_id` int unsigned NOT NULL,
-  `user_id` int unsigned DEFAULT NULL,
-  `user_ip` varchar(45) NOT NULL DEFAULT '',
-  `indirect_ip` varchar(45) NOT NULL DEFAULT '',
-  `verified_on` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `server_verifications_history_ibfk_1` (`server_id`),
-  KEY `server_verifications_history_ibfk_2` (`user_id`),
-  CONSTRAINT `server_verifications_history_ibfk_1` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `server_verifications_history_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `server_zones`
---
-
-DROP TABLE IF EXISTS `server_zones`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `server_zones` (
-  `server_id` int unsigned NOT NULL,
-  `zone_id` int unsigned NOT NULL,
-  PRIMARY KEY (`server_id`,`zone_id`),
-  KEY `locations_zone` (`zone_id`),
-  CONSTRAINT `locations_server` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `locations_zone` FOREIGN KEY (`zone_id`) REFERENCES `zones` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `servers`
---
-
-DROP TABLE IF EXISTS `servers`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `servers` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `ip` varchar(40) NOT NULL,
-  `ip_version` enum('v4','v6') NOT NULL DEFAULT 'v4',
-  `user_id` int unsigned DEFAULT NULL,
-  `account_id` int unsigned DEFAULT NULL,
-  `hostname` varchar(255) DEFAULT NULL,
-  `stratum` tinyint unsigned DEFAULT NULL,
-  `in_pool` tinyint unsigned NOT NULL DEFAULT '0',
-  `in_server_list` tinyint unsigned NOT NULL DEFAULT '0',
-  `netspeed` int unsigned NOT NULL DEFAULT '10000',
-  `netspeed_target` int unsigned NOT NULL DEFAULT '10000',
-  `created_on` datetime NOT NULL,
-  `updated_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `score_ts` datetime DEFAULT NULL,
-  `score_raw` double NOT NULL DEFAULT '0',
-  `deletion_on` date DEFAULT NULL,
-  `flags` varchar(4096) NOT NULL DEFAULT '{}',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `ip` (`ip`),
-  KEY `admin` (`user_id`),
-  KEY `score_ts` (`score_ts`),
-  KEY `deletion_on` (`deletion_on`),
-  KEY `server_account_fk` (`account_id`),
-  CONSTRAINT `server_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `servers_user_ibfk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `servers_monitor_review`
---
-
-DROP TABLE IF EXISTS `servers_monitor_review`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `servers_monitor_review` (
-  `server_id` int unsigned NOT NULL,
-  `last_review` datetime DEFAULT NULL,
-  `next_review` datetime DEFAULT NULL,
-  `last_change` datetime DEFAULT NULL,
-  `config` varchar(4096) NOT NULL DEFAULT '',
-  PRIMARY KEY (`server_id`),
-  KEY `next_review` (`next_review`),
-  CONSTRAINT `server_monitor_review_server_id_fk` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `system_settings`
---
-
-DROP TABLE IF EXISTS `system_settings`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `system_settings` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `key` varchar(255) NOT NULL,
-  `value` text NOT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `key` (`key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `user_equipment_applications`
---
-
-DROP TABLE IF EXISTS `user_equipment_applications`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_equipment_applications` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` int unsigned NOT NULL,
-  `application` text,
-  `contact_information` text,
-  `status` enum('New','Pending','Maybe','No','Approved') NOT NULL DEFAULT 'New',
-  PRIMARY KEY (`id`),
-  KEY `user_equipment_applications_user_id` (`user_id`),
-  CONSTRAINT `user_equipment_applications_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `user_identities`
---
-
-DROP TABLE IF EXISTS `user_identities`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_identities` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `profile_id` varchar(255) NOT NULL,
-  `user_id` int unsigned NOT NULL,
-  `provider` varchar(255) NOT NULL,
-  `data` text,
-  `email` varchar(255) DEFAULT NULL,
-  `created_on` datetime NOT NULL DEFAULT '2003-01-27 00:00:00',
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `profile_id` (`profile_id`),
-  KEY `user_identities_user_id` (`user_id`),
-  CONSTRAINT `user_identities_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `user_privileges`
---
-
-DROP TABLE IF EXISTS `user_privileges`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_privileges` (
-  `user_id` int unsigned NOT NULL,
-  `see_all_servers` tinyint(1) NOT NULL DEFAULT '0',
-  `vendor_admin` tinyint NOT NULL DEFAULT '0',
-  `equipment_admin` tinyint NOT NULL DEFAULT '0',
-  `support_staff` tinyint NOT NULL DEFAULT '0',
-  `monitor_admin` tinyint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`user_id`),
-  CONSTRAINT `user_privileges_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `user_sessions`
---
-
-DROP TABLE IF EXISTS `user_sessions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_sessions` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` int unsigned NOT NULL,
-  `token_lookup` varchar(16) NOT NULL,
-  `token_hashed` varchar(256) NOT NULL,
-  `last_seen` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `user_sessions_user_fk` (`user_id`),
-  KEY `token_lookup` (`token_lookup`),
-  CONSTRAINT `user_sessions_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `user_tasks`
---
-
-DROP TABLE IF EXISTS `user_tasks`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_tasks` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` int unsigned DEFAULT NULL,
-  `task` enum('download','delete') NOT NULL,
-  `status` text NOT NULL,
-  `traceid` varchar(32) NOT NULL DEFAULT '',
-  `execute_on` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `user_tasks_user_fk` (`user_id`),
-  CONSTRAINT `user_tasks_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `users`
---
-
-DROP TABLE IF EXISTS `users`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `users` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `id_token` varchar(36) DEFAULT NULL,
-  `email` varchar(255) NOT NULL,
-  `name` varchar(255) DEFAULT NULL,
-  `username` varchar(40) DEFAULT NULL,
-  `public_profile` tinyint(1) NOT NULL DEFAULT '0',
-  `deletion_on` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`),
-  UNIQUE KEY `username` (`username`),
-  UNIQUE KEY `id_token` (`id_token`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `vendor_zones`
---
-
-DROP TABLE IF EXISTS `vendor_zones`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `vendor_zones` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `id_token` varchar(36) DEFAULT NULL,
-  `zone_name` varchar(90) NOT NULL,
-  `status` enum('New','Pending','Approved','Rejected') NOT NULL DEFAULT 'New',
-  `user_id` int unsigned DEFAULT NULL,
-  `organization_name` varchar(255) DEFAULT NULL,
-  `client_type` enum('ntp','sntp','legacy') NOT NULL DEFAULT 'sntp',
-  `contact_information` text,
-  `request_information` text,
-  `device_information` text,
-  `device_count` int unsigned DEFAULT NULL,
-  `opensource` tinyint(1) NOT NULL DEFAULT '0',
-  `opensource_info` text,
-  `rt_ticket` smallint unsigned DEFAULT NULL,
-  `approved_on` datetime DEFAULT NULL,
-  `created_on` datetime NOT NULL,
-  `modified_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `dns_root_id` int unsigned NOT NULL,
-  `account_id` int unsigned DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `zone_name` (`zone_name`,`dns_root_id`),
-  UNIQUE KEY `id_token` (`id_token`),
-  KEY `vendor_zones_user_id` (`user_id`),
-  KEY `dns_root_fk` (`dns_root_id`),
-  KEY `vendor_zone_account_fk` (`account_id`),
-  CONSTRAINT `dns_root_fk` FOREIGN KEY (`dns_root_id`) REFERENCES `dns_roots` (`id`),
-  CONSTRAINT `vendor_zone_account_fk` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`id`),
-  CONSTRAINT `vendor_zones_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `zone_server_counts`
---
-
-DROP TABLE IF EXISTS `zone_server_counts`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `zone_server_counts` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `zone_id` int unsigned NOT NULL,
-  `ip_version` enum('v4','v6') NOT NULL,
-  `date` date NOT NULL,
-  `count_active` mediumint unsigned NOT NULL,
-  `count_registered` mediumint unsigned NOT NULL,
-  `netspeed_active` int unsigned NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `zone_date` (`zone_id`,`date`,`ip_version`),
-  KEY `date_idx` (`date`,`zone_id`),
-  CONSTRAINT `zone_server_counts` FOREIGN KEY (`zone_id`) REFERENCES `zones` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `zones`
---
-
-DROP TABLE IF EXISTS `zones`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `zones` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `parent_id` int unsigned DEFAULT NULL,
-  `dns` tinyint(1) NOT NULL DEFAULT '1',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`),
-  KEY `parent` (`parent_id`),
-  CONSTRAINT `zones_parent` FOREIGN KEY (`parent_id`) REFERENCES `zones` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Final view structure for view `monitors_data`
---
-
-/*!50001 DROP VIEW IF EXISTS `monitors_data`*/;
-/*!50001 SET @saved_cs_client          = @@character_set_client */;
-/*!50001 SET @saved_cs_results         = @@character_set_results */;
-/*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8mb4 */;
-/*!50001 SET character_set_results     = utf8mb4 */;
-/*!50001 SET collation_connection      = utf8mb4_general_ci */;
-/*!50001 CREATE ALGORITHM=UNDEFINED */
-
-/*!50001 VIEW `monitors_data` AS select `monitors`.`id` AS `id`,`monitors`.`account_id` AS `account_id`,`monitors`.`type` AS `type`,if((`monitors`.`type` = 'score'),`monitors`.`hostname`,substring_index(`monitors`.`tls_name`,'.',1)) AS `name`,`monitors`.`ip` AS `ip`,`monitors`.`ip_version` AS `ip_version`,`monitors`.`status` AS `status`,`monitors`.`client_version` AS `client_version`,`monitors`.`last_seen` AS `last_seen`,`monitors`.`last_submit` AS `last_submit` from `monitors` where (not((`monitors`.`tls_name` like '%.system'))) */;
-/*!50001 SET character_set_client      = @saved_cs_client */;
-/*!50001 SET character_set_results     = @saved_cs_results */;
-/*!50001 SET collation_connection      = @saved_col_connection */;
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
-
-/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
-
--- Dump completed on 2025-08-06  4:26:05
+--
+-- PostgreSQL database dump
+--
+
+\restrict JrXmdpwfgrZ3hPsF1HhDavlypKeXBg7Tbu8oGE4HaBPH4PJsOgK0pVSUbzYpnXZ
+
+-- Dumped from database version 18.1 (Postgres.app)
+-- Dumped by pg_dump version 18.1 (Postgres.app)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: account_invites_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.account_invites_status AS ENUM (
+    'pending',
+    'accepted',
+    'expired'
+);
+
+
+--
+-- Name: account_subscriptions_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.account_subscriptions_status AS ENUM (
+    'incomplete',
+    'incomplete_expired',
+    'trialing',
+    'active',
+    'past_due',
+    'canceled',
+    'unpaid',
+    'ended'
+);
+
+
+--
+-- Name: monitor_registrations_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.monitor_registrations_status AS ENUM (
+    'pending',
+    'accepted',
+    'completed',
+    'rejected',
+    'cancelled'
+);
+
+
+--
+-- Name: monitors_ip_version; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.monitors_ip_version AS ENUM (
+    'v4',
+    'v6'
+);
+
+
+--
+-- Name: monitors_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.monitors_status AS ENUM (
+    'pending',
+    'testing',
+    'active',
+    'paused',
+    'deleted'
+);
+
+
+--
+-- Name: monitors_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.monitors_type AS ENUM (
+    'monitor',
+    'score'
+);
+
+
+--
+-- Name: server_scores_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.server_scores_status AS ENUM (
+    'candidate',
+    'testing',
+    'active',
+    'paused'
+);
+
+
+--
+-- Name: servers_ip_version; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.servers_ip_version AS ENUM (
+    'v4',
+    'v6'
+);
+
+
+--
+-- Name: user_equipment_applications_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.user_equipment_applications_status AS ENUM (
+    'New',
+    'Pending',
+    'Maybe',
+    'No',
+    'Approved'
+);
+
+
+--
+-- Name: user_tasks_task; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.user_tasks_task AS ENUM (
+    'download',
+    'delete'
+);
+
+
+--
+-- Name: vendor_zones_client_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.vendor_zones_client_type AS ENUM (
+    'ntp',
+    'sntp',
+    'legacy'
+);
+
+
+--
+-- Name: vendor_zones_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.vendor_zones_status AS ENUM (
+    'New',
+    'Pending',
+    'Approved',
+    'Rejected'
+);
+
+
+--
+-- Name: zone_server_counts_ip_version; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.zone_server_counts_ip_version AS ENUM (
+    'v4',
+    'v6'
+);
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: account_invites; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_invites (
+    id bigint NOT NULL,
+    account_id bigint NOT NULL,
+    email character varying(255) NOT NULL,
+    status public.account_invites_status,
+    user_id bigint,
+    sent_by_id bigint NOT NULL,
+    code character varying(25) NOT NULL,
+    expires_on timestamp with time zone NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: account_invites_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.account_invites_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: account_invites_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.account_invites_id_seq OWNED BY public.account_invites.id;
+
+
+--
+-- Name: account_subscriptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_subscriptions (
+    id bigint NOT NULL,
+    account_id bigint NOT NULL,
+    stripe_subscription_id character varying(255),
+    status public.account_subscriptions_status,
+    name character varying(255) NOT NULL,
+    max_zones bigint NOT NULL,
+    max_devices bigint NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    ended_on timestamp with time zone,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: account_subscriptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.account_subscriptions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: account_subscriptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.account_subscriptions_id_seq OWNED BY public.account_subscriptions.id;
+
+
+--
+-- Name: account_users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.account_users (
+    account_id bigint NOT NULL,
+    user_id bigint NOT NULL
+);
+
+
+--
+-- Name: accounts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.accounts (
+    id bigint NOT NULL,
+    id_token character varying(36),
+    name character varying(255),
+    organization_name character varying(150),
+    organization_url character varying(150),
+    public_profile boolean DEFAULT false NOT NULL,
+    url_slug character varying(150),
+    flags json,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    stripe_customer_id character varying(255)
+);
+
+
+--
+-- Name: accounts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.accounts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: accounts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.accounts_id_seq OWNED BY public.accounts.id;
+
+
+--
+-- Name: api_keys; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_keys (
+    id bigint NOT NULL,
+    account_id bigint,
+    user_id bigint,
+    api_key character varying(255),
+    grants text,
+    audience text NOT NULL,
+    token_lookup character varying(16) NOT NULL,
+    token_hashed character varying(256) NOT NULL,
+    last_seen timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: api_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.api_keys_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: api_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.api_keys_id_seq OWNED BY public.api_keys.id;
+
+
+--
+-- Name: api_keys_monitors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_keys_monitors (
+    api_key_id bigint NOT NULL,
+    monitor_id bigint NOT NULL
+);
+
+
+--
+-- Name: combust_cache; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.combust_cache (
+    id character varying(64) NOT NULL,
+    type character varying(20) DEFAULT ''::character varying NOT NULL,
+    created timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    purge_key character varying(16),
+    data bytea NOT NULL,
+    metadata bytea,
+    serialized boolean DEFAULT false NOT NULL,
+    expire timestamp with time zone DEFAULT '1969-12-31 16:00:00-08'::timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: combust_secrets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.combust_secrets (
+    secret_ts bigint NOT NULL,
+    expires_ts bigint NOT NULL,
+    type character varying(32) NOT NULL,
+    secret character(32)
+);
+
+
+--
+-- Name: dns_roots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dns_roots (
+    id bigint NOT NULL,
+    origin character varying(255) NOT NULL,
+    vendor_available smallint DEFAULT '0'::smallint NOT NULL,
+    general_use smallint DEFAULT '0'::smallint NOT NULL,
+    ns_list character varying(255) NOT NULL
+);
+
+
+--
+-- Name: dns_roots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.dns_roots_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: dns_roots_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.dns_roots_id_seq OWNED BY public.dns_roots.id;
+
+
+--
+-- Name: emails; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.emails (
+    id bigint NOT NULL,
+    message_id character varying(255) NOT NULL,
+    to_addresses text[] NOT NULL,
+    from_address character varying(255) NOT NULL,
+    reply_to character varying(255),
+    subject text NOT NULL,
+    body_text text NOT NULL,
+    body_html text,
+    account_id bigint,
+    user_id bigint,
+    server_id bigint,
+    sent_at timestamp with time zone,
+    error text,
+    email_type character varying(50) NOT NULL,
+    metadata jsonb,
+    created_on timestamp with time zone DEFAULT now() NOT NULL,
+    modified_on timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: emails_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.emails_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: emails_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.emails_id_seq OWNED BY public.emails.id;
+
+
+--
+-- Name: goose_db_version; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.goose_db_version (
+    id integer NOT NULL,
+    version_id bigint NOT NULL,
+    is_applied boolean NOT NULL,
+    tstamp timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: goose_db_version_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.goose_db_version ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.goose_db_version_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: log_scores; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.log_scores (
+    id bigint NOT NULL,
+    monitor_id bigint,
+    server_id bigint NOT NULL,
+    ts timestamp with time zone NOT NULL,
+    score double precision DEFAULT '0'::double precision NOT NULL,
+    step double precision DEFAULT '0'::double precision NOT NULL,
+    "offset" double precision,
+    rtt integer,
+    attributes text
+);
+
+
+--
+-- Name: log_scores_archive_status; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.log_scores_archive_status (
+    id bigint NOT NULL,
+    archiver character varying(255) NOT NULL,
+    log_score_id bigint,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: log_scores_archive_status_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.log_scores_archive_status_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: log_scores_archive_status_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.log_scores_archive_status_id_seq OWNED BY public.log_scores_archive_status.id;
+
+
+--
+-- Name: log_scores_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.log_scores_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: log_scores_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.log_scores_id_seq OWNED BY public.log_scores.id;
+
+
+--
+-- Name: logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.logs (
+    id bigint NOT NULL,
+    account_id bigint,
+    server_id bigint,
+    user_id bigint,
+    vendor_zone_id bigint,
+    type character varying(50),
+    message text,
+    changes text,
+    created_on timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.logs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: logs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.logs_id_seq OWNED BY public.logs.id;
+
+
+--
+-- Name: monitor_registrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.monitor_registrations (
+    id bigint NOT NULL,
+    monitor_id bigint,
+    request_token character varying(128) NOT NULL,
+    verification_token character varying(32) NOT NULL,
+    ip4 character varying(15) DEFAULT ''::character varying NOT NULL,
+    ip6 character varying(39) DEFAULT ''::character varying NOT NULL,
+    tls_name character varying(255) DEFAULT ''::character varying,
+    hostname character varying(256) DEFAULT ''::character varying NOT NULL,
+    location_code character varying(5) DEFAULT ''::character varying NOT NULL,
+    account_id bigint,
+    client character varying(256) DEFAULT ''::character varying NOT NULL,
+    status public.monitor_registrations_status NOT NULL,
+    last_seen timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_on timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: monitor_registrations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.monitor_registrations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: monitor_registrations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.monitor_registrations_id_seq OWNED BY public.monitor_registrations.id;
+
+
+--
+-- Name: monitors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.monitors (
+    id bigint NOT NULL,
+    id_token character varying(36),
+    type public.monitors_type DEFAULT 'monitor'::public.monitors_type NOT NULL,
+    user_id bigint,
+    account_id bigint,
+    hostname character varying(255) DEFAULT ''::character varying NOT NULL,
+    location character varying(255) DEFAULT ''::character varying NOT NULL,
+    ip character varying(40),
+    ip_version public.monitors_ip_version,
+    tls_name character varying(255),
+    api_key character varying(64),
+    status public.monitors_status NOT NULL,
+    config text NOT NULL,
+    client_version character varying(255) DEFAULT ''::character varying NOT NULL,
+    last_seen timestamp with time zone,
+    last_submit timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    deleted_on timestamp with time zone,
+    is_current boolean DEFAULT true
+);
+
+
+--
+-- Name: monitors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.monitors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: monitors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.monitors_id_seq OWNED BY public.monitors.id;
+
+
+--
+-- Name: oidc_public_keys; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oidc_public_keys (
+    id bigint NOT NULL,
+    kid character varying(255) NOT NULL,
+    public_key text NOT NULL,
+    algorithm character varying(20) NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone,
+    active boolean DEFAULT true NOT NULL
+);
+
+
+--
+-- Name: oidc_public_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.oidc_public_keys_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: oidc_public_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.oidc_public_keys_id_seq OWNED BY public.oidc_public_keys.id;
+
+
+--
+-- Name: schema_revision; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_revision (
+    revision integer DEFAULT 0 NOT NULL,
+    schema_name character varying(30) NOT NULL
+);
+
+
+--
+-- Name: scorer_status; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.scorer_status (
+    id bigint NOT NULL,
+    scorer_id bigint NOT NULL,
+    log_score_id bigint NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: scorer_status_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.scorer_status_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: scorer_status_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.scorer_status_id_seq OWNED BY public.scorer_status.id;
+
+
+--
+-- Name: server_alerts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_alerts (
+    server_id bigint NOT NULL,
+    last_score double precision NOT NULL,
+    first_email_time timestamp with time zone NOT NULL,
+    last_email_time timestamp with time zone
+);
+
+
+--
+-- Name: TABLE server_alerts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.server_alerts IS 'Tracks bad server notification history per server';
+
+
+--
+-- Name: COLUMN server_alerts.server_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.server_alerts.server_id IS 'Server that has been notified about';
+
+
+--
+-- Name: COLUMN server_alerts.last_score; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.server_alerts.last_score IS 'Server score at last notification (for deterioration detection)';
+
+
+--
+-- Name: COLUMN server_alerts.first_email_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.server_alerts.first_email_time IS 'When server was first flagged as bad';
+
+
+--
+-- Name: COLUMN server_alerts.last_email_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.server_alerts.last_email_time IS 'When last notification was sent';
+
+
+--
+-- Name: server_notes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_notes (
+    id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    name character varying(255) DEFAULT ''::character varying NOT NULL,
+    note text NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: server_notes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_notes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_notes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_notes_id_seq OWNED BY public.server_notes.id;
+
+
+--
+-- Name: server_precheck_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_precheck_tokens (
+    id bigint NOT NULL,
+    token text NOT NULL,
+    account_id bigint NOT NULL,
+    precheck_data jsonb NOT NULL,
+    created_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    expires_on timestamp with time zone DEFAULT (CURRENT_TIMESTAMP + '00:05:00'::interval) NOT NULL,
+    consumed boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: server_precheck_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_precheck_tokens_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_precheck_tokens_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_precheck_tokens_id_seq OWNED BY public.server_precheck_tokens.id;
+
+
+--
+-- Name: server_scores; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_scores (
+    id bigint NOT NULL,
+    monitor_id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    score_ts timestamp with time zone,
+    score_raw double precision DEFAULT '0'::double precision NOT NULL,
+    stratum smallint,
+    status public.server_scores_status DEFAULT 'candidate'::public.server_scores_status NOT NULL,
+    queue_ts timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    constraint_violation_type character varying(50),
+    constraint_violation_since timestamp with time zone,
+    last_constraint_check timestamp with time zone,
+    pause_reason character varying(20)
+);
+
+
+--
+-- Name: server_scores_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_scores_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_scores_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_scores_id_seq OWNED BY public.server_scores.id;
+
+
+--
+-- Name: server_urls; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_urls (
+    id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    url character varying(255) NOT NULL
+);
+
+
+--
+-- Name: server_urls_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_urls_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_urls_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_urls_id_seq OWNED BY public.server_urls.id;
+
+
+--
+-- Name: server_verifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_verifications (
+    id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    user_id bigint,
+    user_ip character varying(45) DEFAULT ''::character varying NOT NULL,
+    indirect_ip character varying(45) DEFAULT ''::character varying NOT NULL,
+    verified_on timestamp with time zone,
+    token character varying(36),
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: server_verifications_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_verifications_history (
+    id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    user_id bigint,
+    user_ip character varying(45) DEFAULT ''::character varying NOT NULL,
+    indirect_ip character varying(45) DEFAULT ''::character varying NOT NULL,
+    verified_on timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: server_verifications_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_verifications_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_verifications_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_verifications_history_id_seq OWNED BY public.server_verifications_history.id;
+
+
+--
+-- Name: server_verifications_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.server_verifications_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: server_verifications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.server_verifications_id_seq OWNED BY public.server_verifications.id;
+
+
+--
+-- Name: server_zones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_zones (
+    server_id bigint NOT NULL,
+    zone_id bigint NOT NULL
+);
+
+
+--
+-- Name: servers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.servers (
+    id bigint NOT NULL,
+    ip character varying(40) NOT NULL,
+    ip_version public.servers_ip_version DEFAULT 'v4'::public.servers_ip_version NOT NULL,
+    user_id bigint,
+    account_id bigint,
+    hostname character varying(255),
+    stratum smallint,
+    in_pool smallint DEFAULT '0'::smallint NOT NULL,
+    in_server_list smallint DEFAULT '0'::smallint NOT NULL,
+    netspeed bigint DEFAULT '10000'::bigint NOT NULL,
+    netspeed_target bigint DEFAULT '10000'::bigint NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    updated_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    score_ts timestamp with time zone,
+    score_raw double precision DEFAULT '0'::double precision NOT NULL,
+    deletion_on date,
+    flags character varying(4096) DEFAULT '{}'::character varying NOT NULL
+);
+
+
+--
+-- Name: servers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.servers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: servers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.servers_id_seq OWNED BY public.servers.id;
+
+
+--
+-- Name: servers_monitor_review; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.servers_monitor_review (
+    server_id bigint NOT NULL,
+    last_review timestamp with time zone,
+    next_review timestamp with time zone,
+    last_change timestamp with time zone,
+    config character varying(4096) DEFAULT ''::character varying NOT NULL
+);
+
+
+--
+-- Name: system_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.system_settings (
+    id bigint NOT NULL,
+    key character varying(255) NOT NULL,
+    value text NOT NULL,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: system_settings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.system_settings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: system_settings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.system_settings_id_seq OWNED BY public.system_settings.id;
+
+
+--
+-- Name: user_equipment_applications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_equipment_applications (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    application text,
+    contact_information text,
+    status public.user_equipment_applications_status DEFAULT 'New'::public.user_equipment_applications_status NOT NULL
+);
+
+
+--
+-- Name: user_equipment_applications_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_equipment_applications_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_equipment_applications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_equipment_applications_id_seq OWNED BY public.user_equipment_applications.id;
+
+
+--
+-- Name: user_identities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_identities (
+    id bigint NOT NULL,
+    profile_id character varying(255) NOT NULL,
+    user_id bigint NOT NULL,
+    provider character varying(255) NOT NULL,
+    data text,
+    email character varying(255),
+    created_on timestamp with time zone DEFAULT '2003-01-26 16:00:00-08'::timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: user_identities_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_identities_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_identities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_identities_id_seq OWNED BY public.user_identities.id;
+
+
+--
+-- Name: user_privileges; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_privileges (
+    user_id bigint NOT NULL,
+    see_all_servers boolean DEFAULT false,
+    vendor_admin boolean DEFAULT false,
+    equipment_admin boolean DEFAULT false,
+    support_staff boolean DEFAULT false,
+    monitor_admin boolean DEFAULT false
+);
+
+
+--
+-- Name: user_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_sessions (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    token_lookup character varying(16) NOT NULL,
+    token_hashed character varying(256) NOT NULL,
+    last_seen timestamp with time zone,
+    created_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    csrf_token character varying(64) DEFAULT NULL::character varying
+);
+
+
+--
+-- Name: user_sessions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_sessions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_sessions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_sessions_id_seq OWNED BY public.user_sessions.id;
+
+
+--
+-- Name: user_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_tasks (
+    id bigint NOT NULL,
+    user_id bigint,
+    task public.user_tasks_task NOT NULL,
+    status text NOT NULL,
+    traceid uuid DEFAULT uuidv7() NOT NULL,
+    execute_on timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: user_tasks_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_tasks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_tasks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_tasks_id_seq OWNED BY public.user_tasks.id;
+
+
+--
+-- Name: users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    id_token character varying(36),
+    email character varying(255) NOT NULL,
+    name character varying(255),
+    username character varying(40),
+    public_profile boolean DEFAULT false NOT NULL,
+    deletion_on timestamp with time zone
+);
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.users_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+
+
+--
+-- Name: vendor_zones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.vendor_zones (
+    id bigint NOT NULL,
+    id_token character varying(36),
+    zone_name character varying(90) NOT NULL,
+    status public.vendor_zones_status DEFAULT 'New'::public.vendor_zones_status NOT NULL,
+    user_id bigint,
+    organization_name character varying(255),
+    client_type public.vendor_zones_client_type DEFAULT 'sntp'::public.vendor_zones_client_type NOT NULL,
+    contact_information text,
+    request_information text,
+    device_information text,
+    device_count bigint,
+    opensource boolean DEFAULT false NOT NULL,
+    opensource_info text,
+    rt_ticket integer,
+    approved_on timestamp with time zone,
+    created_on timestamp with time zone NOT NULL,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    dns_root_id bigint NOT NULL,
+    account_id bigint
+);
+
+
+--
+-- Name: vendor_zones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.vendor_zones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: vendor_zones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.vendor_zones_id_seq OWNED BY public.vendor_zones.id;
+
+
+--
+-- Name: zone_server_counts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zone_server_counts (
+    id bigint NOT NULL,
+    zone_id bigint NOT NULL,
+    ip_version public.zone_server_counts_ip_version NOT NULL,
+    date date NOT NULL,
+    count_active integer NOT NULL,
+    count_registered integer NOT NULL,
+    netspeed_active bigint NOT NULL
+);
+
+
+--
+-- Name: zone_server_counts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zone_server_counts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zone_server_counts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zone_server_counts_id_seq OWNED BY public.zone_server_counts.id;
+
+
+--
+-- Name: zones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zones (
+    id bigint NOT NULL,
+    name character varying(255) NOT NULL,
+    description character varying(255),
+    parent_id bigint,
+    dns boolean DEFAULT true NOT NULL
+);
+
+
+--
+-- Name: zones_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zones_id_seq OWNED BY public.zones.id;
+
+
+--
+-- Name: account_invites id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_invites ALTER COLUMN id SET DEFAULT nextval('public.account_invites_id_seq'::regclass);
+
+
+--
+-- Name: account_subscriptions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_subscriptions ALTER COLUMN id SET DEFAULT nextval('public.account_subscriptions_id_seq'::regclass);
+
+
+--
+-- Name: accounts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.accounts ALTER COLUMN id SET DEFAULT nextval('public.accounts_id_seq'::regclass);
+
+
+--
+-- Name: api_keys id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys ALTER COLUMN id SET DEFAULT nextval('public.api_keys_id_seq'::regclass);
+
+
+--
+-- Name: dns_roots id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dns_roots ALTER COLUMN id SET DEFAULT nextval('public.dns_roots_id_seq'::regclass);
+
+
+--
+-- Name: emails id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails ALTER COLUMN id SET DEFAULT nextval('public.emails_id_seq'::regclass);
+
+
+--
+-- Name: log_scores id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores ALTER COLUMN id SET DEFAULT nextval('public.log_scores_id_seq'::regclass);
+
+
+--
+-- Name: log_scores_archive_status id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores_archive_status ALTER COLUMN id SET DEFAULT nextval('public.log_scores_archive_status_id_seq'::regclass);
+
+
+--
+-- Name: logs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.logs ALTER COLUMN id SET DEFAULT nextval('public.logs_id_seq'::regclass);
+
+
+--
+-- Name: monitor_registrations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitor_registrations ALTER COLUMN id SET DEFAULT nextval('public.monitor_registrations_id_seq'::regclass);
+
+
+--
+-- Name: monitors id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitors ALTER COLUMN id SET DEFAULT nextval('public.monitors_id_seq'::regclass);
+
+
+--
+-- Name: oidc_public_keys id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oidc_public_keys ALTER COLUMN id SET DEFAULT nextval('public.oidc_public_keys_id_seq'::regclass);
+
+
+--
+-- Name: scorer_status id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorer_status ALTER COLUMN id SET DEFAULT nextval('public.scorer_status_id_seq'::regclass);
+
+
+--
+-- Name: server_notes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_notes ALTER COLUMN id SET DEFAULT nextval('public.server_notes_id_seq'::regclass);
+
+
+--
+-- Name: server_precheck_tokens id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_precheck_tokens ALTER COLUMN id SET DEFAULT nextval('public.server_precheck_tokens_id_seq'::regclass);
+
+
+--
+-- Name: server_scores id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_scores ALTER COLUMN id SET DEFAULT nextval('public.server_scores_id_seq'::regclass);
+
+
+--
+-- Name: server_urls id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_urls ALTER COLUMN id SET DEFAULT nextval('public.server_urls_id_seq'::regclass);
+
+
+--
+-- Name: server_verifications id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications ALTER COLUMN id SET DEFAULT nextval('public.server_verifications_id_seq'::regclass);
+
+
+--
+-- Name: server_verifications_history id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications_history ALTER COLUMN id SET DEFAULT nextval('public.server_verifications_history_id_seq'::regclass);
+
+
+--
+-- Name: servers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers ALTER COLUMN id SET DEFAULT nextval('public.servers_id_seq'::regclass);
+
+
+--
+-- Name: system_settings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_settings ALTER COLUMN id SET DEFAULT nextval('public.system_settings_id_seq'::regclass);
+
+
+--
+-- Name: user_equipment_applications id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_equipment_applications ALTER COLUMN id SET DEFAULT nextval('public.user_equipment_applications_id_seq'::regclass);
+
+
+--
+-- Name: user_identities id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities ALTER COLUMN id SET DEFAULT nextval('public.user_identities_id_seq'::regclass);
+
+
+--
+-- Name: user_sessions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions ALTER COLUMN id SET DEFAULT nextval('public.user_sessions_id_seq'::regclass);
+
+
+--
+-- Name: user_tasks id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_tasks ALTER COLUMN id SET DEFAULT nextval('public.user_tasks_id_seq'::regclass);
+
+
+--
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- Name: vendor_zones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_zones ALTER COLUMN id SET DEFAULT nextval('public.vendor_zones_id_seq'::regclass);
+
+
+--
+-- Name: zone_server_counts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zone_server_counts ALTER COLUMN id SET DEFAULT nextval('public.zone_server_counts_id_seq'::regclass);
+
+
+--
+-- Name: zones id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones ALTER COLUMN id SET DEFAULT nextval('public.zones_id_seq'::regclass);
+
+
+--
+-- Name: account_invites account_invites_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_invites
+    ADD CONSTRAINT account_invites_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: account_subscriptions account_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_subscriptions
+    ADD CONSTRAINT account_subscriptions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: account_users account_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_users
+    ADD CONSTRAINT account_users_pkey PRIMARY KEY (account_id, user_id);
+
+
+--
+-- Name: accounts accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.accounts
+    ADD CONSTRAINT accounts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: api_keys_monitors api_keys_monitors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_monitors
+    ADD CONSTRAINT api_keys_monitors_pkey PRIMARY KEY (api_key_id, monitor_id);
+
+
+--
+-- Name: api_keys api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: combust_cache combust_cache_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.combust_cache
+    ADD CONSTRAINT combust_cache_pkey PRIMARY KEY (id, type);
+
+
+--
+-- Name: combust_secrets combust_secrets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.combust_secrets
+    ADD CONSTRAINT combust_secrets_pkey PRIMARY KEY (type, secret_ts);
+
+
+--
+-- Name: dns_roots dns_roots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dns_roots
+    ADD CONSTRAINT dns_roots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: emails emails_message_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails
+    ADD CONSTRAINT emails_message_id_key UNIQUE (message_id);
+
+
+--
+-- Name: emails emails_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails
+    ADD CONSTRAINT emails_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: goose_db_version goose_db_version_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.goose_db_version
+    ADD CONSTRAINT goose_db_version_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: log_scores_archive_status log_scores_archive_status_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores_archive_status
+    ADD CONSTRAINT log_scores_archive_status_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: logs logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.logs
+    ADD CONSTRAINT logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: monitor_registrations monitor_registrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitor_registrations
+    ADD CONSTRAINT monitor_registrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: monitors monitors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitors
+    ADD CONSTRAINT monitors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oidc_public_keys oidc_public_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oidc_public_keys
+    ADD CONSTRAINT oidc_public_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_revision schema_revision_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_revision
+    ADD CONSTRAINT schema_revision_pkey PRIMARY KEY (schema_name);
+
+
+--
+-- Name: scorer_status scorer_status_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorer_status
+    ADD CONSTRAINT scorer_status_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_alerts server_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_alerts
+    ADD CONSTRAINT server_alerts_pkey PRIMARY KEY (server_id);
+
+
+--
+-- Name: server_notes server_notes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_notes
+    ADD CONSTRAINT server_notes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_precheck_tokens server_precheck_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_precheck_tokens
+    ADD CONSTRAINT server_precheck_tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_precheck_tokens server_precheck_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_precheck_tokens
+    ADD CONSTRAINT server_precheck_tokens_token_key UNIQUE (token);
+
+
+--
+-- Name: server_scores server_scores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_scores
+    ADD CONSTRAINT server_scores_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_urls server_urls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_urls
+    ADD CONSTRAINT server_urls_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_verifications_history server_verifications_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications_history
+    ADD CONSTRAINT server_verifications_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_verifications server_verifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications
+    ADD CONSTRAINT server_verifications_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_zones server_zones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_zones
+    ADD CONSTRAINT server_zones_pkey PRIMARY KEY (server_id, zone_id);
+
+
+--
+-- Name: servers_monitor_review servers_monitor_review_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers_monitor_review
+    ADD CONSTRAINT servers_monitor_review_pkey PRIMARY KEY (server_id);
+
+
+--
+-- Name: servers servers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers
+    ADD CONSTRAINT servers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: system_settings system_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_settings
+    ADD CONSTRAINT system_settings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_equipment_applications user_equipment_applications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_equipment_applications
+    ADD CONSTRAINT user_equipment_applications_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_identities user_identities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_privileges user_privileges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_privileges
+    ADD CONSTRAINT user_privileges_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: user_sessions user_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_tasks user_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_tasks
+    ADD CONSTRAINT user_tasks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vendor_zones vendor_zones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_zones
+    ADD CONSTRAINT vendor_zones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zone_server_counts zone_server_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zone_server_counts
+    ADD CONSTRAINT zone_server_counts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zones zones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones
+    ADD CONSTRAINT zones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_18134_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18134_account_id ON public.account_invites USING btree (account_id, email);
+
+
+--
+-- Name: idx_18134_account_invites_sent_by_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18134_account_invites_sent_by_fk ON public.account_invites USING btree (sent_by_id);
+
+
+--
+-- Name: idx_18134_account_invites_user_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18134_account_invites_user_fk ON public.account_invites USING btree (user_id);
+
+
+--
+-- Name: idx_18134_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18134_code ON public.account_invites USING btree (code);
+
+
+--
+-- Name: idx_18140_account_subscriptions_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18140_account_subscriptions_account_fk ON public.account_subscriptions USING btree (account_id);
+
+
+--
+-- Name: idx_18140_stripe_subscription_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18140_stripe_subscription_id ON public.account_subscriptions USING btree (stripe_subscription_id);
+
+
+--
+-- Name: idx_18147_account_users_user_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18147_account_users_user_fk ON public.account_users USING btree (user_id);
+
+
+--
+-- Name: idx_18151_id_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18151_id_token ON public.accounts USING btree (id_token);
+
+
+--
+-- Name: idx_18151_stripe_customer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18151_stripe_customer_id ON public.accounts USING btree (stripe_customer_id);
+
+
+--
+-- Name: idx_18151_url_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18151_url_slug_idx ON public.accounts USING btree (url_slug);
+
+
+--
+-- Name: idx_18160_api_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18160_api_key ON public.api_keys USING btree (api_key);
+
+
+--
+-- Name: idx_18160_api_keys_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18160_api_keys_account_fk ON public.api_keys USING btree (account_id);
+
+
+--
+-- Name: idx_18160_api_keys_user_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18160_api_keys_user_fk ON public.api_keys USING btree (user_id);
+
+
+--
+-- Name: idx_18167_api_keys_monitors_monitors_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18167_api_keys_monitors_monitors_fk ON public.api_keys_monitors USING btree (monitor_id);
+
+
+--
+-- Name: idx_18170_expire_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18170_expire_idx ON public.combust_cache USING btree (expire);
+
+
+--
+-- Name: idx_18170_purge_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18170_purge_idx ON public.combust_cache USING btree (purge_key);
+
+
+--
+-- Name: idx_18179_expires_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18179_expires_ts ON public.combust_secrets USING btree (expires_ts);
+
+
+--
+-- Name: idx_18183_origin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18183_origin ON public.dns_roots USING btree (origin);
+
+
+--
+-- Name: idx_18192_log_scores_server_ts_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18192_log_scores_server_ts_idx ON public.log_scores USING btree (server_id, ts);
+
+
+--
+-- Name: idx_18192_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18192_ts ON public.log_scores USING btree (ts);
+
+
+--
+-- Name: idx_18201_archiver; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18201_archiver ON public.log_scores_archive_status USING btree (archiver);
+
+
+--
+-- Name: idx_18201_log_score_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18201_log_score_id ON public.log_scores_archive_status USING btree (log_score_id);
+
+
+--
+-- Name: idx_18207_account_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18207_account_id_idx ON public.logs USING btree (account_id);
+
+
+--
+-- Name: idx_18207_logs_vendor_zone_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18207_logs_vendor_zone_id ON public.logs USING btree (vendor_zone_id);
+
+
+--
+-- Name: idx_18207_server_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18207_server_id ON public.logs USING btree (server_id, type);
+
+
+--
+-- Name: idx_18207_server_logs_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18207_server_logs_user_id ON public.logs USING btree (user_id);
+
+
+--
+-- Name: idx_18214_monitor_registrations_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18214_monitor_registrations_account_fk ON public.monitor_registrations USING btree (account_id);
+
+
+--
+-- Name: idx_18214_monitor_registrations_monitor_id_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18214_monitor_registrations_monitor_id_fk ON public.monitor_registrations USING btree (monitor_id);
+
+
+--
+-- Name: idx_18214_request_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18214_request_token ON public.monitor_registrations USING btree (request_token);
+
+
+--
+-- Name: idx_18214_verification_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18214_verification_token ON public.monitor_registrations USING btree (verification_token);
+
+
+--
+-- Name: idx_18228_api_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18228_api_key ON public.monitors USING btree (api_key);
+
+
+--
+-- Name: idx_18228_id_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18228_id_token ON public.monitors USING btree (id_token);
+
+
+--
+-- Name: idx_18228_ip; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18228_ip ON public.monitors USING btree (ip, is_current);
+
+
+--
+-- Name: idx_18228_monitors_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18228_monitors_account_fk ON public.monitors USING btree (account_id);
+
+
+--
+-- Name: idx_18228_monitors_tls_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18228_monitors_tls_name ON public.monitors USING btree (tls_name, ip_version);
+
+
+--
+-- Name: idx_18228_monitors_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18228_monitors_user_id ON public.monitors USING btree (user_id);
+
+
+--
+-- Name: idx_18228_token_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18228_token_id ON public.monitors USING btree (id_token);
+
+
+--
+-- Name: idx_18228_type_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18228_type_status ON public.monitors USING btree (type, status);
+
+
+--
+-- Name: idx_18240_idx_active_expires; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18240_idx_active_expires ON public.oidc_public_keys USING btree (active, expires_at);
+
+
+--
+-- Name: idx_18240_idx_kid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18240_idx_kid ON public.oidc_public_keys USING btree (kid);
+
+
+--
+-- Name: idx_18240_kid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18240_kid ON public.oidc_public_keys USING btree (kid);
+
+
+--
+-- Name: idx_18252_scorer_log_score_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18252_scorer_log_score_id ON public.scorer_status USING btree (log_score_id);
+
+
+--
+-- Name: idx_18252_scores_status_monitor_id_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18252_scores_status_monitor_id_fk ON public.scorer_status USING btree (scorer_id);
+
+
+--
+-- Name: idx_18261_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18261_name ON public.server_notes USING btree (name);
+
+
+--
+-- Name: idx_18261_server; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18261_server ON public.server_notes USING btree (server_id, name);
+
+
+--
+-- Name: idx_18270_idx_constraint_violation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18270_idx_constraint_violation ON public.server_scores USING btree (constraint_violation_type, constraint_violation_since);
+
+
+--
+-- Name: idx_18270_idx_paused_monitors; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18270_idx_paused_monitors ON public.server_scores USING btree (status, last_constraint_check, pause_reason);
+
+
+--
+-- Name: idx_18270_monitor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18270_monitor_id ON public.server_scores USING btree (monitor_id, server_id);
+
+
+--
+-- Name: idx_18270_monitor_id_2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18270_monitor_id_2 ON public.server_scores USING btree (monitor_id, score_ts);
+
+
+--
+-- Name: idx_18270_server_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18270_server_id ON public.server_scores USING btree (server_id, monitor_id);
+
+
+--
+-- Name: idx_18278_server; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18278_server ON public.server_urls USING btree (server_id);
+
+
+--
+-- Name: idx_18283_server; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18283_server ON public.server_verifications USING btree (server_id);
+
+
+--
+-- Name: idx_18283_server_verifications_ibfk_2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18283_server_verifications_ibfk_2 ON public.server_verifications USING btree (user_id);
+
+
+--
+-- Name: idx_18283_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18283_token ON public.server_verifications USING btree (token);
+
+
+--
+-- Name: idx_18291_server_verifications_history_ibfk_1; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18291_server_verifications_history_ibfk_1 ON public.server_verifications_history USING btree (server_id);
+
+
+--
+-- Name: idx_18291_server_verifications_history_ibfk_2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18291_server_verifications_history_ibfk_2 ON public.server_verifications_history USING btree (user_id);
+
+
+--
+-- Name: idx_18298_locations_zone; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18298_locations_zone ON public.server_zones USING btree (zone_id);
+
+
+--
+-- Name: idx_18302_admin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18302_admin ON public.servers USING btree (user_id);
+
+
+--
+-- Name: idx_18302_deletion_on; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18302_deletion_on ON public.servers USING btree (deletion_on);
+
+
+--
+-- Name: idx_18302_ip; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18302_ip ON public.servers USING btree (ip);
+
+
+--
+-- Name: idx_18302_score_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18302_score_ts ON public.servers USING btree (score_ts);
+
+
+--
+-- Name: idx_18302_server_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18302_server_account_fk ON public.servers USING btree (account_id);
+
+
+--
+-- Name: idx_18316_next_review; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18316_next_review ON public.servers_monitor_review USING btree (next_review);
+
+
+--
+-- Name: idx_18323_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18323_key ON public.system_settings USING btree (key);
+
+
+--
+-- Name: idx_18331_user_equipment_applications_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18331_user_equipment_applications_user_id ON public.user_equipment_applications USING btree (user_id);
+
+
+--
+-- Name: idx_18339_profile_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18339_profile_id ON public.user_identities USING btree (profile_id);
+
+
+--
+-- Name: idx_18339_user_identities_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18339_user_identities_user_id ON public.user_identities USING btree (user_id);
+
+
+--
+-- Name: idx_18356_token_lookup; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18356_token_lookup ON public.user_sessions USING btree (token_lookup);
+
+
+--
+-- Name: idx_18356_user_sessions_user_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18356_user_sessions_user_fk ON public.user_sessions USING btree (user_id);
+
+
+--
+-- Name: idx_18362_user_tasks_user_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18362_user_tasks_user_fk ON public.user_tasks USING btree (user_id);
+
+
+--
+-- Name: idx_18371_email; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18371_email ON public.users USING btree (email);
+
+
+--
+-- Name: idx_18371_id_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18371_id_token ON public.users USING btree (id_token);
+
+
+--
+-- Name: idx_18371_username; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18371_username ON public.users USING btree (username);
+
+
+--
+-- Name: idx_18379_dns_root_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18379_dns_root_fk ON public.vendor_zones USING btree (dns_root_id);
+
+
+--
+-- Name: idx_18379_id_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18379_id_token ON public.vendor_zones USING btree (id_token);
+
+
+--
+-- Name: idx_18379_vendor_zone_account_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18379_vendor_zone_account_fk ON public.vendor_zones USING btree (account_id);
+
+
+--
+-- Name: idx_18379_vendor_zones_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18379_vendor_zones_user_id ON public.vendor_zones USING btree (user_id);
+
+
+--
+-- Name: idx_18379_zone_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18379_zone_name ON public.vendor_zones USING btree (zone_name, dns_root_id);
+
+
+--
+-- Name: idx_18390_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18390_date_idx ON public.zone_server_counts USING btree (date, zone_id);
+
+
+--
+-- Name: idx_18390_zone_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18390_zone_date ON public.zone_server_counts USING btree (zone_id, date, ip_version);
+
+
+--
+-- Name: idx_18395_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_18395_name ON public.zones USING btree (name);
+
+
+--
+-- Name: idx_18395_parent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_18395_parent ON public.zones USING btree (parent_id);
+
+
+--
+-- Name: idx_emails_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_account_id ON public.emails USING btree (account_id);
+
+
+--
+-- Name: idx_emails_created_on; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_created_on ON public.emails USING btree (created_on);
+
+
+--
+-- Name: idx_emails_email_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_email_type ON public.emails USING btree (email_type);
+
+
+--
+-- Name: idx_emails_message_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_message_id ON public.emails USING btree (message_id);
+
+
+--
+-- Name: idx_emails_sent_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_sent_at ON public.emails USING btree (sent_at);
+
+
+--
+-- Name: idx_emails_server_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_server_id ON public.emails USING btree (server_id);
+
+
+--
+-- Name: idx_emails_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_user_id ON public.emails USING btree (user_id);
+
+
+--
+-- Name: idx_precheck_tokens_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_precheck_tokens_active ON public.server_precheck_tokens USING btree (token) WHERE (NOT consumed);
+
+
+--
+-- Name: idx_precheck_tokens_cleanup; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_precheck_tokens_cleanup ON public.server_precheck_tokens USING btree (expires_on);
+
+
+--
+-- Name: users_username_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX users_username_unique ON public.users USING btree (username) WHERE (username IS NOT NULL);
+
+
+--
+-- Name: account_invites account_invites_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_invites
+    ADD CONSTRAINT account_invites_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: account_invites account_invites_sent_by_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_invites
+    ADD CONSTRAINT account_invites_sent_by_fk FOREIGN KEY (sent_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: account_invites account_invites_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_invites
+    ADD CONSTRAINT account_invites_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: account_subscriptions account_subscriptions_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_subscriptions
+    ADD CONSTRAINT account_subscriptions_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: account_users account_users_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_users
+    ADD CONSTRAINT account_users_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: account_users account_users_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_users
+    ADD CONSTRAINT account_users_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: api_keys api_keys_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: api_keys_monitors api_keys_monitors_api_keys_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_monitors
+    ADD CONSTRAINT api_keys_monitors_api_keys_fk FOREIGN KEY (api_key_id) REFERENCES public.api_keys(id) ON DELETE CASCADE;
+
+
+--
+-- Name: api_keys_monitors api_keys_monitors_monitors_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_monitors
+    ADD CONSTRAINT api_keys_monitors_monitors_fk FOREIGN KEY (monitor_id) REFERENCES public.monitors(id);
+
+
+--
+-- Name: api_keys api_keys_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: vendor_zones dns_root_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_zones
+    ADD CONSTRAINT dns_root_fk FOREIGN KEY (dns_root_id) REFERENCES public.dns_roots(id);
+
+
+--
+-- Name: emails emails_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails
+    ADD CONSTRAINT emails_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: emails emails_server_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails
+    ADD CONSTRAINT emails_server_id_fkey FOREIGN KEY (server_id) REFERENCES public.servers(id);
+
+
+--
+-- Name: emails emails_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.emails
+    ADD CONSTRAINT emails_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: log_scores log_score_monitor_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores
+    ADD CONSTRAINT log_score_monitor_id_fk FOREIGN KEY (monitor_id) REFERENCES public.monitors(id);
+
+
+--
+-- Name: log_scores log_scores_server; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores
+    ADD CONSTRAINT log_scores_server FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: logs logs_vendor_zone_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.logs
+    ADD CONSTRAINT logs_vendor_zone_id FOREIGN KEY (vendor_zone_id) REFERENCES public.vendor_zones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: monitor_registrations monitor_registrations_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitor_registrations
+    ADD CONSTRAINT monitor_registrations_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: monitor_registrations monitor_registrations_monitor_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitor_registrations
+    ADD CONSTRAINT monitor_registrations_monitor_id_fk FOREIGN KEY (monitor_id) REFERENCES public.monitors(id) ON DELETE CASCADE;
+
+
+--
+-- Name: monitors monitors_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitors
+    ADD CONSTRAINT monitors_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: monitors monitors_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.monitors
+    ADD CONSTRAINT monitors_user_id FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: scorer_status scores_status_monitor_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorer_status
+    ADD CONSTRAINT scores_status_monitor_id_fk FOREIGN KEY (scorer_id) REFERENCES public.monitors(id);
+
+
+--
+-- Name: servers server_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers
+    ADD CONSTRAINT server_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: server_alerts server_alerts_server; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_alerts
+    ADD CONSTRAINT server_alerts_server FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: servers_monitor_review server_monitor_review_server_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers_monitor_review
+    ADD CONSTRAINT server_monitor_review_server_id_fk FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_notes server_notes_ibfk_1; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_notes
+    ADD CONSTRAINT server_notes_ibfk_1 FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_precheck_tokens server_precheck_tokens_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_precheck_tokens
+    ADD CONSTRAINT server_precheck_tokens_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: server_scores server_score_monitor_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_scores
+    ADD CONSTRAINT server_score_monitor_fk FOREIGN KEY (monitor_id) REFERENCES public.monitors(id);
+
+
+--
+-- Name: server_scores server_score_server_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_scores
+    ADD CONSTRAINT server_score_server_id FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_urls server_urls_server; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_urls
+    ADD CONSTRAINT server_urls_server FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_verifications_history server_verifications_history_ibfk_1; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications_history
+    ADD CONSTRAINT server_verifications_history_ibfk_1 FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_verifications_history server_verifications_history_ibfk_2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications_history
+    ADD CONSTRAINT server_verifications_history_ibfk_2 FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_verifications server_verifications_ibfk_1; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications
+    ADD CONSTRAINT server_verifications_ibfk_1 FOREIGN KEY (server_id) REFERENCES public.servers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: server_verifications server_verifications_ibfk_2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_verifications
+    ADD CONSTRAINT server_verifications_ibfk_2 FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: servers servers_user_ibfk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.servers
+    ADD CONSTRAINT servers_user_ibfk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_equipment_applications user_equipment_applications_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_equipment_applications
+    ADD CONSTRAINT user_equipment_applications_user_id FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_identities user_identities_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_privileges user_privileges_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_privileges
+    ADD CONSTRAINT user_privileges_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_sessions user_sessions_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT user_sessions_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_tasks user_tasks_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_tasks
+    ADD CONSTRAINT user_tasks_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: vendor_zones vendor_zone_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_zones
+    ADD CONSTRAINT vendor_zone_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: vendor_zones vendor_zones_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_zones
+    ADD CONSTRAINT vendor_zones_user_id FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: zone_server_counts zone_server_counts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zone_server_counts
+    ADD CONSTRAINT zone_server_counts FOREIGN KEY (zone_id) REFERENCES public.zones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: zones zones_parent; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zones
+    ADD CONSTRAINT zones_parent FOREIGN KEY (parent_id) REFERENCES public.zones(id);
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: -
+--
+
+GRANT ALL ON SCHEMA public TO ntppool;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: -
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO ntppool;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: -
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO ntppool;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict JrXmdpwfgrZ3hPsF1HhDavlypKeXBg7Tbu8oGE4HaBPH4PJsOgK0pVSUbzYpnXZ

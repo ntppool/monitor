@@ -2,6 +2,7 @@
 kind: pipeline
 type: kubernetes
 name: default
+namespace: drone-build-ntppool
 
 environment:
   GOCACHE: /cache/pkg/cache
@@ -9,14 +10,13 @@ environment:
 
 services:
   - name: database
-    image: mysql:8.0
+    image: postgres:18
     ports:
-      - 3306
+      - 5432
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: monitor_test
-      MYSQL_USER: monitor
-      MYSQL_PASSWORD: test123
+      POSTGRES_DB: monitor_test
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: test123
     detach: true
     resources:
       limits:
@@ -45,24 +45,24 @@ steps:
       - name: gopkg
         path: /cache
     commands:
-      - apt update && apt install -y default-mysql-client git
+      - apt update && apt install -y postgresql-client git
       - |
         echo "Waiting for database to be ready..."
         for i in $(seq 1 30); do
-          if mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false -e "SELECT 1" monitor_test 2>/dev/null; then
+          if PGPASSWORD=test123 psql -h database -U monitor -d monitor_test -c "SELECT 1" 2>/dev/null; then
             echo "Database is ready!"
             break
           fi
           echo "Waiting for database... ($i/30)"
           sleep 2
         done
-      - mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false monitor_test < schema.sql
+      - PGPASSWORD=test123 psql -h database -U monitor -d monitor_test -f schema.sql
       - go build ./...
       - go test -v ./... -short
       - make test-integration
       - echo OK
     environment:
-      TEST_DATABASE_URL: "monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true"
+      TEST_DATABASE_URL: "postgres://monitor:test123@database:5432/monitor_test?sslmode=disable"
     resources:
       requests:
         cpu: 1000
@@ -234,6 +234,6 @@ trigger:
     - publish
 ---
 kind: signature
-hmac: 33044cb2318d835a3d4d7c206d75d8eefe121405df99741f811c5f57f2470677
+hmac: 5b9f2cf5f831cd66a7eeb2402148c2ce40fac4b348f0dd3bdb5c7adf65aa9795
 
 ...

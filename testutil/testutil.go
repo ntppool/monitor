@@ -104,7 +104,7 @@ func (tdb *TestDB) CleanupTestData(t *testing.T) {
 	}
 
 	// Clean up test system settings
-	_, err = tdb.Exec(tdb.ctx, "DELETE FROM system_settings WHERE key LIKE 'test_%'")
+	_, err = tdb.Exec(tdb.ctx, `DELETE FROM system_settings WHERE "key" LIKE 'test_%'`)
 	if err != nil {
 		t.Logf("Error cleaning up system_settings: %v", err)
 	}
