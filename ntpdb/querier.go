@@ -6,7 +6,8 @@ package ntpdb
 
 import (
 	"context"
-	"database/sql"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -14,28 +15,28 @@ type Querier interface {
 	// Remove a monitor assignment from a server
 	DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error
 	// https://github.com/kyleconroy/sqlc/issues/1965
-	GetMinLogScoreID(ctx context.Context) (uint64, error)
-	GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error)
+	GetMinLogScoreID(ctx context.Context) (int64, error)
+	GetMonitorPriority(ctx context.Context, serverID int64) ([]GetMonitorPriorityRow, error)
 	GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error)
-	GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString) ([]Monitor, error)
+	GetMonitorsTLSName(ctx context.Context, tlsName pgtype.Text) ([]Monitor, error)
 	GetScorerLogScores(ctx context.Context, arg GetScorerLogScoresParams) ([]LogScore, error)
 	//   this is very slow when there's a backlog, so
 	//   only run it when there are no results to make
 	//   sure we don't get stuck behind a bunch of scoring
 	//   ids.
 	//   https://github.com/kyleconroy/sqlc/issues/1965
-	GetScorerNextLogScoreID(ctx context.Context, logScoreID uint64) (uint64, error)
+	GetScorerNextLogScoreID(ctx context.Context, logScoreID int64) (int64, error)
 	GetScorerRecentScores(ctx context.Context, arg GetScorerRecentScoresParams) ([]LogScore, error)
 	GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, error)
 	GetScorers(ctx context.Context) ([]GetScorersRow, error)
-	GetServer(ctx context.Context, id uint32) (Server, error)
+	GetServer(ctx context.Context, id int64) (Server, error)
 	GetServerIP(ctx context.Context, ip string) (Server, error)
 	GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error)
 	GetServers(ctx context.Context, arg GetServersParams) ([]Server, error)
-	GetServersMonitorReview(ctx context.Context) ([]uint32, error)
+	GetServersMonitorReview(ctx context.Context) ([]int64, error)
 	GetSystemSetting(ctx context.Context, key string) (string, error)
-	InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (sql.Result, error)
-	InsertScorer(ctx context.Context, arg InsertScorerParams) (sql.Result, error)
+	InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error)
+	InsertScorer(ctx context.Context, arg InsertScorerParams) (int64, error)
 	InsertScorerStatus(ctx context.Context, arg InsertScorerStatusParams) error
 	InsertServerScore(ctx context.Context, arg InsertServerScoreParams) error
 	UpdateMonitorSeen(ctx context.Context, arg UpdateMonitorSeenParams) error

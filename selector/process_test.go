@@ -293,7 +293,7 @@ func TestCalculateSafetyLimits_EmergencyConditions(t *testing.T) {
 			for i := 0; i < tt.totalMonitors; i++ {
 				evaluatedMonitors[i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(i + 1),
+						ID:           int64(i + 1),
 						GlobalStatus: ntpdb.MonitorsStatusActive,
 						IsHealthy:    i < tt.healthyActive, // First N monitors are healthy
 					},
@@ -396,7 +396,7 @@ func TestCalculateSafetyLimits_ConstraintInteractions(t *testing.T) {
 			for i := 0; i < tt.totalMonitors; i++ {
 				evaluatedMonitors[i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(i + 1),
+						ID:           int64(i + 1),
 						GlobalStatus: ntpdb.MonitorsStatusActive,
 						IsHealthy:    i < tt.healthyActive,
 					},

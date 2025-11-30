@@ -5,11 +5,11 @@
 package ntpdb
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type MonitorsIpVersion string
@@ -228,86 +228,86 @@ func (ns NullServersIpVersion) Value() (driver.Value, error) {
 }
 
 type Account struct {
-	ID               uint32           `json:"id"`
-	IDToken          sql.NullString   `json:"id_token"`
-	Name             sql.NullString   `json:"name"`
-	OrganizationName sql.NullString   `json:"organization_name"`
-	OrganizationUrl  sql.NullString   `json:"organization_url"`
-	PublicProfile    bool             `json:"public_profile"`
-	UrlSlug          sql.NullString   `json:"url_slug"`
-	Flags            *json.RawMessage `json:"flags"`
-	CreatedOn        time.Time        `json:"created_on"`
-	ModifiedOn       time.Time        `json:"modified_on"`
-	StripeCustomerID sql.NullString   `json:"stripe_customer_id"`
+	ID               int64              `json:"id"`
+	IDToken          pgtype.Text        `json:"id_token"`
+	Name             pgtype.Text        `json:"name"`
+	OrganizationName pgtype.Text        `json:"organization_name"`
+	OrganizationUrl  pgtype.Text        `json:"organization_url"`
+	PublicProfile    bool               `json:"public_profile"`
+	UrlSlug          pgtype.Text        `json:"url_slug"`
+	Flags            *json.RawMessage   `json:"flags"`
+	CreatedOn        pgtype.Timestamptz `json:"created_on"`
+	ModifiedOn       pgtype.Timestamptz `json:"modified_on"`
+	StripeCustomerID pgtype.Text        `json:"stripe_customer_id"`
 }
 
 type LogScore struct {
-	ID         uint64          `json:"id"`
-	MonitorID  sql.NullInt32   `json:"monitor_id"`
-	ServerID   uint32          `json:"server_id"`
-	Ts         time.Time       `json:"ts"`
-	Score      float64         `json:"score"`
-	Step       float64         `json:"step"`
-	Offset     sql.NullFloat64 `json:"offset"`
-	Rtt        sql.NullInt32   `json:"rtt"`
-	Attributes sql.NullString  `json:"attributes"`
+	ID         int64              `json:"id"`
+	MonitorID  pgtype.Int8        `json:"monitor_id"`
+	ServerID   int64              `json:"server_id"`
+	Ts         pgtype.Timestamptz `json:"ts"`
+	Score      float64            `json:"score"`
+	Step       float64            `json:"step"`
+	Offset     pgtype.Float8      `json:"offset"`
+	Rtt        pgtype.Int4        `json:"rtt"`
+	Attributes pgtype.Text        `json:"attributes"`
 }
 
 type Monitor struct {
-	ID            uint32                `json:"id"`
-	IDToken       sql.NullString        `json:"id_token"`
+	ID            int64                 `json:"id"`
+	IDToken       pgtype.Text           `json:"id_token"`
 	Type          MonitorsType          `json:"type"`
-	UserID        sql.NullInt32         `json:"user_id"`
-	AccountID     sql.NullInt32         `json:"account_id"`
+	UserID        pgtype.Int8           `json:"user_id"`
+	AccountID     pgtype.Int8           `json:"account_id"`
 	Hostname      string                `json:"hostname"`
 	Location      string                `json:"location"`
-	Ip            sql.NullString        `json:"ip"`
+	Ip            pgtype.Text           `json:"ip"`
 	IpVersion     NullMonitorsIpVersion `json:"ip_version"`
-	TlsName       sql.NullString        `json:"tls_name"`
-	ApiKey        sql.NullString        `json:"api_key"`
+	TlsName       pgtype.Text           `json:"tls_name"`
+	ApiKey        pgtype.Text           `json:"api_key"`
 	Status        MonitorsStatus        `json:"status"`
 	Config        string                `json:"config"`
 	ClientVersion string                `json:"client_version"`
-	LastSeen      sql.NullTime          `json:"last_seen"`
-	LastSubmit    sql.NullTime          `json:"last_submit"`
-	CreatedOn     time.Time             `json:"created_on"`
-	DeletedOn     sql.NullTime          `json:"deleted_on"`
-	IsCurrent     sql.NullBool          `json:"is_current"`
+	LastSeen      pgtype.Timestamptz    `json:"last_seen"`
+	LastSubmit    pgtype.Timestamptz    `json:"last_submit"`
+	CreatedOn     pgtype.Timestamptz    `json:"created_on"`
+	DeletedOn     pgtype.Timestamptz    `json:"deleted_on"`
+	IsCurrent     pgtype.Bool           `json:"is_current"`
 }
 
 type Server struct {
-	ID             uint32           `json:"id"`
-	Ip             string           `json:"ip"`
-	IpVersion      ServersIpVersion `json:"ip_version"`
-	UserID         sql.NullInt32    `json:"user_id"`
-	AccountID      sql.NullInt32    `json:"account_id"`
-	Hostname       sql.NullString   `json:"hostname"`
-	Stratum        sql.NullInt16    `json:"stratum"`
-	InPool         uint8            `json:"in_pool"`
-	InServerList   uint8            `json:"in_server_list"`
-	Netspeed       uint32           `json:"netspeed"`
-	NetspeedTarget uint32           `json:"netspeed_target"`
-	CreatedOn      time.Time        `json:"created_on"`
-	UpdatedOn      time.Time        `json:"updated_on"`
-	ScoreTs        sql.NullTime     `json:"score_ts"`
-	ScoreRaw       float64          `json:"score_raw"`
-	DeletionOn     sql.NullTime     `json:"deletion_on"`
-	Flags          string           `json:"flags"`
+	ID             int64              `json:"id"`
+	Ip             string             `json:"ip"`
+	IpVersion      ServersIpVersion   `json:"ip_version"`
+	UserID         pgtype.Int8        `json:"user_id"`
+	AccountID      pgtype.Int8        `json:"account_id"`
+	Hostname       pgtype.Text        `json:"hostname"`
+	Stratum        pgtype.Int2        `json:"stratum"`
+	InPool         int16              `json:"in_pool"`
+	InServerList   int16              `json:"in_server_list"`
+	Netspeed       int64              `json:"netspeed"`
+	NetspeedTarget int64              `json:"netspeed_target"`
+	CreatedOn      pgtype.Timestamptz `json:"created_on"`
+	UpdatedOn      pgtype.Timestamptz `json:"updated_on"`
+	ScoreTs        pgtype.Timestamptz `json:"score_ts"`
+	ScoreRaw       float64            `json:"score_raw"`
+	DeletionOn     pgtype.Date        `json:"deletion_on"`
+	Flags          string             `json:"flags"`
 }
 
 type ServerScore struct {
-	ID                       uint64             `json:"id"`
-	MonitorID                uint32             `json:"monitor_id"`
-	ServerID                 uint32             `json:"server_id"`
-	ScoreTs                  sql.NullTime       `json:"score_ts"`
+	ID                       int64              `json:"id"`
+	MonitorID                int64              `json:"monitor_id"`
+	ServerID                 int64              `json:"server_id"`
+	ScoreTs                  pgtype.Timestamptz `json:"score_ts"`
 	ScoreRaw                 float64            `json:"score_raw"`
-	Stratum                  sql.NullInt16      `json:"stratum"`
+	Stratum                  pgtype.Int2        `json:"stratum"`
 	Status                   ServerScoresStatus `json:"status"`
-	QueueTs                  sql.NullTime       `json:"queue_ts"`
-	CreatedOn                time.Time          `json:"created_on"`
-	ModifiedOn               time.Time          `json:"modified_on"`
-	ConstraintViolationType  sql.NullString     `json:"constraint_violation_type"`
-	ConstraintViolationSince sql.NullTime       `json:"constraint_violation_since"`
-	LastConstraintCheck      sql.NullTime       `json:"last_constraint_check"`
-	PauseReason              sql.NullString     `json:"pause_reason"`
+	QueueTs                  pgtype.Timestamptz `json:"queue_ts"`
+	CreatedOn                pgtype.Timestamptz `json:"created_on"`
+	ModifiedOn               pgtype.Timestamptz `json:"modified_on"`
+	ConstraintViolationType  pgtype.Text        `json:"constraint_violation_type"`
+	ConstraintViolationSince pgtype.Timestamptz `json:"constraint_violation_since"`
+	LastConstraintCheck      pgtype.Timestamptz `json:"last_constraint_check"`
+	PauseReason              pgtype.Text        `json:"pause_reason"`
 }

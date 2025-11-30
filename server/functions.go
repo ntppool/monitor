@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
@@ -48,11 +49,11 @@ func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor
 	log.DebugContext(ctx, "getMonitor", "cn", cn, "monIP", monIP)
 
 	row, err := srv.db.GetMonitorTLSNameIP(ctx, ntpdb.GetMonitorTLSNameIPParams{
-		TlsName: sql.NullString{String: cn, Valid: true},
-		Ip:      sql.NullString{String: monIP, Valid: true},
+		TlsName: pgtype.Text{String: cn, Valid: true},
+		Ip:      pgtype.Text{String: monIP, Valid: true},
 	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			err = twirp.NotFoundError("no such monitor")
 		}
 		ctx = context.WithValue(ctx, sctx.MonitorKey, nil)
@@ -105,7 +106,7 @@ func (srv *Server) GetConfig(ctx context.Context, monIP string) (*ntpdb.MonitorC
 	}
 	if err := srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
-		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
+		LastSeen: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}); err != nil {
 		// Log warning but don't fail the request
 		log.WarnContext(ctx, "failed to update monitor seen", "err", err)
@@ -150,8 +151,8 @@ func (srv *Server) GetConfig(ctx context.Context, monIP string) (*ntpdb.MonitorC
 	return cfg, nil
 }
 
-func (srv *Server) signatureIPData(monitorID uint32, batchID []byte, ip *netip.Addr) ([][]byte, error) {
-	monIDb := strconv.AppendInt([]byte{}, int64(monitorID), 10)
+func (srv *Server) signatureIPData(monitorID int64, batchID []byte, ip *netip.Addr) ([][]byte, error) {
+	monIDb := strconv.AppendInt([]byte{}, monitorID, 10)
 
 	ipb, err := ip.MarshalBinary()
 	if err != nil {
@@ -163,7 +164,7 @@ func (srv *Server) signatureIPData(monitorID uint32, batchID []byte, ip *netip.A
 	return data, nil
 }
 
-func (srv *Server) SignIPs(monitorID uint32, batchID []byte, ip *netip.Addr) ([]byte, error) {
+func (srv *Server) SignIPs(monitorID int64, batchID []byte, ip *netip.Addr) ([]byte, error) {
 	data, err := srv.signatureIPData(monitorID, batchID, ip)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ func (srv *Server) SignIPs(monitorID uint32, batchID []byte, ip *netip.Addr) ([]
 	return srv.tokens.SignBytes(data...)
 }
 
-func (srv *Server) ValidateIPs(signature []byte, monitorID uint32, batchID []byte, ip *netip.Addr) (bool, error) {
+func (srv *Server) ValidateIPs(signature []byte, monitorID int64, batchID []byte, ip *netip.Addr) (bool, error) {
 	data, err := srv.signatureIPData(monitorID, batchID, ip)
 	if err != nil {
 		return false, err
@@ -197,7 +198,7 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 
 	if err := srv.db.UpdateMonitorSeen(ctx, ntpdb.UpdateMonitorSeenParams{
 		ID:       monitor.ID,
-		LastSeen: sql.NullTime{Time: time.Now(), Valid: true},
+		LastSeen: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}); err != nil {
 		// Log warning but don't fail the request
 		log.WarnContext(ctx, "failed to update monitor seen", "err", err)
@@ -297,9 +298,9 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 				accountID,
 			).Add(float64(count))
 
-			now := sql.NullTime{Time: time.Now(), Valid: true}
+			now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 
-			ids := make([]uint32, len(servers))
+			ids := make([]int64, len(servers))
 			for i, s := range servers {
 				ids[i] = s.ID
 			}

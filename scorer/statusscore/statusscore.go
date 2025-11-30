@@ -2,9 +2,10 @@ package statusscore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"go.ntppool.org/common/logger"
 
@@ -30,13 +31,13 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 	sc := score.Score{}
 
 	sc.ServerID = server.ID
-	sc.Ts = status.Ts.AsTime()
+	sc.Ts = pgtype.Timestamptz{Time: status.Ts.AsTime(), Valid: true}
 	if status.Offset != nil {
-		sc.Offset = sql.NullFloat64{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
+		sc.Offset = pgtype.Float8{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
 	} else {
-		sc.Offset = sql.NullFloat64{Valid: false}
+		sc.Offset = pgtype.Float8{Valid: false}
 	}
-	sc.Rtt = sql.NullInt32{Int32: int32(status.Rtt.AsDuration().Microseconds()), Valid: true}
+	sc.Rtt = pgtype.Int4{Int32: int32(status.Rtt.AsDuration().Microseconds()), Valid: true}
 
 	sc.HasMaxScore = false
 
@@ -87,7 +88,7 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 
 	sc.Step = step
 
-	attributeStr := sql.NullString{}
+	attributeStr := pgtype.Text{}
 
 	if status.Leap > 0 || len(status.Error) > 0 {
 		log.Debug("Got attributes", "status", status)

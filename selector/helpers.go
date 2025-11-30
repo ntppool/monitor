@@ -12,7 +12,7 @@ import (
 type promotionRequest struct {
 	monitor           *monitorCandidate
 	server            *serverInfo
-	workingLimits     map[uint32]*accountLimit
+	workingLimits     map[int64]*accountLimit
 	assignedMonitors  []ntpdb.GetMonitorPriorityRow
 	emergencyOverride bool
 	fromStatus        ntpdb.ServerScoresStatus
@@ -202,8 +202,8 @@ func (sl *Selector) candidateOutperformsTestingMonitor(ctx context.Context, cand
 }
 
 // copyAccountLimits creates a deep copy of account limits map for testing scenarios
-func (sl *Selector) copyAccountLimits(original map[uint32]*accountLimit) map[uint32]*accountLimit {
-	copy := make(map[uint32]*accountLimit)
+func (sl *Selector) copyAccountLimits(original map[int64]*accountLimit) map[int64]*accountLimit {
+	copy := make(map[int64]*accountLimit)
 	for k, v := range original {
 		copy[k] = &accountLimit{
 			AccountID:    v.AccountID,

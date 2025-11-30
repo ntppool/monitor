@@ -4,66 +4,72 @@
 package selector
 
 import (
-	"database/sql"
+	"context"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
 // Test helpers for integration tests
 
-func createTestServer(t *testing.T, db *sql.DB, serverID uint32, ip, ipVersion string, accountID *uint32) {
-	query := `INSERT INTO servers (id, ip, ip_version, account_id) VALUES (?, ?, ?, ?)`
+func createTestServer(t *testing.T, db *pgxpool.Pool, serverID int64, ip, ipVersion string, accountID *int64) {
+	query := `INSERT INTO servers (id, ip, ip_version, account_id) VALUES ($1, $2, $3, $4)`
 
-	var accID sql.NullInt32
+	var accID pgtype.Int8
 	if accountID != nil {
-		accID = sql.NullInt32{Int32: int32(*accountID), Valid: true}
+		accID = pgtype.Int8{Int64: *accountID, Valid: true}
 	}
 
-	_, err := db.Exec(query, serverID, ip, ipVersion, accID)
+	_, err := db.Exec(context.Background(), query, serverID, ip, ipVersion, accID)
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
 }
 
-func createTestMonitor(t *testing.T, db *sql.DB, monitorID uint32, status string, ip string, accountID *uint32) {
-	query := `INSERT INTO monitors (id, status, ip, account_id) VALUES (?, ?, ?, ?)`
+func createTestMonitor(t *testing.T, db *pgxpool.Pool, monitorID int64, status string, ip string, accountID *int64) {
+	query := `INSERT INTO monitors (id, status, ip, account_id) VALUES ($1, $2, $3, $4)`
 
-	var accID sql.NullInt32
+	var accID pgtype.Int8
 	if accountID != nil {
-		accID = sql.NullInt32{Int32: int32(*accountID), Valid: true}
+		accID = pgtype.Int8{Int64: *accountID, Valid: true}
 	}
 
-	_, err := db.Exec(query, monitorID, status, ip, accID)
+	_, err := db.Exec(context.Background(), query, monitorID, status, ip, accID)
 	if err != nil {
 		t.Fatalf("Failed to create test monitor: %v", err)
 	}
 }
 
-func createTestServerScore(t *testing.T, db *sql.DB, serverID, monitorID uint32, status string, score float64) {
-	query := `INSERT INTO server_scores (server_id, monitor_id, status, score_raw, created_on) VALUES (?, ?, ?, ?, NOW())`
-	_, err := db.Exec(query, serverID, monitorID, status, score)
+func createTestServerScore(t *testing.T, db *pgxpool.Pool, serverID, monitorID int64, status string, score float64) {
+	query := `INSERT INTO server_scores (server_id, monitor_id, status, score_raw, created_on) VALUES ($1, $2, $3, $4, NOW())`
+	_, err := db.Exec(context.Background(), query, serverID, monitorID, status, score)
 	if err != nil {
 		t.Fatalf("Failed to create test server score: %v", err)
 	}
 }
 
-func createTestLogScore(t *testing.T, db *sql.DB, serverID, monitorID uint32, score, offset float64, rtt *int32, ts time.Time) {
-	query := `INSERT INTO log_scores (server_id, monitor_id, ts, score, offset, rtt) VALUES (?, ?, ?, ?, ?, ?)`
+func createTestLogScore(t *testing.T, db *pgxpool.Pool, serverID, monitorID int64, score, offset float64, rtt *int32, ts time.Time) {
+	query := `INSERT INTO log_scores (server_id, monitor_id, ts, score, offset, rtt) VALUES ($1, $2, $3, $4, $5, $6)`
 
-	var rttVal sql.NullInt32
+	var rttVal pgtype.Int4
 	if rtt != nil {
-		rttVal = sql.NullInt32{Int32: *rtt, Valid: true}
+		rttVal = pgtype.Int4{Int32: *rtt, Valid: true}
 	}
 
-	_, err := db.Exec(query, serverID, monitorID, ts, score, offset, rttVal)
+	_, err := db.Exec(context.Background(), query, serverID, monitorID, ts, score, offset, rttVal)
 	if err != nil {
 		t.Fatalf("Failed to create test log score: %v", err)
 	}
 }
 
 func int32Ptr(v int32) *int32 {
+	return &v
+}
+
+func int64Ptr(v int64) *int64 {
 	return &v
 }
 
@@ -101,24 +107,24 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 	testCases := []struct {
 		name        string
 		description string
-		setupFunc   func(t *testing.T, db *sql.DB)
+		setupFunc   func(t *testing.T, db *pgxpool.Pool)
 		expectFunc  func(t *testing.T, changes []statusChange)
 	}{
 		{
 			name:        "zero_active_all_candidates_have_account_limits",
 			description: "Emergency recovery when all candidates exceed account limits",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create server with account 1
-				createTestServer(t, db, 1, "192.168.1.1", "v4", uint32Ptr(1))
+				createTestServer(t, db, 1, "192.168.1.1", "v4", int64Ptr(1))
 
 				// Create monitors from account 2 (different from server)
-				createTestMonitor(t, db, 1, "active", "10.0.0.1", uint32Ptr(2))
-				createTestMonitor(t, db, 2, "active", "10.0.0.2", uint32Ptr(2))
-				createTestMonitor(t, db, 3, "active", "10.0.0.3", uint32Ptr(2))
+				createTestMonitor(t, db, 1, "active", "10.0.0.1", int64Ptr(2))
+				createTestMonitor(t, db, 2, "active", "10.0.0.2", int64Ptr(2))
+				createTestMonitor(t, db, 3, "active", "10.0.0.3", int64Ptr(2))
 
 				// Create candidates from same account 2 (would normally violate account limits)
-				createTestMonitor(t, db, 4, "active", "10.0.0.4", uint32Ptr(2))
-				createTestMonitor(t, db, 5, "active", "10.0.0.5", uint32Ptr(2))
+				createTestMonitor(t, db, 4, "active", "10.0.0.4", int64Ptr(2))
+				createTestMonitor(t, db, 5, "active", "10.0.0.5", int64Ptr(2))
 
 				// Set account limits: max 2 per server for account 2
 				// This would normally prevent promotion of monitors 4,5 since we already have 3 testing
@@ -150,18 +156,18 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 		{
 			name:        "zero_active_all_candidates_have_network_conflicts",
 			description: "Emergency recovery when all candidates have network diversity violations",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create server
-				createTestServer(t, db, 1, "10.0.0.1", "v4", uint32Ptr(1))
+				createTestServer(t, db, 1, "10.0.0.1", "v4", int64Ptr(1))
 
 				// Create monitors from different accounts to avoid account conflicts
-				createTestMonitor(t, db, 1, "active", "192.168.1.10", uint32Ptr(1))
-				createTestMonitor(t, db, 2, "active", "192.168.1.20", uint32Ptr(2)) // Same /24 subnet
-				createTestMonitor(t, db, 3, "active", "192.168.1.30", uint32Ptr(3)) // Same /24 subnet
+				createTestMonitor(t, db, 1, "active", "192.168.1.10", int64Ptr(1))
+				createTestMonitor(t, db, 2, "active", "192.168.1.20", int64Ptr(2)) // Same /24 subnet
+				createTestMonitor(t, db, 3, "active", "192.168.1.30", int64Ptr(3)) // Same /24 subnet
 
 				// Create candidates that would have network diversity violations
-				createTestMonitor(t, db, 4, "active", "192.168.1.40", uint32Ptr(4)) // Same /24 subnet
-				createTestMonitor(t, db, 5, "active", "192.168.1.50", uint32Ptr(5)) // Same /24 subnet
+				createTestMonitor(t, db, 4, "active", "192.168.1.40", int64Ptr(4)) // Same /24 subnet
+				createTestMonitor(t, db, 5, "active", "192.168.1.50", int64Ptr(5)) // Same /24 subnet
 
 				// All as candidates to simulate zero active monitors
 				createTestServerScore(t, db, 1, 1, "candidate", 100.0)
@@ -189,14 +195,14 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 		{
 			name:        "bootstrap_emergency_with_constraints",
 			description: "Bootstrap scenario with emergency override when no testing monitors exist",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create server
-				createTestServer(t, db, 1, "10.0.0.1", "v4", uint32Ptr(1))
+				createTestServer(t, db, 1, "10.0.0.1", "v4", int64Ptr(1))
 
 				// Create candidates that would normally have constraint violations
-				createTestMonitor(t, db, 1, "active", "192.168.1.10", uint32Ptr(1)) // Same account as server
-				createTestMonitor(t, db, 2, "active", "192.168.1.20", uint32Ptr(1)) // Same account as server
-				createTestMonitor(t, db, 3, "active", "192.168.1.30", uint32Ptr(1)) // Same account as server
+				createTestMonitor(t, db, 1, "active", "192.168.1.10", int64Ptr(1)) // Same account as server
+				createTestMonitor(t, db, 2, "active", "192.168.1.20", int64Ptr(1)) // Same account as server
+				createTestMonitor(t, db, 3, "active", "192.168.1.30", int64Ptr(1)) // Same account as server
 
 				// All monitors are candidates (no active, no testing = bootstrap + emergency)
 				createTestServerScore(t, db, 1, 1, "candidate", 100.0)
@@ -222,17 +228,17 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 		{
 			name:        "normal_operations_respect_constraints",
 			description: "Verify normal operations still respect constraints when not in emergency",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create server with account 1
-				createTestServer(t, db, 1, "192.168.1.1", "v4", uint32Ptr(1))
+				createTestServer(t, db, 1, "192.168.1.1", "v4", int64Ptr(1))
 
 				// Create some active monitors (non-emergency scenario)
-				createTestMonitor(t, db, 1, "active", "10.0.0.1", uint32Ptr(2))
-				createTestMonitor(t, db, 2, "active", "10.0.0.2", uint32Ptr(3))
+				createTestMonitor(t, db, 1, "active", "10.0.0.1", int64Ptr(2))
+				createTestMonitor(t, db, 2, "active", "10.0.0.2", int64Ptr(3))
 
 				// Create candidates that would violate account limits
-				createTestMonitor(t, db, 3, "active", "10.0.0.3", uint32Ptr(2))
-				createTestMonitor(t, db, 4, "active", "10.0.0.4", uint32Ptr(2))
+				createTestMonitor(t, db, 3, "active", "10.0.0.3", int64Ptr(2))
+				createTestMonitor(t, db, 4, "active", "10.0.0.4", int64Ptr(2))
 
 				// Some active monitors, some candidates
 				createTestServerScore(t, db, 1, 1, "active", 100.0)
@@ -256,14 +262,14 @@ func TestSelectorIntegration_EmergencyRecoveryScenarios(t *testing.T) {
 		{
 			name:        "emergency_still_requires_global_status",
 			description: "Emergency override still requires monitors to be globally active/testing",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create server
-				createTestServer(t, db, 1, "10.0.0.1", "v4", uint32Ptr(1))
+				createTestServer(t, db, 1, "10.0.0.1", "v4", int64Ptr(1))
 
 				// Create monitors with pending/paused global status
-				createTestMonitor(t, db, 1, "pending", "192.168.1.10", uint32Ptr(2))
-				createTestMonitor(t, db, 2, "paused", "192.168.1.20", uint32Ptr(3))
-				createTestMonitor(t, db, 3, "active", "192.168.1.30", uint32Ptr(4)) // Only this one is eligible
+				createTestMonitor(t, db, 1, "pending", "192.168.1.10", int64Ptr(2))
+				createTestMonitor(t, db, 2, "paused", "192.168.1.20", int64Ptr(3))
+				createTestMonitor(t, db, 3, "active", "192.168.1.30", int64Ptr(4)) // Only this one is eligible
 
 				// All as candidates to simulate zero active monitors
 				createTestServerScore(t, db, 1, 1, "candidate", 100.0)
@@ -309,20 +315,20 @@ func TestPromotionHelperIntegration(t *testing.T) {
 	testCases := []struct {
 		name        string
 		description string
-		setupFunc   func(t *testing.T, db *sql.DB)
+		setupFunc   func(t *testing.T, db *pgxpool.Pool)
 		expectFunc  func(t *testing.T, changes []statusChange)
 	}{
 		{
 			name:        "multiple_promotion_paths",
 			description: "Tests that promotion helpers work correctly with multiple candidate groups",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create test server
-				createTestServer(t, db, 1, "192.168.1.1", "4", uint32Ptr(100))
+				createTestServer(t, db, 1, "192.168.1.1", "4", int64Ptr(100))
 
 				// Create globally active and testing monitors with different accounts
-				createTestMonitor(t, db, 1, "active", "10.0.1.1", uint32Ptr(200))  // Globally active
-				createTestMonitor(t, db, 2, "testing", "10.0.1.2", uint32Ptr(201)) // Globally testing
-				createTestMonitor(t, db, 3, "active", "10.0.1.3", uint32Ptr(202))  // Globally active
+				createTestMonitor(t, db, 1, "active", "10.0.1.1", int64Ptr(200))  // Globally active
+				createTestMonitor(t, db, 2, "testing", "10.0.1.2", int64Ptr(201)) // Globally testing
+				createTestMonitor(t, db, 3, "active", "10.0.1.3", int64Ptr(202))  // Globally active
 
 				// All as candidates for promotion
 				createTestServerScore(t, db, 1, 1, "candidate", 95.0)
@@ -365,14 +371,14 @@ func TestPromotionHelperIntegration(t *testing.T) {
 		{
 			name:        "bootstrap_promotion_priority",
 			description: "Tests that bootstrap promotions prioritize healthy candidates",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create test server
-				createTestServer(t, db, 2, "192.168.2.1", "4", uint32Ptr(300))
+				createTestServer(t, db, 2, "192.168.2.1", "4", int64Ptr(300))
 
 				// Create healthy and unhealthy monitors
-				createTestMonitor(t, db, 10, "active", "10.0.2.1", uint32Ptr(400))  // Healthy, globally active
-				createTestMonitor(t, db, 11, "active", "10.0.2.2", uint32Ptr(401))  // Unhealthy, globally active
-				createTestMonitor(t, db, 12, "testing", "10.0.2.3", uint32Ptr(402)) // Healthy, globally testing
+				createTestMonitor(t, db, 10, "active", "10.0.2.1", int64Ptr(400))  // Healthy, globally active
+				createTestMonitor(t, db, 11, "active", "10.0.2.2", int64Ptr(401))  // Unhealthy, globally active
+				createTestMonitor(t, db, 12, "testing", "10.0.2.3", int64Ptr(402)) // Healthy, globally testing
 
 				// All as candidates, simulate no testing monitors scenario
 				createTestServerScore(t, db, 2, 10, "candidate", 95.0)
@@ -414,14 +420,14 @@ func TestPromotionHelperIntegration(t *testing.T) {
 		{
 			name:        "working_count_accuracy",
 			description: "Tests that working count tracking in promotion helpers is accurate",
-			setupFunc: func(t *testing.T, db *sql.DB) {
+			setupFunc: func(t *testing.T, db *pgxpool.Pool) {
 				// Create test server
-				createTestServer(t, db, 3, "192.168.3.1", "4", uint32Ptr(500))
+				createTestServer(t, db, 3, "192.168.3.1", "4", int64Ptr(500))
 
 				// Create mix of active, testing, and candidate monitors
-				createTestMonitor(t, db, 20, "active", "10.0.3.1", uint32Ptr(600))
-				createTestMonitor(t, db, 21, "active", "10.0.3.2", uint32Ptr(601))
-				createTestMonitor(t, db, 22, "active", "10.0.3.3", uint32Ptr(602))
+				createTestMonitor(t, db, 20, "active", "10.0.3.1", int64Ptr(600))
+				createTestMonitor(t, db, 21, "active", "10.0.3.2", int64Ptr(601))
+				createTestMonitor(t, db, 22, "active", "10.0.3.3", int64Ptr(602))
 
 				// Server scores: some active, some testing, some candidates
 				createTestServerScore(t, db, 3, 20, "active", 95.0)

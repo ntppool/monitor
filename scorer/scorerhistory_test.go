@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -20,25 +21,25 @@ func TestLastScore(t *testing.T) {
 
 	ls := &ntpdb.LogScore{ServerID: 1, Score: 19.8022327058068}
 
-	ls.Ts = ts1
+	ls.Ts = pgtype.Timestamptz{Time: ts1, Valid: true}
 	new := sm.IsNew(ls)
 	if !new {
 		t.Fatalf("first test should be 'new'")
 	}
 
-	ls.Ts = ts2
+	ls.Ts = pgtype.Timestamptz{Time: ts2, Valid: true}
 	new = sm.IsNew(ls)
 	if new {
 		t.Fatalf("second test should not be 'new' (too recent)")
 	}
 
-	ls.Ts = ts3
+	ls.Ts = pgtype.Timestamptz{Time: ts3, Valid: true}
 	new = sm.IsNew(ls)
 	if !new {
 		t.Fatalf("third test should be 'new' (15 minutes later)")
 	}
 
-	ls.Ts = ts4
+	ls.Ts = pgtype.Timestamptz{Time: ts4, Valid: true}
 	ls.Score = 19.8022327058
 	new = sm.IsNew(ls)
 	if !new {

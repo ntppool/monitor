@@ -2,28 +2,34 @@ package scorer
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
+	"os"
 	"testing"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestMetricsInitialization(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set, skipping integration test")
+	}
+
 	reg := prometheus.NewRegistry()
 
-	// Create a mock database connection (this won't be used for actual DB operations)
-	db, err := sql.Open("mysql", "test:test@/test")
-	if err != nil {
-		t.Fatalf("Failed to create mock database: %v", err)
-	}
-	defer db.Close()
-
 	ctx := context.Background()
+
+	// Create a test database connection
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("Failed to connect to test database: %v", err)
+	}
+	defer pool.Close()
+
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, db, reg)
+	runner, err := New(ctx, logger, pool, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}
@@ -59,19 +65,25 @@ func TestMetricsInitialization(t *testing.T) {
 }
 
 func TestSQLUpdateMetricsIncrement(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set, skipping integration test")
+	}
+
 	reg := prometheus.NewRegistry()
 
-	// Create a mock database connection
-	db, err := sql.Open("mysql", "test:test@/test")
-	if err != nil {
-		t.Fatalf("Failed to create mock database: %v", err)
-	}
-	defer db.Close()
-
 	ctx := context.Background()
+
+	// Create a test database connection
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("Failed to connect to test database: %v", err)
+	}
+	defer pool.Close()
+
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, db, reg)
+	runner, err := New(ctx, logger, pool, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}

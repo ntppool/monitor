@@ -68,7 +68,7 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 			for i := 0; i < tt.activeCount; i++ {
 				monitors[i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(i + 1),
+						ID:           int64(i + 1),
 						ServerStatus: ntpdb.ServerScoresStatusActive,
 						GlobalStatus: ntpdb.MonitorsStatusActive,
 						IsHealthy:    true,
@@ -83,7 +83,7 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 			for i := 0; i < tt.testingCount; i++ {
 				monitors[tt.activeCount+i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(tt.activeCount + i + 1),
+						ID:           int64(tt.activeCount + i + 1),
 						ServerStatus: ntpdb.ServerScoresStatusTesting,
 						GlobalStatus: ntpdb.MonitorsStatusActive,
 						IsHealthy:    true,
@@ -96,7 +96,7 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 			}
 
 			server := &serverInfo{ID: 1}
-			accountLimits := make(map[uint32]*accountLimit)
+			accountLimits := make(map[int64]*accountLimit)
 
 			// Run the selection rules
 			changes := sl.applySelectionRules(ctx, monitors, server, accountLimits, []ntpdb.GetMonitorPriorityRow{})
@@ -115,7 +115,7 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 
 			// Verify the demoted monitors are the worst performers
 			if tt.expectedDemoted > 0 {
-				demotedIDs := make(map[uint32]bool)
+				demotedIDs := make(map[int64]bool)
 				for _, change := range changes {
 					if change.fromStatus == ntpdb.ServerScoresStatusTesting && change.toStatus == ntpdb.ServerScoresStatusCandidate {
 						demotedIDs[change.monitorID] = true
@@ -123,10 +123,10 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 				}
 
 				// Worst performers should be the ones with highest monitor IDs (added last with highest priority)
-				expectedWorstIDs := make(map[uint32]bool)
+				expectedWorstIDs := make(map[int64]bool)
 				for i := 0; i < tt.expectedDemoted; i++ {
 					// Worst performers are the last testing monitors added
-					monitorID := uint32(tt.activeCount + tt.testingCount - i)
+					monitorID := int64(tt.activeCount + tt.testingCount - i)
 					expectedWorstIDs[monitorID] = true
 				}
 
@@ -212,7 +212,7 @@ func TestDynamicTestingPoolWithConstraints(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	// With 2 active (need 5 more), dynamic testing target = 5 + 5 = 10
 	// Current testing = 3, so no demotions expected

@@ -45,6 +45,7 @@ func wrapCertMan(cm *certman.CertMan) apitls.AuthProvider {
 }
 
 type serverCmd struct {
+	ConfigFile  string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
 	Listen      string `default:":8000" help:"Listen address" flag:"listen"`
 	MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 
@@ -97,7 +98,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		os.Exit(2)
 	}
 
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, cfg.ConfigFile)
 	if err != nil {
 		log.Error("database error", "err", err.Error())
 		os.Exit(2)

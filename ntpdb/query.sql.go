@@ -7,10 +7,9 @@ package ntpdb
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"strings"
-	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const clearServerScoreConstraintViolation = `-- name: ClearServerScoreConstraintViolation :exec
@@ -19,32 +18,32 @@ SET constraint_violation_type = NULL,
     constraint_violation_since = NULL,
     last_constraint_check = NOW(),
     pause_reason = NULL
-WHERE server_id = ? AND monitor_id = ?
+WHERE server_id = $1 AND monitor_id = $2
 `
 
 type ClearServerScoreConstraintViolationParams struct {
-	ServerID  uint32 `json:"server_id"`
-	MonitorID uint32 `json:"monitor_id"`
+	ServerID  int64 `json:"server_id"`
+	MonitorID int64 `json:"monitor_id"`
 }
 
 func (q *Queries) ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) error {
-	_, err := q.db.ExecContext(ctx, clearServerScoreConstraintViolation, arg.ServerID, arg.MonitorID)
+	_, err := q.db.Exec(ctx, clearServerScoreConstraintViolation, arg.ServerID, arg.MonitorID)
 	return err
 }
 
 const deleteServerScore = `-- name: DeleteServerScore :exec
 DELETE FROM server_scores
-WHERE server_id = ? AND monitor_id = ?
+WHERE server_id = $1 AND monitor_id = $2
 `
 
 type DeleteServerScoreParams struct {
-	ServerID  uint32 `json:"server_id"`
-	MonitorID uint32 `json:"monitor_id"`
+	ServerID  int64 `json:"server_id"`
+	MonitorID int64 `json:"monitor_id"`
 }
 
 // Remove a monitor assignment from a server
 func (q *Queries) DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error {
-	_, err := q.db.ExecContext(ctx, deleteServerScore, arg.ServerID, arg.MonitorID)
+	_, err := q.db.Exec(ctx, deleteServerScore, arg.ServerID, arg.MonitorID)
 	return err
 }
 
@@ -53,19 +52,19 @@ select id from log_scores order by id limit 1
 `
 
 // https://github.com/kyleconroy/sqlc/issues/1965
-func (q *Queries) GetMinLogScoreID(ctx context.Context) (uint64, error) {
-	row := q.db.QueryRowContext(ctx, getMinLogScoreID)
-	var id uint64
+func (q *Queries) GetMinLogScoreID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, getMinLogScoreID)
+	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
 const getMonitorPriority = `-- name: GetMonitorPriority :many
-select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
+SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     avg(ls.rtt) / 1000 as avg_rtt,
-    0+round((avg(ls.rtt)/1000) * (1+(2 * (1-avg(ls.step))))) as monitor_priority,
+    0 + round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step))))) as monitor_priority,
     avg(ls.step) as avg_step,
-    if(avg(ls.step) < 0, false, true) as healthy,
+    CASE WHEN avg(ls.step) < 0 THEN false ELSE true END as healthy,
     m.status as monitor_status, ss.status as status,
     count(*) as count,
     a.flags as account_flags,
@@ -73,42 +72,40 @@ select m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     ss.constraint_violation_since,
     ss.last_constraint_check,
     ss.pause_reason
-  from log_scores ls
-  inner join monitors m
-  left join server_scores ss on (ss.server_id = ls.server_id and ss.monitor_id = ls.monitor_id)
-  left join accounts a on (m.account_id = a.id)
-  where
-    m.id = ls.monitor_id
-  and ls.server_id = ?
-  and m.type = 'monitor'
-  and ls.ts > date_sub(now(), interval 24 hour)
-  group by m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+  FROM log_scores ls
+  INNER JOIN monitors m ON m.id = ls.monitor_id
+  LEFT JOIN server_scores ss ON (ss.server_id = ls.server_id AND ss.monitor_id = ls.monitor_id)
+  LEFT JOIN accounts a ON (m.account_id = a.id)
+  WHERE ls.server_id = $1
+    AND m.type = 'monitor'
+    AND ls.ts > NOW() - INTERVAL '24 hours'
+  GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
-  order by healthy desc, monitor_priority, avg_step desc, avg_rtt
+  ORDER BY healthy DESC, monitor_priority, avg_step DESC, avg_rtt
 `
 
 type GetMonitorPriorityRow struct {
-	ID                       uint32                 `json:"id"`
-	IDToken                  sql.NullString         `json:"id_token"`
-	TlsName                  sql.NullString         `json:"tls_name"`
-	AccountID                sql.NullInt32          `json:"account_id"`
-	MonitorIp                sql.NullString         `json:"monitor_ip"`
-	AvgRtt                   interface{}            `json:"avg_rtt"`
+	ID                       int64                  `json:"id"`
+	IDToken                  pgtype.Text            `json:"id_token"`
+	TlsName                  pgtype.Text            `json:"tls_name"`
+	AccountID                pgtype.Int8            `json:"account_id"`
+	MonitorIp                pgtype.Text            `json:"monitor_ip"`
+	AvgRtt                   int32                  `json:"avg_rtt"`
 	MonitorPriority          int32                  `json:"monitor_priority"`
-	AvgStep                  interface{}            `json:"avg_step"`
-	Healthy                  interface{}            `json:"healthy"`
+	AvgStep                  float64                `json:"avg_step"`
+	Healthy                  bool                   `json:"healthy"`
 	MonitorStatus            MonitorsStatus         `json:"monitor_status"`
 	Status                   NullServerScoresStatus `json:"status"`
 	Count                    int64                  `json:"count"`
 	AccountFlags             *json.RawMessage       `json:"account_flags"`
-	ConstraintViolationType  sql.NullString         `json:"constraint_violation_type"`
-	ConstraintViolationSince sql.NullTime           `json:"constraint_violation_since"`
-	LastConstraintCheck      sql.NullTime           `json:"last_constraint_check"`
-	PauseReason              sql.NullString         `json:"pause_reason"`
+	ConstraintViolationType  pgtype.Text            `json:"constraint_violation_type"`
+	ConstraintViolationSince pgtype.Timestamptz     `json:"constraint_violation_since"`
+	LastConstraintCheck      pgtype.Timestamptz     `json:"last_constraint_check"`
+	PauseReason              pgtype.Text            `json:"pause_reason"`
 }
 
-func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]GetMonitorPriorityRow, error) {
-	rows, err := q.db.QueryContext(ctx, getMonitorPriority, serverID)
+func (q *Queries) GetMonitorPriority(ctx context.Context, serverID int64) ([]GetMonitorPriorityRow, error) {
+	rows, err := q.db.Query(ctx, getMonitorPriority, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +136,6 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID uint32) ([]Ge
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -154,17 +148,17 @@ SELECT
   accounts.id, accounts.id_token, accounts.name, accounts.organization_name, accounts.organization_url, accounts.public_profile, accounts.url_slug, accounts.flags, accounts.created_on, accounts.modified_on, accounts.stripe_customer_id
 FROM monitors
 LEFT JOIN accounts ON monitors.account_id = accounts.id
-WHERE monitors.tls_name = ?
+WHERE monitors.tls_name = $1
   -- todo: remove this when v3 monitors are gone
-  and (monitors.ip = ? OR "" = ?)
-  AND monitors.is_current = 1
+  AND (monitors.ip = $2 OR '' = $2)
+  AND monitors.is_current = true
   AND monitors.deleted_on is null
 LIMIT 1
 `
 
 type GetMonitorTLSNameIPParams struct {
-	TlsName sql.NullString `json:"tls_name"`
-	Ip      sql.NullString `json:"ip"`
+	TlsName pgtype.Text `json:"tls_name"`
+	Ip      pgtype.Text `json:"ip"`
 }
 
 type GetMonitorTLSNameIPRow struct {
@@ -173,7 +167,7 @@ type GetMonitorTLSNameIPRow struct {
 }
 
 func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error) {
-	row := q.db.QueryRowContext(ctx, getMonitorTLSNameIP, arg.TlsName, arg.Ip, arg.Ip)
+	row := q.db.QueryRow(ctx, getMonitorTLSNameIP, arg.TlsName, arg.Ip)
 	var i GetMonitorTLSNameIPRow
 	err := row.Scan(
 		&i.Monitor.ID,
@@ -212,13 +206,13 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 
 const getMonitorsTLSName = `-- name: GetMonitorsTLSName :many
 SELECT id, id_token, type, user_id, account_id, hostname, location, ip, ip_version, tls_name, api_key, status, config, client_version, last_seen, last_submit, created_on, deleted_on, is_current FROM monitors
-WHERE tls_name = ?
-  AND is_current = 1
+WHERE tls_name = $1
+  AND is_current = true
   AND deleted_on is null
 `
 
-func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString) ([]Monitor, error) {
-	rows, err := q.db.QueryContext(ctx, getMonitorsTLSName, tlsName)
+func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName pgtype.Text) ([]Monitor, error) {
+	rows, err := q.db.Query(ctx, getMonitorsTLSName, tlsName)
 	if err != nil {
 		return nil, err
 	}
@@ -251,9 +245,6 @@ func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -261,25 +252,25 @@ func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName sql.NullString
 }
 
 const getScorerLogScores = `-- name: GetScorerLogScores :many
-select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes from
-  log_scores ls use index (primary),
+SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes FROM
+  log_scores ls,
   monitors m
 WHERE
-  ls.id >  ? AND
-  ls.id < (?+10000) AND
+  ls.id > $2 AND
+  ls.id < ($2 + 10000) AND
   m.type = 'monitor' AND
   monitor_id = m.id
-ORDER by ls.id
-LIMIT ?
+ORDER BY ls.id
+LIMIT $1
 `
 
 type GetScorerLogScoresParams struct {
-	LogScoreID uint64 `json:"log_score_id"`
-	Limit      int32  `json:"limit"`
+	Limit      int32 `json:"limit"`
+	LogScoreID int64 `json:"log_score_id"`
 }
 
 func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScoresParams) ([]LogScore, error) {
-	rows, err := q.db.QueryContext(ctx, getScorerLogScores, arg.LogScoreID, arg.LogScoreID, arg.Limit)
+	rows, err := q.db.Query(ctx, getScorerLogScores, arg.Limit, arg.LogScoreID)
 	if err != nil {
 		return nil, err
 	}
@@ -302,9 +293,6 @@ func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScores
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -312,15 +300,15 @@ func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScores
 }
 
 const getScorerNextLogScoreID = `-- name: GetScorerNextLogScoreID :one
-select ls.id from
-  log_scores ls use index (primary),
+SELECT ls.id FROM
+  log_scores ls,
   monitors m
 WHERE
-  ls.id > ? AND
+  ls.id > $1 AND
   m.type = 'monitor' AND
   monitor_id = m.id
-ORDER by id
-limit 1
+ORDER BY ls.id
+LIMIT 1
 `
 
 // this is very slow when there's a backlog, so
@@ -328,53 +316,48 @@ limit 1
 // sure we don't get stuck behind a bunch of scoring
 // ids.
 // https://github.com/kyleconroy/sqlc/issues/1965
-func (q *Queries) GetScorerNextLogScoreID(ctx context.Context, logScoreID uint64) (uint64, error) {
-	row := q.db.QueryRowContext(ctx, getScorerNextLogScoreID, logScoreID)
-	var id uint64
+func (q *Queries) GetScorerNextLogScoreID(ctx context.Context, logScoreID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, getScorerNextLogScoreID, logScoreID)
+	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
 const getScorerRecentScores = `-- name: GetScorerRecentScores :many
- select ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls.offset, ls.rtt, ls.attributes
-   from log_scores ls
-   inner join
-   (select ls2.monitor_id, max(ls2.ts) as sts
-      from log_scores ls2,
-         monitors m,
-         server_scores ss
-      where ls2.server_id = ?
-         and ls2.monitor_id=m.id and m.type = 'monitor'
-         and (ls2.monitor_id=ss.monitor_id and ls2.server_id=ss.server_id)
-         and ss.status in (?,?)
-         and ls2.ts <= ?
-         and ls2.ts >= date_sub(?, interval ? second)
-      group by ls2.monitor_id
-   ) as g
-   where
-     ls.server_id = ? AND
-     g.sts = ls.ts AND
-     g.monitor_id = ls.monitor_id
-  order by ls.ts
+SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes
+  FROM log_scores ls
+  INNER JOIN (
+    SELECT ls2.monitor_id, max(ls2.ts) as sts
+      FROM log_scores ls2,
+           monitors m,
+           server_scores ss
+      WHERE ls2.server_id = $1
+        AND ls2.monitor_id = m.id AND m.type = 'monitor'
+        AND (ls2.monitor_id = ss.monitor_id AND ls2.server_id = ss.server_id)
+        AND ss.status IN ($2, $3)
+        AND ls2.ts <= $4
+        AND ls2.ts >= $4 - make_interval(secs => $5)
+      GROUP BY ls2.monitor_id
+  ) AS g ON g.sts = ls.ts AND g.monitor_id = ls.monitor_id
+  WHERE ls.server_id = $1
+  ORDER BY ls.ts
 `
 
 type GetScorerRecentScoresParams struct {
-	ServerID       uint32             `json:"server_id"`
-	MonitorStatus  ServerScoresStatus `json:"monitor_status"`
-	MonitorStatus2 ServerScoresStatus `json:"monitor_status_2"`
-	Ts             time.Time          `json:"ts"`
-	TimeLookback   interface{}        `json:"time_lookback"`
+	ServerID       int64                  `json:"server_id"`
+	MonitorStatus  ServerScoresStatus     `json:"monitor_status"`
+	MonitorStatus2 NullServerScoresStatus `json:"monitor_status_2"`
+	Ts             pgtype.Timestamptz     `json:"ts"`
+	TimeLookback   float64                `json:"time_lookback"`
 }
 
 func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecentScoresParams) ([]LogScore, error) {
-	rows, err := q.db.QueryContext(ctx, getScorerRecentScores,
+	rows, err := q.db.Query(ctx, getScorerRecentScores,
 		arg.ServerID,
 		arg.MonitorStatus,
 		arg.MonitorStatus2,
 		arg.Ts,
-		arg.Ts,
 		arg.TimeLookback,
-		arg.ServerID,
 	)
 	if err != nil {
 		return nil, err
@@ -398,9 +381,6 @@ func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecent
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -413,15 +393,15 @@ WHERE m.type = 'score' and (m.id=s.scorer_id)
 `
 
 type GetScorerStatusRow struct {
-	ID         uint32    `json:"id"`
-	ScorerID   uint32    `json:"scorer_id"`
-	LogScoreID uint64    `json:"log_score_id"`
-	ModifiedOn time.Time `json:"modified_on"`
-	Hostname   string    `json:"hostname"`
+	ID         int64              `json:"id"`
+	ScorerID   int64              `json:"scorer_id"`
+	LogScoreID int64              `json:"log_score_id"`
+	ModifiedOn pgtype.Timestamptz `json:"modified_on"`
+	Hostname   string             `json:"hostname"`
 }
 
 func (q *Queries) GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, error) {
-	rows, err := q.db.QueryContext(ctx, getScorerStatus)
+	rows, err := q.db.Query(ctx, getScorerStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -440,9 +420,6 @@ func (q *Queries) GetScorerStatus(ctx context.Context) ([]GetScorerStatusRow, er
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -460,15 +437,15 @@ WHERE
 `
 
 type GetScorersRow struct {
-	ID         uint32         `json:"id"`
-	StatusID   uint32         `json:"status_id"`
+	ID         int64          `json:"id"`
+	StatusID   int64          `json:"status_id"`
 	Status     MonitorsStatus `json:"status"`
-	LogScoreID uint64         `json:"log_score_id"`
+	LogScoreID int64          `json:"log_score_id"`
 	Hostname   string         `json:"hostname"`
 }
 
 func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
-	rows, err := q.db.QueryContext(ctx, getScorers)
+	rows, err := q.db.Query(ctx, getScorers)
 	if err != nil {
 		return nil, err
 	}
@@ -487,9 +464,6 @@ func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -497,11 +471,11 @@ func (q *Queries) GetScorers(ctx context.Context) ([]GetScorersRow, error) {
 }
 
 const getServer = `-- name: GetServer :one
-SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE id=?
+SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE id = $1
 `
 
-func (q *Queries) GetServer(ctx context.Context, id uint32) (Server, error) {
-	row := q.db.QueryRowContext(ctx, getServer, id)
+func (q *Queries) GetServer(ctx context.Context, id int64) (Server, error) {
+	row := q.db.QueryRow(ctx, getServer, id)
 	var i Server
 	err := row.Scan(
 		&i.ID,
@@ -526,11 +500,11 @@ func (q *Queries) GetServer(ctx context.Context, id uint32) (Server, error) {
 }
 
 const getServerIP = `-- name: GetServerIP :one
-SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE ip=?
+SELECT id, ip, ip_version, user_id, account_id, hostname, stratum, in_pool, in_server_list, netspeed, netspeed_target, created_on, updated_on, score_ts, score_raw, deletion_on, flags FROM servers WHERE ip = $1
 `
 
 func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
-	row := q.db.QueryRowContext(ctx, getServerIP, ip)
+	row := q.db.QueryRow(ctx, getServerIP, ip)
 	var i Server
 	err := row.Scan(
 		&i.ID,
@@ -557,17 +531,17 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 const getServerScore = `-- name: GetServerScore :one
 SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since, last_constraint_check, pause_reason FROM server_scores
   WHERE
-    server_id=? AND
-    monitor_id=?
+    server_id = $1 AND
+    monitor_id = $2
 `
 
 type GetServerScoreParams struct {
-	ServerID  uint32 `json:"server_id"`
-	MonitorID uint32 `json:"monitor_id"`
+	ServerID  int64 `json:"server_id"`
+	MonitorID int64 `json:"monitor_id"`
 }
 
 func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error) {
-	row := q.db.QueryRowContext(ctx, getServerScore, arg.ServerID, arg.MonitorID)
+	row := q.db.QueryRow(ctx, getServerScore, arg.ServerID, arg.MonitorID)
 	var i ServerScore
 	err := row.Scan(
 		&i.ID,
@@ -592,42 +566,42 @@ const getServers = `-- name: GetServers :many
 SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.netspeed_target, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on, s.flags
     FROM servers s
     LEFT JOIN server_scores ss
-        ON (s.id=ss.server_id)
-WHERE (monitor_id = ?
-    AND s.ip_version = ?
+        ON (s.id = ss.server_id)
+WHERE (monitor_id = $3
+    AND s.ip_version = $4
     AND (ss.queue_ts IS NULL
-          OR (ss.score_raw > -90 AND ss.status = "active"
-               AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL ? second))
-          OR (ss.score_raw > -90 AND ss.status = "testing"
-              AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL ? second))
-          OR (ss.queue_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
+          OR (ss.score_raw > -90 AND ss.status = 'active'
+               AND ss.queue_ts < NOW() - make_interval(secs => $5))
+          OR (ss.score_raw > -90 AND ss.status = 'testing'
+              AND ss.queue_ts < NOW() - make_interval(secs => $6))
+          OR (ss.queue_ts < NOW() - INTERVAL '120 minutes'))
     AND (s.score_ts IS NULL OR
-        (s.score_ts < DATE_SUB( NOW(), INTERVAL ? second) ))
-    AND (deletion_on IS NULL or deletion_on > NOW()))
+        (s.score_ts < NOW() - make_interval(secs => $7)))
+    AND (deletion_on IS NULL OR deletion_on > NOW()))
 ORDER BY ss.queue_ts
-LIMIT  ?
-OFFSET ?
+LIMIT $1
+OFFSET $2
 `
 
 type GetServersParams struct {
-	MonitorID              uint32           `json:"monitor_id"`
-	IpVersion              ServersIpVersion `json:"ip_version"`
-	IntervalSeconds        interface{}      `json:"interval_seconds"`
-	IntervalSecondsTesting interface{}      `json:"interval_seconds_testing"`
-	IntervalSecondsAll     interface{}      `json:"interval_seconds_all"`
 	Limit                  int32            `json:"limit"`
 	Offset                 int32            `json:"offset"`
+	MonitorID              int64            `json:"monitor_id"`
+	IpVersion              ServersIpVersion `json:"ip_version"`
+	IntervalSeconds        float64          `json:"interval_seconds"`
+	IntervalSecondsTesting float64          `json:"interval_seconds_testing"`
+	IntervalSecondsAll     float64          `json:"interval_seconds_all"`
 }
 
 func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Server, error) {
-	rows, err := q.db.QueryContext(ctx, getServers,
+	rows, err := q.db.Query(ctx, getServers,
+		arg.Limit,
+		arg.Offset,
 		arg.MonitorID,
 		arg.IpVersion,
 		arg.IntervalSeconds,
 		arg.IntervalSecondsTesting,
 		arg.IntervalSecondsAll,
-		arg.Limit,
-		arg.Offset,
 	)
 	if err != nil {
 		return nil, err
@@ -659,9 +633,6 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -669,28 +640,25 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Serve
 }
 
 const getServersMonitorReview = `-- name: GetServersMonitorReview :many
-select server_id from servers_monitor_review
-where (next_review <= NOW() OR next_review is NULL)
-order by next_review
-limit 10
+SELECT server_id FROM servers_monitor_review
+WHERE (next_review <= NOW() OR next_review IS NULL)
+ORDER BY next_review
+LIMIT 10
 `
 
-func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]uint32, error) {
-	rows, err := q.db.QueryContext(ctx, getServersMonitorReview)
+func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, getServersMonitorReview)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []uint32
+	var items []int64
 	for rows.Next() {
-		var server_id uint32
+		var server_id int64
 		if err := rows.Scan(&server_id); err != nil {
 			return nil, err
 		}
 		items = append(items, server_id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -699,35 +667,36 @@ func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]uint32, error)
 }
 
 const getSystemSetting = `-- name: GetSystemSetting :one
-select value from system_settings where ` + "`" + `key` + "`" + ` = ?
+SELECT value FROM system_settings WHERE "key" = $1
 `
 
 func (q *Queries) GetSystemSetting(ctx context.Context, key string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getSystemSetting, key)
+	row := q.db.QueryRow(ctx, getSystemSetting, key)
 	var value string
 	err := row.Scan(&value)
 	return value, err
 }
 
-const insertLogScore = `-- name: InsertLogScore :execresult
+const insertLogScore = `-- name: InsertLogScore :one
 INSERT INTO log_scores
-  (server_id, monitor_id, ts, score, step, offset, rtt, attributes)
-  values (?, ?, ?, ?, ?, ?, ?, ?)
+  (server_id, monitor_id, ts, score, step, "offset", rtt, attributes)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id
 `
 
 type InsertLogScoreParams struct {
-	ServerID   uint32          `json:"server_id"`
-	MonitorID  sql.NullInt32   `json:"monitor_id"`
-	Ts         time.Time       `json:"ts"`
-	Score      float64         `json:"score"`
-	Step       float64         `json:"step"`
-	Offset     sql.NullFloat64 `json:"offset"`
-	Rtt        sql.NullInt32   `json:"rtt"`
-	Attributes sql.NullString  `json:"attributes"`
+	ServerID   int64              `json:"server_id"`
+	MonitorID  pgtype.Int8        `json:"monitor_id"`
+	Ts         pgtype.Timestamptz `json:"ts"`
+	Score      float64            `json:"score"`
+	Step       float64            `json:"step"`
+	Offset     pgtype.Float8      `json:"offset"`
+	Rtt        pgtype.Int4        `json:"rtt"`
+	Attributes pgtype.Text        `json:"attributes"`
 }
 
-func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, insertLogScore,
+func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertLogScore,
 		arg.ServerID,
 		arg.MonitorID,
 		arg.Ts,
@@ -737,61 +706,68 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 		arg.Rtt,
 		arg.Attributes,
 	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
-const insertScorer = `-- name: InsertScorer :execresult
-insert into monitors
+const insertScorer = `-- name: InsertScorer :one
+INSERT INTO monitors
    (type, user_id, account_id,
     hostname, location, ip, ip_version,
     tls_name, api_key, status, config, client_version, created_on)
     VALUES ('score', NULL, NULL,
-            ?, '', NULL, NULL,
-            ?, NULL, 'active',
+            $1, '', NULL, NULL,
+            $2, NULL, 'active',
             '', '', NOW())
+RETURNING id
 `
 
 type InsertScorerParams struct {
-	Hostname string         `json:"hostname"`
-	TlsName  sql.NullString `json:"tls_name"`
+	Hostname string      `json:"hostname"`
+	TlsName  pgtype.Text `json:"tls_name"`
 }
 
-func (q *Queries) InsertScorer(ctx context.Context, arg InsertScorerParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, insertScorer, arg.Hostname, arg.TlsName)
+func (q *Queries) InsertScorer(ctx context.Context, arg InsertScorerParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertScorer, arg.Hostname, arg.TlsName)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const insertScorerStatus = `-- name: InsertScorerStatus :exec
-insert into scorer_status
+INSERT INTO scorer_status
    (scorer_id, log_score_id, modified_on)
-   values (?,?,NOW())
+   VALUES ($1, $2, NOW())
 `
 
 type InsertScorerStatusParams struct {
-	ScorerID   uint32 `json:"scorer_id"`
-	LogScoreID uint64 `json:"log_score_id"`
+	ScorerID   int64 `json:"scorer_id"`
+	LogScoreID int64 `json:"log_score_id"`
 }
 
 func (q *Queries) InsertScorerStatus(ctx context.Context, arg InsertScorerStatusParams) error {
-	_, err := q.db.ExecContext(ctx, insertScorerStatus, arg.ScorerID, arg.LogScoreID)
+	_, err := q.db.Exec(ctx, insertScorerStatus, arg.ScorerID, arg.LogScoreID)
 	return err
 }
 
 const insertServerScore = `-- name: InsertServerScore :exec
-insert into server_scores
+INSERT INTO server_scores
   (monitor_id, server_id, score_raw, created_on)
-  values (?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE
-  score_raw = VALUES(score_raw)
+  VALUES ($1, $2, $3, $4)
+ON CONFLICT (monitor_id, server_id) DO UPDATE SET
+  score_raw = EXCLUDED.score_raw
 `
 
 type InsertServerScoreParams struct {
-	MonitorID uint32    `json:"monitor_id"`
-	ServerID  uint32    `json:"server_id"`
-	ScoreRaw  float64   `json:"score_raw"`
-	CreatedOn time.Time `json:"created_on"`
+	MonitorID int64              `json:"monitor_id"`
+	ServerID  int64              `json:"server_id"`
+	ScoreRaw  float64            `json:"score_raw"`
+	CreatedOn pgtype.Timestamptz `json:"created_on"`
 }
 
 func (q *Queries) InsertServerScore(ctx context.Context, arg InsertServerScoreParams) error {
-	_, err := q.db.ExecContext(ctx, insertServerScore,
+	_, err := q.db.Exec(ctx, insertServerScore,
 		arg.MonitorID,
 		arg.ServerID,
 		arg.ScoreRaw,
@@ -802,128 +778,123 @@ func (q *Queries) InsertServerScore(ctx context.Context, arg InsertServerScorePa
 
 const updateMonitorSeen = `-- name: UpdateMonitorSeen :exec
 UPDATE monitors
-  SET last_seen = ?
-  WHERE id = ?
+  SET last_seen = $1
+  WHERE id = $2
 `
 
 type UpdateMonitorSeenParams struct {
-	LastSeen sql.NullTime `json:"last_seen"`
-	ID       uint32       `json:"id"`
+	LastSeen pgtype.Timestamptz `json:"last_seen"`
+	ID       int64              `json:"id"`
 }
 
 func (q *Queries) UpdateMonitorSeen(ctx context.Context, arg UpdateMonitorSeenParams) error {
-	_, err := q.db.ExecContext(ctx, updateMonitorSeen, arg.LastSeen, arg.ID)
+	_, err := q.db.Exec(ctx, updateMonitorSeen, arg.LastSeen, arg.ID)
 	return err
 }
 
 const updateMonitorSubmit = `-- name: UpdateMonitorSubmit :exec
 UPDATE monitors
-  SET last_submit = ?, last_seen = ?
-  WHERE id = ?
+  SET last_submit = $1, last_seen = $2
+  WHERE id = $3
 `
 
 type UpdateMonitorSubmitParams struct {
-	LastSubmit sql.NullTime `json:"last_submit"`
-	LastSeen   sql.NullTime `json:"last_seen"`
-	ID         uint32       `json:"id"`
+	LastSubmit pgtype.Timestamptz `json:"last_submit"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	ID         int64              `json:"id"`
 }
 
 func (q *Queries) UpdateMonitorSubmit(ctx context.Context, arg UpdateMonitorSubmitParams) error {
-	_, err := q.db.ExecContext(ctx, updateMonitorSubmit, arg.LastSubmit, arg.LastSeen, arg.ID)
+	_, err := q.db.Exec(ctx, updateMonitorSubmit, arg.LastSubmit, arg.LastSeen, arg.ID)
 	return err
 }
 
 const updateMonitorVersion = `-- name: UpdateMonitorVersion :exec
 UPDATE monitors
-  SET client_version = ?
-  WHERE id = ?
+  SET client_version = $1
+  WHERE id = $2
 `
 
 type UpdateMonitorVersionParams struct {
 	ClientVersion string `json:"client_version"`
-	ID            uint32 `json:"id"`
+	ID            int64  `json:"id"`
 }
 
 func (q *Queries) UpdateMonitorVersion(ctx context.Context, arg UpdateMonitorVersionParams) error {
-	_, err := q.db.ExecContext(ctx, updateMonitorVersion, arg.ClientVersion, arg.ID)
+	_, err := q.db.Exec(ctx, updateMonitorVersion, arg.ClientVersion, arg.ID)
 	return err
 }
 
 const updateScorerStatus = `-- name: UpdateScorerStatus :exec
-update scorer_status
-  set log_score_id = ?
-  where scorer_id = ?
+UPDATE scorer_status
+  SET log_score_id = $1
+  WHERE scorer_id = $2
 `
 
 type UpdateScorerStatusParams struct {
-	LogScoreID uint64 `json:"log_score_id"`
-	ScorerID   uint32 `json:"scorer_id"`
+	LogScoreID int64 `json:"log_score_id"`
+	ScorerID   int64 `json:"scorer_id"`
 }
 
 func (q *Queries) UpdateScorerStatus(ctx context.Context, arg UpdateScorerStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateScorerStatus, arg.LogScoreID, arg.ScorerID)
+	_, err := q.db.Exec(ctx, updateScorerStatus, arg.LogScoreID, arg.ScorerID)
 	return err
 }
 
 const updateServer = `-- name: UpdateServer :exec
 UPDATE servers
-  SET score_ts  = ?,
-      score_raw = ?
+  SET score_ts  = $2,
+      score_raw = $3
   WHERE
-    id = ?
-    AND (score_ts < ? OR score_ts is NULL)
+    id = $1
+    AND (score_ts < $2 OR score_ts is NULL)
 `
 
 type UpdateServerParams struct {
-	ScoreTs  sql.NullTime `json:"score_ts"`
-	ScoreRaw float64      `json:"score_raw"`
-	ID       uint32       `json:"id"`
+	ID       int64              `json:"id"`
+	ScoreTs  pgtype.Timestamptz `json:"score_ts"`
+	ScoreRaw float64            `json:"score_raw"`
 }
 
 func (q *Queries) UpdateServer(ctx context.Context, arg UpdateServerParams) error {
-	_, err := q.db.ExecContext(ctx, updateServer,
-		arg.ScoreTs,
-		arg.ScoreRaw,
-		arg.ID,
-		arg.ScoreTs,
-	)
+	_, err := q.db.Exec(ctx, updateServer, arg.ID, arg.ScoreTs, arg.ScoreRaw)
 	return err
 }
 
 const updateServerScore = `-- name: UpdateServerScore :exec
 UPDATE server_scores
-  SET score_ts  = ?,
-      score_raw = ?
-  WHERE id = ?
+  SET score_ts  = $1,
+      score_raw = $2
+  WHERE id = $3
 `
 
 type UpdateServerScoreParams struct {
-	ScoreTs  sql.NullTime `json:"score_ts"`
-	ScoreRaw float64      `json:"score_raw"`
-	ID       uint64       `json:"id"`
+	ScoreTs  pgtype.Timestamptz `json:"score_ts"`
+	ScoreRaw float64            `json:"score_raw"`
+	ID       int64              `json:"id"`
 }
 
 func (q *Queries) UpdateServerScore(ctx context.Context, arg UpdateServerScoreParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScore, arg.ScoreTs, arg.ScoreRaw, arg.ID)
+	_, err := q.db.Exec(ctx, updateServerScore, arg.ScoreTs, arg.ScoreRaw, arg.ID)
 	return err
 }
 
 const updateServerScoreConstraintViolation = `-- name: UpdateServerScoreConstraintViolation :exec
 UPDATE server_scores
-SET constraint_violation_type = ?,
-    constraint_violation_since = ?
-WHERE server_id = ? AND monitor_id = ?
+SET constraint_violation_type = $1,
+    constraint_violation_since = $2
+WHERE server_id = $3 AND monitor_id = $4
 `
 
 type UpdateServerScoreConstraintViolationParams struct {
-	ConstraintViolationType  sql.NullString `json:"constraint_violation_type"`
-	ConstraintViolationSince sql.NullTime   `json:"constraint_violation_since"`
-	ServerID                 uint32         `json:"server_id"`
-	MonitorID                uint32         `json:"monitor_id"`
+	ConstraintViolationType  pgtype.Text        `json:"constraint_violation_type"`
+	ConstraintViolationSince pgtype.Timestamptz `json:"constraint_violation_since"`
+	ServerID                 int64              `json:"server_id"`
+	MonitorID                int64              `json:"monitor_id"`
 }
 
 func (q *Queries) UpdateServerScoreConstraintViolation(ctx context.Context, arg UpdateServerScoreConstraintViolationParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScoreConstraintViolation,
+	_, err := q.db.Exec(ctx, updateServerScoreConstraintViolation,
 		arg.ConstraintViolationType,
 		arg.ConstraintViolationSince,
 		arg.ServerID,
@@ -935,152 +906,139 @@ func (q *Queries) UpdateServerScoreConstraintViolation(ctx context.Context, arg 
 const updateServerScoreLastConstraintCheck = `-- name: UpdateServerScoreLastConstraintCheck :exec
 UPDATE server_scores
 SET last_constraint_check = NOW()
-WHERE server_id = ? AND monitor_id = ?
+WHERE server_id = $1 AND monitor_id = $2
 `
 
 type UpdateServerScoreLastConstraintCheckParams struct {
-	ServerID  uint32 `json:"server_id"`
-	MonitorID uint32 `json:"monitor_id"`
+	ServerID  int64 `json:"server_id"`
+	MonitorID int64 `json:"monitor_id"`
 }
 
 func (q *Queries) UpdateServerScoreLastConstraintCheck(ctx context.Context, arg UpdateServerScoreLastConstraintCheckParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScoreLastConstraintCheck, arg.ServerID, arg.MonitorID)
+	_, err := q.db.Exec(ctx, updateServerScoreLastConstraintCheck, arg.ServerID, arg.MonitorID)
 	return err
 }
 
 const updateServerScorePauseReason = `-- name: UpdateServerScorePauseReason :exec
 UPDATE server_scores
-SET pause_reason = ?,
+SET pause_reason = $1,
     last_constraint_check = NOW()
-WHERE server_id = ? AND monitor_id = ?
+WHERE server_id = $2 AND monitor_id = $3
 `
 
 type UpdateServerScorePauseReasonParams struct {
-	PauseReason sql.NullString `json:"pause_reason"`
-	ServerID    uint32         `json:"server_id"`
-	MonitorID   uint32         `json:"monitor_id"`
+	PauseReason pgtype.Text `json:"pause_reason"`
+	ServerID    int64       `json:"server_id"`
+	MonitorID   int64       `json:"monitor_id"`
 }
 
 func (q *Queries) UpdateServerScorePauseReason(ctx context.Context, arg UpdateServerScorePauseReasonParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScorePauseReason, arg.PauseReason, arg.ServerID, arg.MonitorID)
+	_, err := q.db.Exec(ctx, updateServerScorePauseReason, arg.PauseReason, arg.ServerID, arg.MonitorID)
 	return err
 }
 
 const updateServerScoreQueue = `-- name: UpdateServerScoreQueue :exec
 UPDATE server_scores
-  SET queue_ts  = ?
+  SET queue_ts  = $2
   WHERE
-    monitor_id = ?
-    AND server_id IN (/*SLICE:server_ids*/?)
-    AND (queue_ts < ?
+    monitor_id = $1
+    AND server_id = ANY($3::bigint[])
+    AND (queue_ts < $2
          OR queue_ts is NULL)
 `
 
 type UpdateServerScoreQueueParams struct {
-	QueueTs   sql.NullTime `json:"queue_ts"`
-	MonitorID uint32       `json:"monitor_id"`
-	ServerIds []uint32     `json:"server_ids"`
+	MonitorID int64              `json:"monitor_id"`
+	QueueTs   pgtype.Timestamptz `json:"queue_ts"`
+	ServerIds []int64            `json:"server_ids"`
 }
 
 func (q *Queries) UpdateServerScoreQueue(ctx context.Context, arg UpdateServerScoreQueueParams) error {
-	query := updateServerScoreQueue
-	var queryParams []interface{}
-	queryParams = append(queryParams, arg.QueueTs)
-	queryParams = append(queryParams, arg.MonitorID)
-	if len(arg.ServerIds) > 0 {
-		for _, v := range arg.ServerIds {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:server_ids*/?", strings.Repeat(",?", len(arg.ServerIds))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:server_ids*/?", "NULL", 1)
-	}
-	queryParams = append(queryParams, arg.QueueTs)
-	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	_, err := q.db.Exec(ctx, updateServerScoreQueue, arg.MonitorID, arg.QueueTs, arg.ServerIds)
 	return err
 }
 
 const updateServerScoreStatus = `-- name: UpdateServerScoreStatus :exec
-update server_scores
-  set status = ?
-  where monitor_id = ? and server_id = ?
+UPDATE server_scores
+  SET status = $1
+  WHERE monitor_id = $2 AND server_id = $3
 `
 
 type UpdateServerScoreStatusParams struct {
 	Status    ServerScoresStatus `json:"status"`
-	MonitorID uint32             `json:"monitor_id"`
-	ServerID  uint32             `json:"server_id"`
+	MonitorID int64              `json:"monitor_id"`
+	ServerID  int64              `json:"server_id"`
 }
 
 func (q *Queries) UpdateServerScoreStatus(ctx context.Context, arg UpdateServerScoreStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScoreStatus, arg.Status, arg.MonitorID, arg.ServerID)
+	_, err := q.db.Exec(ctx, updateServerScoreStatus, arg.Status, arg.MonitorID, arg.ServerID)
 	return err
 }
 
 const updateServerScoreStratum = `-- name: UpdateServerScoreStratum :exec
 UPDATE server_scores
-  SET stratum = ?
-  WHERE id = ?
+  SET stratum = $1
+  WHERE id = $2
 `
 
 type UpdateServerScoreStratumParams struct {
-	Stratum sql.NullInt16 `json:"stratum"`
-	ID      uint64        `json:"id"`
+	Stratum pgtype.Int2 `json:"stratum"`
+	ID      int64       `json:"id"`
 }
 
 func (q *Queries) UpdateServerScoreStratum(ctx context.Context, arg UpdateServerScoreStratumParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerScoreStratum, arg.Stratum, arg.ID)
+	_, err := q.db.Exec(ctx, updateServerScoreStratum, arg.Stratum, arg.ID)
 	return err
 }
 
 const updateServerStratum = `-- name: UpdateServerStratum :exec
 UPDATE servers
-  SET stratum = ?
+  SET stratum = $1
   WHERE
-    id = ?
-    and (stratum != ?
+    id = $2
+    and (stratum != $1
          or stratum is null
     )
 `
 
 type UpdateServerStratumParams struct {
-	Stratum sql.NullInt16 `json:"stratum"`
-	ID      uint32        `json:"id"`
+	Stratum pgtype.Int2 `json:"stratum"`
+	ID      int64       `json:"id"`
 }
 
 func (q *Queries) UpdateServerStratum(ctx context.Context, arg UpdateServerStratumParams) error {
-	_, err := q.db.ExecContext(ctx, updateServerStratum, arg.Stratum, arg.ID, arg.Stratum)
+	_, err := q.db.Exec(ctx, updateServerStratum, arg.Stratum, arg.ID)
 	return err
 }
 
 const updateServersMonitorReview = `-- name: UpdateServersMonitorReview :exec
-update servers_monitor_review
-  set last_review=NOW(), next_review=?
-  where server_id=?
+UPDATE servers_monitor_review
+  SET last_review = NOW(), next_review = $1
+  WHERE server_id = $2
 `
 
 type UpdateServersMonitorReviewParams struct {
-	NextReview sql.NullTime `json:"next_review"`
-	ServerID   uint32       `json:"server_id"`
+	NextReview pgtype.Timestamptz `json:"next_review"`
+	ServerID   int64              `json:"server_id"`
 }
 
 func (q *Queries) UpdateServersMonitorReview(ctx context.Context, arg UpdateServersMonitorReviewParams) error {
-	_, err := q.db.ExecContext(ctx, updateServersMonitorReview, arg.NextReview, arg.ServerID)
+	_, err := q.db.Exec(ctx, updateServersMonitorReview, arg.NextReview, arg.ServerID)
 	return err
 }
 
 const updateServersMonitorReviewChanged = `-- name: UpdateServersMonitorReviewChanged :exec
-update servers_monitor_review
-  set last_review=NOW(), last_change=NOW(), next_review=?
-  where server_id=?
+UPDATE servers_monitor_review
+  SET last_review = NOW(), last_change = NOW(), next_review = $1
+  WHERE server_id = $2
 `
 
 type UpdateServersMonitorReviewChangedParams struct {
-	NextReview sql.NullTime `json:"next_review"`
-	ServerID   uint32       `json:"server_id"`
+	NextReview pgtype.Timestamptz `json:"next_review"`
+	ServerID   int64              `json:"server_id"`
 }
 
 func (q *Queries) UpdateServersMonitorReviewChanged(ctx context.Context, arg UpdateServersMonitorReviewChangedParams) error {
-	_, err := q.db.ExecContext(ctx, updateServersMonitorReviewChanged, arg.NextReview, arg.ServerID)
+	_, err := q.db.Exec(ctx, updateServersMonitorReviewChanged, arg.NextReview, arg.ServerID)
 	return err
 }

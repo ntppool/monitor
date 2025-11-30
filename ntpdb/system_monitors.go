@@ -2,8 +2,11 @@ package ntpdb
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // we store "fake" monitors in the monitors table for default
@@ -26,9 +29,9 @@ func (mipv MonitorsIpVersion) String() string {
 func GetSystemMonitor(ctx context.Context, q QuerierTx, name string, ipVersion NullMonitorsIpVersion) (*SystemMonitor, error) {
 	name = name + "-" + ipVersion.MonitorsIpVersion.String()
 
-	monitors, err := q.GetMonitorsTLSName(ctx, sql.NullString{String: name + ".system", Valid: true})
+	monitors, err := q.GetMonitorsTLSName(ctx, pgtype.Text{String: name + ".system", Valid: true})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, &notFoundError{}
 		}
 		return nil, err

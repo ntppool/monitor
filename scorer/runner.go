@@ -2,7 +2,6 @@ package scorer
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +10,12 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/every"
 	"go.ntppool.org/monitor/scorer/recentmedian"
@@ -44,7 +48,7 @@ type metrics struct {
 
 type runner struct {
 	ctx      context.Context
-	dbconn   *sql.DB
+	dbconn   *pgxpool.Pool
 	log      *slog.Logger
 	registry map[string]*ScorerMap
 	m        *metrics
@@ -55,7 +59,7 @@ type lastUpdate struct {
 	score float64
 }
 
-func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner, error) {
+func New(ctx context.Context, log *slog.Logger, dbconn *pgxpool.Pool, prom prometheus.Registerer) (*runner, error) {
 	reg := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
@@ -243,7 +247,7 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.Logger, lastID uint64, batchSize int32, retry bool) ([]ntpdb.LogScore, error) {
+func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.Logger, lastID int64, batchSize int32, retry bool) ([]ntpdb.LogScore, error) {
 	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
 
 	t1 := time.Now()
@@ -268,7 +272,7 @@ func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.
 		logfn("checking for minimum id")
 		minID, err := db.GetScorerNextLogScoreID(ctx, lastID)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, pgx.ErrNoRows) {
 				// we're at the end of the queue
 				return []ntpdb.LogScore{}, nil
 			}
@@ -300,17 +304,17 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		return 0, fmt.Errorf("connection validation failed: %w", err)
 	}
 
-	tx, err := r.dbconn.BeginTx(r.ctx, nil)
+	tx, err := r.dbconn.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = tx.Rollback(ctx)
 	}()
 
 	count := 0
 
-	db := ntpdb.New(r.dbconn).WithTx(tx)
+	db := ntpdb.New(tx)
 
 	logscores, err := r.getLogScores(ctx, db, log, sm.LastID, batchSize, false)
 	if err != nil {
@@ -341,10 +345,10 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		}
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
-			if ls.Ts.Before(time.Now().Add(-3 * time.Hour)) {
+			if ls.Ts.Time.Before(time.Now().Add(-3 * time.Hour)) {
 				log.WarnContext(ctx, "could not calculate score, skipping old entry",
 					"server_id", ls.ServerID, "log_score_id", ls.ID,
-					"ls_ts", ls.Ts.String(), "err", err,
+					"ls_ts", ls.Ts.Time.String(), "err", err,
 				)
 				continue
 			}
@@ -375,7 +379,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{
 			ID:       ss.ID,
 			ScoreRaw: ns.Score,
-			ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
+			ScoreTs:  pgtype.Timestamptz{Time: ns.Ts.Time, Valid: true},
 		})
 		if err != nil {
 			return 0, err
@@ -385,7 +389,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		if name == mainScorer {
 			err := db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
 				ID:       ns.ServerID,
-				ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
+				ScoreTs:  pgtype.Timestamptz{Time: ns.Ts.Time, Valid: true},
 				ScoreRaw: ns.Score,
 			})
 			if err != nil {
@@ -412,7 +416,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	}
 	r.m.sqlUpdates.WithLabelValues("update_scorer_status").Inc()
 
-	err = tx.Commit()
+	err = tx.Commit(ctx)
 	if err != nil {
 		span.RecordError(err)
 		// Check if this is a deadlock error
@@ -437,7 +441,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 // getServerScore returns the current server score for the serverID and monitorID.
 // If none currently exists, a new score with default values is inserted and returned.
-func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
+func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID int64) (ntpdb.ServerScore, error) {
 	ctx := r.ctx
 
 	p := ntpdb.GetServerScoreParams{
@@ -453,7 +457,7 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (
 	}
 
 	// only if there's an error
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return serverScore, err
 	}
 
@@ -462,7 +466,7 @@ func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (
 		ServerID:  p.ServerID,
 		MonitorID: p.MonitorID,
 		ScoreRaw:  -5,
-		CreatedOn: time.Now(),
+		CreatedOn: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 	if err != nil {
 		return serverScore, err
@@ -478,18 +482,21 @@ func (r *runner) validateConnection(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return r.dbconn.PingContext(ctx)
+	return r.dbconn.Ping(ctx)
 }
 
-// isDeadlockError checks if the error is a MySQL deadlock error (Error 1213)
+// isDeadlockError checks if the error is a PostgreSQL deadlock error (SQLSTATE 40P01)
 func isDeadlockError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// MySQL deadlock error message contains "Error 1213"
-	return errors.Is(err, sql.ErrTxDone) ||
-		(err.Error() != "" && (containsIgnoreCase(err.Error(), "deadlock") ||
-			containsIgnoreCase(err.Error(), "Error 1213")))
+	// PostgreSQL deadlock error has SQLSTATE 40P01
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "40P01" // deadlock_detected
+	}
+	return errors.Is(err, pgx.ErrTxClosed) ||
+		(err.Error() != "" && containsIgnoreCase(err.Error(), "deadlock"))
 }
 
 // containsIgnoreCase performs case-insensitive substring search

@@ -24,7 +24,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5), // RTT 10, 15, 20, 25, 30, 35, 40
@@ -41,7 +41,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          testingRTTs[i],
@@ -59,7 +59,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 20),
+				ID:           int64(i + 20),
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          candidateRTTs[i],
@@ -73,7 +73,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
 
@@ -155,7 +155,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
@@ -170,7 +170,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*5), // RTT 50, 55, 60, 65, 70
@@ -185,7 +185,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 20),
+				ID:           int64(i + 20),
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(80 + i*10), // RTT 80, 90, 100 - worse than all testing
@@ -197,7 +197,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
 
@@ -238,7 +238,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
@@ -253,7 +253,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*5),
@@ -268,7 +268,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 20),
+				ID:           int64(i + 20),
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(60 + i*5),
@@ -281,7 +281,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
 
@@ -321,7 +321,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
@@ -334,11 +334,11 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 
 	// 5 testing monitors
 	for i := 0; i < 5; i++ {
-		accountID := uint32(100) // Same account
+		accID := int64(100) // Same account
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
-				AccountID:    &accountID,
+				ID:           int64(i + 10),
+				AccountID:    &accID,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*10),
@@ -350,7 +350,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 	}
 
 	// 1 candidate from same account (should be blocked by account limits)
-	accountID := uint32(100)
+	accountID := int64(100)
 	evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 		monitor: monitorCandidate{
 			ID:           20,
@@ -367,7 +367,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 
 	server := &serverInfo{ID: 1982}
 	// Set up account limits that would prevent additional monitors from account 100
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		100: {
 			AccountID:    100,
 			MaxPerServer: 2, // Already has 5 testing monitors - should block promotion
@@ -501,7 +501,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 	var evaluatedMonitors []evaluatedMonitor
 
 	// Account 351 (monitors_per_server_limit: 2) - the problematic account
-	account351 := uint32(351)
+	account351 := int64(351)
 
 	// Monitor 145 - existing active monitor from account 351 (priority 10, active)
 	evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
@@ -556,7 +556,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 	// These should be replaceable by monitors 106 and 160
 
 	// Account 1 monitors (limit 3 per server from SQL data)
-	account1 := uint32(1)
+	account1 := int64(1)
 
 	// Monitor 108 - testing monitor from account 1 (priority 9, active in SQL but let's make it testing for the test)
 	evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
@@ -575,7 +575,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 	})
 
 	// Account 375 monitor (no specific limit in SQL)
-	account375 := uint32(375)
+	account375 := int64(375)
 
 	// Monitor 116 - testing monitor from account 375 (priority 16, testing)
 	evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
@@ -613,13 +613,13 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 	// This forces Rule 5 to use performance-based replacement instead of capacity-based promotion
 
 	// Account 394 monitors (limit 2 per server from SQL data)
-	account394 := uint32(394)
+	account394 := int64(394)
 
 	// Add 6 active monitors from account 394 to reach target of 7 active (total: 1 + 6 = 7)
 	for i := 0; i < 6; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(200 + i),
+				ID:           int64(200 + i),
 				AccountID:    &account394,
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
@@ -635,7 +635,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 
 	// Add 2 more testing monitors to fill testing pool to capacity (5 total)
 	// These will have worse performance than monitors 106 and 160, forcing replacement
-	account593 := uint32(593)
+	account593 := int64(593)
 
 	evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 		monitor: monitorCandidate{
@@ -670,7 +670,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 	server := &serverInfo{ID: 2200} // Server from SQL query
 
 	// Set up account limits exactly as shown in SQL data
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		351: { // Account 351 - the problematic account
 			AccountID:    351,
 			MaxPerServer: 2, // monitors_per_server_limit from SQL

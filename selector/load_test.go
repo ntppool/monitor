@@ -4,16 +4,7 @@
 package selector
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"runtime"
-	"sync"
 	"testing"
-	"time"
-
-	"go.ntppool.org/common/logger"
-	"go.ntppool.org/monitor/ntpdb"
 )
 
 func TestSelector_LoadTest(t *testing.T) {

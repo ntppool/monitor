@@ -25,7 +25,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				Priority:     activePriorities[i],
@@ -41,7 +41,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				Priority:     testingPriorities[i],
@@ -54,7 +54,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	selCtx := selectionContext{
 		evaluatedMonitors: evaluatedMonitors,

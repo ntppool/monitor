@@ -148,7 +148,7 @@ func getMonitorLabels(monitor *monitorCandidate) (string, string) {
 func (m *Metrics) TrackStatusChange(
 	monitor *monitorCandidate,
 	fromStatus, toStatus ntpdb.ServerScoresStatus,
-	serverID uint32,
+	serverID int64,
 	reason string,
 ) {
 	idToken, tlsName := getMonitorLabels(monitor)
@@ -166,7 +166,7 @@ func (m *Metrics) TrackStatusChange(
 func (m *Metrics) TrackConstraintViolation(
 	monitor *monitorCandidate,
 	constraintType constraintViolationType,
-	serverID uint32,
+	serverID int64,
 	isGrandfathered bool,
 ) {
 	idToken, tlsName := getMonitorLabels(monitor)
@@ -180,7 +180,7 @@ func (m *Metrics) TrackConstraintViolation(
 
 // TrackMonitorPoolSizes updates monitor pool size metrics
 func (m *Metrics) TrackMonitorPoolSizes(
-	serverID uint32,
+	serverID int64,
 	activeCount, testingCount, candidateCount int,
 ) {
 	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
@@ -192,7 +192,7 @@ func (m *Metrics) TrackMonitorPoolSizes(
 
 // TrackConstraintBlockedCount updates constraint blocked monitor counts
 func (m *Metrics) TrackConstraintBlockedCount(
-	serverID uint32,
+	serverID int64,
 	constraintCounts map[constraintViolationType]int,
 ) {
 	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
@@ -207,7 +207,7 @@ func (m *Metrics) TrackConstraintBlockedCount(
 
 // RecordProcessingMetrics records various processing metrics for a server
 func (m *Metrics) RecordProcessingMetrics(
-	serverID uint32,
+	serverID int64,
 	duration float64,
 	evaluatedCount, appliedChanges, failedChanges, globallyActiveCount int,
 ) {

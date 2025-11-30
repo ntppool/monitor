@@ -2,22 +2,23 @@ package every
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
 )
 
 type EveryScore struct {
-	scorerID uint32
+	scorerID int64
 }
 
 func New() *EveryScore {
 	return &EveryScore{}
 }
 
-func (s *EveryScore) Setup(id uint32) {
+func (s *EveryScore) Setup(id int64) {
 	s.scorerID = id
 }
 
@@ -40,7 +41,7 @@ func (s *EveryScore) Score(ctx context.Context, db *ntpdb.Queries, serverScore n
 	return score.Score{
 		LogScore: ntpdb.LogScore{
 			ServerID:   ls.ServerID,
-			MonitorID:  sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
+			MonitorID:  pgtype.Int8{Valid: true, Int64: s.scorerID},
 			Ts:         ls.Ts,
 			Step:       ls.Step,
 			Offset:     ls.Offset,

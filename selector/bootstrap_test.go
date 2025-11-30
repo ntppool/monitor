@@ -19,7 +19,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 		name                 string
 		testingMonitors      []evaluatedMonitor
 		candidateMonitors    []evaluatedMonitor
-		workingAccountLimits map[uint32]*accountLimit
+		workingAccountLimits map[int64]*accountLimit
 		workingActiveCount   int
 		workingTestingCount  int
 		emergencyOverride    bool
@@ -36,7 +36,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createHealthyCandidate(2, 101),
 				createHealthyCandidate(3, 102),
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				102: {AccountID: 102, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
@@ -60,7 +60,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createHealthyCandidate(5, 104),
 				createHealthyCandidate(6, 105), // 6th candidate should not be promoted
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				102: {AccountID: 102, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
@@ -84,7 +84,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createHealthyCandidate(2, 100), // Same account - should be limited
 				createHealthyCandidate(3, 101),
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 0, ActiveCount: 0, TestingCount: 0}, // Limited to 0 active, 1 testing
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 			},
@@ -105,7 +105,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createUnhealthyCandidate(3, 102), // Unhealthy (testing)
 				createHealthyCandidate(4, 103),   // Healthy (testing)
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				102: {AccountID: 102, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
@@ -127,14 +127,14 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				{
 					monitor: monitorCandidate{
 						ID:           2,
-						AccountID:    Ptr(uint32(101)),
+						AccountID:    Ptr(int64(101)),
 						GlobalStatus: ntpdb.MonitorsStatusPaused, // Should be filtered out
 						IsHealthy:    true,
 					},
 				},
 				createHealthyCandidate(3, 102),
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				102: {AccountID: 102, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
@@ -153,7 +153,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				{
 					monitor: monitorCandidate{
 						ID:           1,
-						AccountID:    Ptr(uint32(100)),
+						AccountID:    Ptr(int64(100)),
 						GlobalStatus: ntpdb.MonitorsStatusTesting,
 						IsHealthy:    true,
 					},
@@ -163,7 +163,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createHealthyCandidate(2, 101),
 				createHealthyCandidate(3, 102),
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 3, ActiveCount: 0, TestingCount: 1},
 				101: {AccountID: 101, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
 				102: {AccountID: 102, MaxPerServer: 3, ActiveCount: 0, TestingCount: 0},
@@ -180,7 +180,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 			name:                 "no_candidates_available",
 			testingMonitors:      []evaluatedMonitor{},
 			candidateMonitors:    []evaluatedMonitor{}, // No candidates
-			workingAccountLimits: map[uint32]*accountLimit{},
+			workingAccountLimits: map[int64]*accountLimit{},
 			workingActiveCount:   0,
 			workingTestingCount:  0,
 			emergencyOverride:    false,
@@ -196,7 +196,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				createHealthyCandidate(1, 100),
 				createHealthyCandidate(2, 101),
 			},
-			workingAccountLimits: map[uint32]*accountLimit{
+			workingAccountLimits: map[int64]*accountLimit{
 				100: {AccountID: 100, MaxPerServer: 0, ActiveCount: 0, TestingCount: 0}, // No limit normally
 				101: {AccountID: 101, MaxPerServer: 0, ActiveCount: 0, TestingCount: 0}, // No limit normally
 			},
@@ -216,7 +216,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 			selCtx := selectionContext{
 				server: &serverInfo{
 					ID:        1,
-					AccountID: Ptr(uint32(999)), // Different from monitor accounts
+					AccountID: Ptr(int64(999)), // Different from monitor accounts
 					IP:        "192.168.1.100",
 					IPVersion: "4",
 				},
@@ -278,7 +278,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 			// Verify healthy candidates are promoted first if both exist
 			if hasHealthyAndUnhealthy(tt.candidateMonitors) && actualPromotions > 0 {
 				// Get the monitor IDs from the first few changes
-				firstChangeMonitorIDs := make([]uint32, min(2, len(result.changes)))
+				firstChangeMonitorIDs := make([]int64, min(2, len(result.changes)))
 				for i := 0; i < len(firstChangeMonitorIDs); i++ {
 					firstChangeMonitorIDs[i] = result.changes[i].monitorID
 				}
@@ -286,7 +286,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 				// Check that healthy monitors (2, 4) come before unhealthy (1, 3)
 				// This is a basic check - in a real implementation we'd check actual health status
 				for _, id := range firstChangeMonitorIDs {
-					healthyIDs := []uint32{2, 4} // From test data
+					healthyIDs := []int64{2, 4} // From test data
 					isHealthy := false
 					for _, hid := range healthyIDs {
 						if id == hid {
@@ -314,20 +314,20 @@ func TestApplyRule6BootstrapPromotion_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name        string
 		description string
-		setup       func() ([]evaluatedMonitor, []evaluatedMonitor, map[uint32]*accountLimit)
+		setup       func() ([]evaluatedMonitor, []evaluatedMonitor, map[int64]*accountLimit)
 		expectLog   string
 	}{
 		{
 			name:        "constraint_violations_prevent_all_promotions",
 			description: "When all candidates have constraint violations, none should be promoted",
-			setup: func() ([]evaluatedMonitor, []evaluatedMonitor, map[uint32]*accountLimit) {
+			setup: func() ([]evaluatedMonitor, []evaluatedMonitor, map[int64]*accountLimit) {
 				testingMonitors := []evaluatedMonitor{}
 				candidateMonitors := []evaluatedMonitor{
 					createHealthyCandidate(1, 100),
 					createHealthyCandidate(2, 101),
 				}
 				// Set account limits to 0 with existing testing monitors to block promotions
-				accountLimits := map[uint32]*accountLimit{
+				accountLimits := map[int64]*accountLimit{
 					100: {AccountID: 100, MaxPerServer: 0, ActiveCount: 0, TestingCount: 1}, // Already at testing limit (1)
 					101: {AccountID: 101, MaxPerServer: 0, ActiveCount: 0, TestingCount: 1}, // Already at testing limit (1)
 				}
@@ -344,7 +344,7 @@ func TestApplyRule6BootstrapPromotion_EdgeCases(t *testing.T) {
 			selCtx := selectionContext{
 				server: &serverInfo{
 					ID:        1,
-					AccountID: Ptr(uint32(999)),
+					AccountID: Ptr(int64(999)),
 					IP:        "192.168.1.100",
 					IPVersion: "4",
 				},
@@ -375,7 +375,7 @@ func TestApplyRule6BootstrapPromotion_EdgeCases(t *testing.T) {
 
 // Helper functions for creating test data
 
-func createHealthyCandidate(id uint32, accountID uint32) evaluatedMonitor {
+func createHealthyCandidate(id int64, accountID int64) evaluatedMonitor {
 	return evaluatedMonitor{
 		monitor: monitorCandidate{
 			ID:           id,
@@ -389,7 +389,7 @@ func createHealthyCandidate(id uint32, accountID uint32) evaluatedMonitor {
 	}
 }
 
-func createUnhealthyCandidate(id uint32, accountID uint32) evaluatedMonitor {
+func createUnhealthyCandidate(id int64, accountID int64) evaluatedMonitor {
 	status := ntpdb.MonitorsStatusActive
 	if id%2 == 1 { // Odd IDs get testing status
 		status = ntpdb.MonitorsStatusTesting

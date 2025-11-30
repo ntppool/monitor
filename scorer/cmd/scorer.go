@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/database"
@@ -18,14 +18,14 @@ import (
 )
 
 func (cmd *scorerOnceCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, false, cmd.MetricsPort)
+	return scorerRun(ctx, cmd.ConfigFile, false, cmd.MetricsPort)
 }
 
 func (cmd *scorerServerCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, true, cmd.MetricsPort)
+	return scorerRun(ctx, cmd.ConfigFile, true, cmd.MetricsPort)
 }
 
-func scorerRun(ctx context.Context, continuous bool, metricsPort int) error {
+func scorerRun(ctx context.Context, configFile string, continuous bool, metricsPort int) error {
 	log := logger.FromContext(ctx)
 	log.InfoContext(ctx, "starting monitor-scorer", "version", version.Version(), "continuous", continuous)
 
@@ -38,7 +38,7 @@ func scorerRun(ctx context.Context, continuous bool, metricsPort int) error {
 		}
 	}()
 
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, configFile)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func isConnectionError(err error) bool {
 func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, cmd.ConfigFile)
 	if err != nil {
 		return err
 	}
@@ -178,19 +178,15 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
 			}
 			log.Info("setting up scorer, scorerSetup", "name", name)
 
-			insert, err := db.InsertScorer(ctx, ntpdb.InsertScorerParams{
+			scorerID, err := db.InsertScorer(ctx, ntpdb.InsertScorerParams{
 				Hostname: name,
-				TlsName:  sql.NullString{String: name + ".scores.ntp.dev", Valid: true},
+				TlsName:  pgtype.Text{String: name + ".scores.ntp.dev", Valid: true},
 			})
 			if err != nil {
 				return err
 			}
-			scorerID, err := insert.LastInsertId()
-			if err != nil {
-				return err
-			}
 			if err := db.InsertScorerStatus(ctx, ntpdb.InsertScorerStatusParams{
-				ScorerID:   uint32(scorerID),
+				ScorerID:   scorerID,
 				LogScoreID: minLogScoreID,
 			}); err != nil {
 				log.WarnContext(ctx, "Failed to insert scorer status", "err", err)

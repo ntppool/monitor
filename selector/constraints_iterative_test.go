@@ -1,10 +1,10 @@
 package selector
 
 import (
-	"database/sql"
 	"encoding/json"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -21,10 +21,10 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 	}
 
 	// Helper to create monitor row
-	createMonitor := func(id uint32, accountID uint32, status ntpdb.ServerScoresStatus, priority int32, limit int) ntpdb.GetMonitorPriorityRow {
+	createMonitor := func(id int64, accountID int64, status ntpdb.ServerScoresStatus, priority int32, limit int) ntpdb.GetMonitorPriorityRow {
 		return ntpdb.GetMonitorPriorityRow{
 			ID:              id,
-			AccountID:       sql.NullInt32{Int32: int32(accountID), Valid: true},
+			AccountID:       pgtype.Int8{Int64: accountID, Valid: true},
 			Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: status, Valid: true},
 			MonitorPriority: priority,
 			AccountFlags:    createAccountFlags(limit),
@@ -34,8 +34,8 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 	tests := []struct {
 		name                string
 		monitors            []ntpdb.GetMonitorPriorityRow
-		expectedViolations  map[uint32]bool // monitor ID -> should have violation
-		expectedViolationID []uint32        // monitors that should have violations
+		expectedViolations  map[int64]bool // monitor ID -> should have violation
+		expectedViolationID []int64        // monitors that should have violations
 	}{
 		{
 			name: "no_violations_under_limit",
@@ -44,7 +44,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2),  // account 100, active, priority 20
 				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30, 2), // account 100, testing, priority 30
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: false,
 			},
 		},
@@ -55,7 +55,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(2, 100, ntpdb.ServerScoresStatusActive, 20, 2), // account 100, active, priority 20 (middle)
 				createMonitor(3, 100, ntpdb.ServerScoresStatusActive, 30, 2), // account 100, active, priority 30 (worst) - should be flagged
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: true,
 			},
 		},
@@ -67,7 +67,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(3, 100, ntpdb.ServerScoresStatusTesting, 30, 2), // account 100, testing, priority 30 (middle)
 				createMonitor(4, 100, ntpdb.ServerScoresStatusTesting, 40, 2), // account 100, testing, priority 40 (worst) - should be flagged
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: false, 4: true,
 			},
 		},
@@ -82,7 +82,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(5, 100, ntpdb.ServerScoresStatusTesting, 25, 2), // testing, middle - keep
 				createMonitor(6, 100, ntpdb.ServerScoresStatusTesting, 35, 2), // testing, worst - keep (under testing limit of 3)
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: true, // only worst active flagged
 				4: false, 5: false, 6: false, // all testing monitors OK
 			},
@@ -96,7 +96,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(4, 100, ntpdb.ServerScoresStatusCandidate, 40, 2), // candidate - exempt
 				createMonitor(5, 100, ntpdb.ServerScoresStatusCandidate, 50, 2), // candidate - exempt
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: true, // worst active flagged
 				4: false, 5: false, // candidates exempt
 			},
@@ -112,7 +112,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 				createMonitor(4, 200, ntpdb.ServerScoresStatusActive, 15, 2), // account 200, keep
 				createMonitor(5, 200, ntpdb.ServerScoresStatusActive, 25, 2), // account 200, keep
 			},
-			expectedViolations: map[uint32]bool{
+			expectedViolations: map[int64]bool{
 				1: false, 2: false, 3: true, // only account 100's worst flagged
 				4: false, 5: false, // account 200 is under limit
 			},
@@ -170,7 +170,7 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 		monitors := []ntpdb.GetMonitorPriorityRow{
 			{
 				ID:              1,
-				AccountID:       sql.NullInt32{Valid: false}, // no account
+				AccountID:       pgtype.Int8{Valid: false}, // no account
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
@@ -186,7 +186,7 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 		monitors := []ntpdb.GetMonitorPriorityRow{
 			{
 				ID:              1,
-				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
+				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{Valid: false}, // no status
 				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
@@ -202,21 +202,21 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 		monitors := []ntpdb.GetMonitorPriorityRow{
 			{
 				ID:              1,
-				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
+				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				MonitorPriority: 10,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              2,
-				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
+				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				MonitorPriority: 20,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              3,
-				AccountID:       sql.NullInt32{Int32: 100, Valid: true},
+				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
 				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
 				MonitorPriority: 30,
 				AccountFlags:    nil, // no flags

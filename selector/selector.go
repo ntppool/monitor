@@ -2,13 +2,14 @@ package selector
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go.ntppool.org/common/database"
 	"go.ntppool.org/common/logger"
@@ -29,12 +30,12 @@ type (
 		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	OnceCmd struct {
-		ServerID    *uint32 `arg:"" optional:"" help:"Server ID to process (if not specified, processes all servers)"`
-		MetricsPort int     `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		ServerID    *int64 `arg:"" optional:"" help:"Server ID to process (if not specified, processes all servers)"`
+		MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	SimulateCmd struct {
-		ServerID uint32 `arg:"" help:"Server ID to simulate selection for"`
-		Verbose  bool   `flag:"verbose" short:"v" help:"Enable verbose debug logging"`
+		ServerID int64 `arg:"" help:"Server ID to simulate selection for"`
+		Verbose  bool  `flag:"verbose" short:"v" help:"Enable verbose debug logging"`
 	}
 )
 
@@ -64,7 +65,7 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 		"verbose", cmd.Verbose)
 
 	// Open database connection
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, "database.yaml")
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -79,21 +80,19 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 	// Run simulation within read-only transaction
 	db := ntpdb.New(dbconn)
 
-	// Create a transaction and explicitly roll it back for simulation
-	tx, err := dbconn.BeginTx(ctx, nil)
+	var changed bool
+	err = database.WithReadOnlyTransaction(ctx, db, func(ctx context.Context, txDB ntpdb.QuerierTx) error {
+		log.InfoContext(ctx, "simulating server processing", "serverID", cmd.ServerID)
+
+		var err error
+		changed, err = sl.ProcessServerSimulation(ctx, txDB, cmd.ServerID)
+		if err != nil {
+			return fmt.Errorf("simulation failed: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() // Always rollback for simulation
-
-	txDB := db.WithTx(tx)
-
-	log.InfoContext(ctx, "simulating server processing", "serverID", cmd.ServerID)
-
-	// Call the existing processServer method
-	changed, err := sl.ProcessServerSimulation(ctx, txDB, cmd.ServerID)
-	if err != nil {
-		return fmt.Errorf("simulation failed: %w", err)
+		return err
 	}
 
 	log.InfoContext(ctx, "simulation completed",
@@ -110,15 +109,16 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 }
 
 // Run executes the selector logic either continuously or once
-func Run(ctx context.Context, continuous bool, metricsPort int, serverID *uint32) error {
+func Run(ctx context.Context, continuous bool, metricsPort int, serverID *int64) error {
 	log := logger.FromContext(ctx)
 
 	log.InfoContext(ctx, "selector starting", "version", version.Version())
 
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, "database.yaml")
 	if err != nil {
 		return err
 	}
+	defer dbconn.Close()
 
 	// Create and start metrics server
 	metricssrv := metricsserver.New()
@@ -158,7 +158,7 @@ func Run(ctx context.Context, continuous bool, metricsPort int, serverID *uint32
 			if changed {
 				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
 					ServerID:   *serverID,
-					NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
+					NextReview: pgtype.Timestamptz{Time: time.Now().Add(60 * time.Minute), Valid: true},
 				})
 				if err != nil {
 					return err
@@ -166,7 +166,7 @@ func Run(ctx context.Context, continuous bool, metricsPort int, serverID *uint32
 			} else {
 				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
 					ServerID:   *serverID,
-					NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
+					NextReview: pgtype.Timestamptz{Time: time.Now().Add(20 * time.Minute), Valid: true},
 				})
 				if err != nil {
 					return err
@@ -215,13 +215,13 @@ func Run(ctx context.Context, continuous bool, metricsPort int, serverID *uint32
 // Selector manages the monitor selection process
 type Selector struct {
 	ctx     context.Context
-	dbconn  *sql.DB
+	dbconn  *pgxpool.Pool
 	log     *slog.Logger
 	metrics *Metrics
 }
 
 // NewSelector creates a new selector instance
-func NewSelector(ctx context.Context, dbconn *sql.DB, log *slog.Logger, metrics *Metrics) (*Selector, error) {
+func NewSelector(ctx context.Context, dbconn *pgxpool.Pool, log *slog.Logger, metrics *Metrics) (*Selector, error) {
 	return &Selector{ctx: ctx, dbconn: dbconn, log: log, metrics: metrics}, nil
 }
 
@@ -250,7 +250,7 @@ func (sl *Selector) Run() (int, error) {
 			if changed {
 				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
 					ServerID:   serverID,
-					NextReview: sql.NullTime{Time: time.Now().Add(60 * time.Minute), Valid: true},
+					NextReview: pgtype.Timestamptz{Time: time.Now().Add(60 * time.Minute), Valid: true},
 				})
 				if err != nil {
 					return err
@@ -258,7 +258,7 @@ func (sl *Selector) Run() (int, error) {
 			} else {
 				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
 					ServerID:   serverID,
-					NextReview: sql.NullTime{Time: time.Now().Add(20 * time.Minute), Valid: true},
+					NextReview: pgtype.Timestamptz{Time: time.Now().Add(20 * time.Minute), Valid: true},
 				})
 				if err != nil {
 					return err
@@ -276,11 +276,11 @@ func (sl *Selector) Run() (int, error) {
 }
 
 // ProcessServerSimulation runs the selection algorithm for a single server in simulation mode
-func (sl *Selector) ProcessServerSimulation(ctx context.Context, db ntpdb.QuerierTx, serverID uint32) (bool, error) {
+func (sl *Selector) ProcessServerSimulation(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (bool, error) {
 	return sl.processServer(ctx, db, serverID)
 }
 
-func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID uint32) (bool, error) {
+func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (bool, error) {
 	start := time.Now()
 	sl.log.Debug("processing server", "serverID", serverID)
 
@@ -344,7 +344,7 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 
 	// Step 7: Execute changes
 	// Create a map from monitor ID to monitor candidate for metrics tracking
-	monitorMap := make(map[uint32]*monitorCandidate)
+	monitorMap := make(map[int64]*monitorCandidate)
 	for _, em := range evaluatedMonitors {
 		monitorMap[em.monitor.ID] = &em.monitor
 	}

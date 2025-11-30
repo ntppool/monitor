@@ -33,7 +33,7 @@ type accountFlags struct {
 
 // accountLimit tracks monitor limits and current usage for an account
 type accountLimit struct {
-	AccountID    uint32
+	AccountID    int64
 	MaxPerServer int
 	ActiveCount  int // Current active monitors for this account on this server
 	TestingCount int // Current testing monitors for this account on this server
@@ -101,7 +101,7 @@ func (sl *Selector) checkNetworkConstraint(
 // checkNetworkDiversityConstraint verifies that we don't have multiple monitors
 // in the same /44 (IPv6) or /20 (IPv4) network for active and testing states
 func (sl *Selector) checkNetworkDiversityConstraint(
-	monitorID uint32,
+	monitorID int64,
 	monitorIP string,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 	targetState ntpdb.ServerScoresStatus,
@@ -180,7 +180,7 @@ func (sl *Selector) checkNetworkDiversityConstraint(
 func (sl *Selector) checkAccountConstraints(
 	monitor *monitorCandidate,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	targetState ntpdb.ServerScoresStatus, // What state are we trying to move to?
 ) error {
 	// Check same account constraint
@@ -265,7 +265,7 @@ func (sl *Selector) checkAccountConstraints(
 func (sl *Selector) checkConstraints(
 	monitor *monitorCandidate,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	targetState ntpdb.ServerScoresStatus,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 ) *constraintViolation {
@@ -353,8 +353,8 @@ func (sl *Selector) checkConstraints(
 }
 
 // buildAccountLimitsFromMonitors builds account limits from the monitor priority results
-func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPriorityRow) map[uint32]*accountLimit {
-	limits := make(map[uint32]*accountLimit)
+func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPriorityRow) map[int64]*accountLimit {
+	limits := make(map[int64]*accountLimit)
 
 	for _, monitor := range monitors {
 		// Skip monitors without accounts
@@ -362,7 +362,7 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 			continue
 		}
 
-		accountID := uint32(monitor.AccountID.Int32)
+		accountID := monitor.AccountID.Int64
 
 		// Initialize account limit if not seen before
 		if _, exists := limits[accountID]; !exists {
@@ -408,8 +408,8 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 func (sl *Selector) checkAccountConstraintsIterative(
 	monitors []ntpdb.GetMonitorPriorityRow,
 	server *serverInfo,
-) map[uint32]*constraintViolation {
-	violations := make(map[uint32]*constraintViolation)
+) map[int64]*constraintViolation {
+	violations := make(map[int64]*constraintViolation)
 
 	// Group monitors by account and category
 	type monitorInfo struct {
@@ -417,7 +417,7 @@ func (sl *Selector) checkAccountConstraintsIterative(
 		priority int32
 	}
 
-	accountGroups := make(map[uint32]map[ntpdb.ServerScoresStatus][]monitorInfo)
+	accountGroups := make(map[int64]map[ntpdb.ServerScoresStatus][]monitorInfo)
 
 	for _, monitor := range monitors {
 		// Skip monitors without accounts or status
@@ -425,7 +425,7 @@ func (sl *Selector) checkAccountConstraintsIterative(
 			continue
 		}
 
-		accountID := uint32(monitor.AccountID.Int32)
+		accountID := monitor.AccountID.Int64
 		status := monitor.Status.ServerScoresStatus
 
 		// Only check active and testing monitors (candidates are exempt)
@@ -454,7 +454,7 @@ func (sl *Selector) checkAccountConstraintsIterative(
 		for _, statusList := range statusGroups {
 			if len(statusList) > 0 {
 				monitor := statusList[0].row
-				if monitor.AccountID.Valid && uint32(monitor.AccountID.Int32) == accountID && monitor.AccountFlags != nil {
+				if monitor.AccountID.Valid && monitor.AccountID.Int64 == accountID && monitor.AccountFlags != nil {
 					var flags accountFlags
 					if err := json.Unmarshal(*monitor.AccountFlags, &flags); err == nil && flags.MonitorsPerServerLimit > 0 {
 						accountLimit = flags.MonitorsPerServerLimit
@@ -604,7 +604,7 @@ func (sl *Selector) checkNonAccountConstraints(
 func (sl *Selector) canPromoteToActive(
 	monitor *monitorCandidate,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 	emergencyOverride bool,
 ) bool {
@@ -632,7 +632,7 @@ func (sl *Selector) canPromoteToActive(
 func (sl *Selector) canPromoteToTesting(
 	monitor *monitorCandidate,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 	emergencyOverride bool,
 ) bool {
@@ -654,7 +654,7 @@ func (sl *Selector) canPromoteToTesting(
 
 // updateAccountLimitsForPromotion updates account limits after a monitor promotion
 func (sl *Selector) updateAccountLimitsForPromotion(
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	monitor *monitorCandidate,
 	fromState, toState ntpdb.ServerScoresStatus,
 ) {
@@ -715,7 +715,7 @@ func (sl *Selector) shouldCheckConstraintResolution(monitor monitorCandidate, pa
 func (sl *Selector) checkConstraintResolution(
 	monitor monitorCandidate,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	existingMonitors []ntpdb.GetMonitorPriorityRow,
 ) bool {
 	// Only check if monitor is currently paused due to unchangeable constraint

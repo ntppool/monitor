@@ -137,7 +137,7 @@ func TestRule2SafetyThreshold(t *testing.T) {
 				}
 				activeMonitors[i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(i + 1),
+						ID:           int64(i + 1),
 						ServerStatus: ntpdb.ServerScoresStatusActive,
 					},
 					recommendedState: state,
@@ -153,7 +153,7 @@ func TestRule2SafetyThreshold(t *testing.T) {
 				}
 				testingMonitors[i] = evaluatedMonitor{
 					monitor: monitorCandidate{
-						ID:           uint32(i + 100),
+						ID:           int64(i + 100),
 						ServerStatus: ntpdb.ServerScoresStatusTesting,
 					},
 					recommendedState: state,
@@ -219,7 +219,7 @@ func TestRule2SafetyWithEmergency(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				IsHealthy:    false,
 			},
@@ -231,7 +231,7 @@ func TestRule2SafetyWithEmergency(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 100),
+				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    false,
 			},
@@ -287,7 +287,7 @@ func TestRule2MixedConstraintAndPerformance(t *testing.T) {
 		}
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				IsHealthy:    i >= 4, // Last 3 are healthy
 			},
@@ -300,7 +300,7 @@ func TestRule2MixedConstraintAndPerformance(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 100),
+				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
 			},
@@ -373,7 +373,7 @@ func TestRule2ConstraintViolationsAlwaysRemoved(t *testing.T) {
 		}
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 			},
 			recommendedState: state,
@@ -391,7 +391,7 @@ func TestRule2ConstraintViolationsAlwaysRemoved(t *testing.T) {
 		}
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 100),
+				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 			},
 			recommendedState: state,
@@ -464,7 +464,7 @@ func TestRule2NormalOperationNotAffected(t *testing.T) {
 		}
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 			},
 			recommendedState: state,
@@ -479,7 +479,7 @@ func TestRule2NormalOperationNotAffected(t *testing.T) {
 		}
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 100),
+				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 			},
 			recommendedState: state,

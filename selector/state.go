@@ -21,9 +21,9 @@ const (
 // The second return parameter is the ID of the better monitor candidate,
 // the first return parameter the ID to be replaced. The last parameter
 // is false if no relevant replacement was found.
-func (nsl newStatusList) IsOutOfOrder() (uint32, uint32, bool) {
-	best := uint32(0)
-	replace := uint32(0)
+func (nsl newStatusList) IsOutOfOrder() (int64, int64, bool) {
+	best := int64(0)
+	replace := int64(0)
 
 	for _, ns := range nsl {
 		if ns.NewState != candidateIn {

@@ -1,13 +1,14 @@
 version: "2"
 sql:
-  - schema: "schema.sql"
+  - schema: "../api/db/migrations/"
     queries: "query.sql"
-    engine: "mysql"
+    engine: "postgresql"
     strict_order_by: false
     gen:
       go:
         package: "ntpdb"
         out: "ntpdb"
+        sql_package: "pgx/v5"
         emit_json_tags: true
         omit_unused_structs: true
         emit_interface: true
@@ -15,13 +16,8 @@ sql:
         overrides:
           - db_type: "bigint"
             go_type: "github.com/lomsa-dev/gonull.Nullable[uint64]"
-            unsigned: true
             nullable: true
           - column: "accounts.flags"
             go_type: "*encoding/json.RawMessage"
           # - column: "x.avg_rtt"
           #   go_type: "database/sql.NullFloat64"
-    database:
-      managed: true
-cloud:
-    project: '01HJWJRG05B9ZFV0DX4BCJ1FEJ'

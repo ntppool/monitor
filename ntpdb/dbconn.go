@@ -4,18 +4,12 @@ package ntpdb
 
 import (
 	"context"
-	"database/sql"
 
-	"go.ntppool.org/common/database"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"go.ntppool.org/common/database/pgdb"
 )
 
-// Config and DBConfig types are now provided by the common database package
-
-func OpenDB() (*sql.DB, error) {
-	options := database.MonitorConfigOptions()
-	return database.OpenDB(context.Background(), options)
+// OpenDB opens a PostgreSQL connection pool using the specified config file
+func OpenDB(ctx context.Context, configFile string) (*pgxpool.Pool, error) {
+	return pgdb.OpenPoolWithConfigFile(ctx, configFile)
 }
-
-// openDB function is now provided by the common database package
-
-// createConnector function is now provided by the common database package

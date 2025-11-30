@@ -8,7 +8,7 @@ import (
 
 // newStatus represents a monitor's current and proposed state for a server
 type newStatus struct {
-	MonitorID     uint32
+	MonitorID     int64
 	MonitorStatus ntpdb.MonitorsStatus
 	CurrentStatus ntpdb.ServerScoresStatus
 	NewState      candidateState
@@ -38,10 +38,10 @@ type constraintViolation struct {
 
 // monitorCandidate represents a monitor being evaluated for a server
 type monitorCandidate struct {
-	ID                       uint32
+	ID                       int64
 	IDToken                  string // Unique identifier for metrics
 	TLSName                  string // Human-readable name for metrics
-	AccountID                *uint32
+	AccountID                *int64
 	IP                       string
 	GlobalStatus             ntpdb.MonitorsStatus
 	ServerStatus             ntpdb.ServerScoresStatus
@@ -58,8 +58,8 @@ type monitorCandidate struct {
 
 // serverInfo contains server details needed for constraint checking
 type serverInfo struct {
-	ID        uint32
-	AccountID *uint32
+	ID        int64
+	AccountID *int64
 	IP        string
 	IPVersion string
 }

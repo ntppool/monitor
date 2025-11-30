@@ -10,8 +10,8 @@ import (
 
 type ScorerMap struct {
 	Scorer    types.Scorer
-	ScorerID  uint32
-	LastID    uint64
+	ScorerID  int64
+	LastID    int64
 	lastScore map[int]*lastUpdate
 }
 
@@ -23,15 +23,16 @@ const (
 )
 
 func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
+	lsTime := ls.Ts.Time
 	if last, ok := sm.lastScore[int(ls.ServerID)]; ok {
 		// Skip out-of-order scores
-		if ls.Ts.Before(last.ts) {
+		if lsTime.Before(last.ts) {
 			return false
 		}
 
 		// 20.000 != 20.000 so test it with allowance for that ...
 		if almostEqual(ls.Score, last.score) {
-			if last.ts.Add(minScoreInterval).After(ls.Ts) {
+			if last.ts.Add(minScoreInterval).After(lsTime) {
 				// we recorded the same score recently enough
 				return false
 			}
@@ -39,13 +40,13 @@ func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
 
 		// also ignore if within 5% and within a third of the min interval
 		percentageClose := sm.isPercentageClose(ls.Score, last.score)
-		if percentageClose && last.ts.Add(minScoreInterval/fastIntervalRatio).After(ls.Ts) {
+		if percentageClose && last.ts.Add(minScoreInterval/fastIntervalRatio).After(lsTime) {
 			return false
 		}
 	}
 
 	sm.lastScore[int(ls.ServerID)] = &lastUpdate{
-		ts:    ls.Ts,
+		ts:    lsTime,
 		score: ls.Score,
 	}
 

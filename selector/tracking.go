@@ -1,8 +1,9 @@
 package selector
 
 import (
-	"database/sql"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
@@ -10,7 +11,7 @@ import (
 // trackConstraintViolations updates the database with current constraint violations
 func (sl *Selector) trackConstraintViolations(
 	db ntpdb.QuerierTx,
-	serverID uint32,
+	serverID int64,
 	evaluatedMonitors []evaluatedMonitor,
 ) error {
 	for _, eval := range evaluatedMonitors {
@@ -19,8 +20,8 @@ func (sl *Selector) trackConstraintViolations(
 
 		// Check if we need to update the database
 		shouldUpdate := false
-		var newViolationType sql.NullString
-		var newViolationSince sql.NullTime
+		var newViolationType pgtype.Text
+		var newViolationSince pgtype.Timestamptz
 		var shouldPause bool
 
 		if violation.Type != violationNone {
@@ -42,7 +43,7 @@ func (sl *Selector) trackConstraintViolations(
 
 			// We have a current violation
 			violationType := string(violation.Type)
-			newViolationType = sql.NullString{String: violationType, Valid: true}
+			newViolationType = pgtype.Text{String: violationType, Valid: true}
 
 			// Check if this is an unchangeable constraint that should result in paused status
 			if isUnchangeableConstraint(violation.Type) && monitor.ServerStatus != ntpdb.ServerScoresStatusPaused {
@@ -53,14 +54,14 @@ func (sl *Selector) trackConstraintViolations(
 			if monitor.ConstraintViolationType == nil || *monitor.ConstraintViolationType != violationType {
 				// New violation or type changed
 				shouldUpdate = true
-				newViolationSince = sql.NullTime{Time: time.Now(), Valid: true}
+				newViolationSince = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 			} else if monitor.ConstraintViolationSince != nil {
 				// Same violation type, keep existing timestamp
-				newViolationSince = sql.NullTime{Time: *monitor.ConstraintViolationSince, Valid: true}
+				newViolationSince = pgtype.Timestamptz{Time: *monitor.ConstraintViolationSince, Valid: true}
 			} else {
 				// Missing timestamp for existing violation (shouldn't happen)
 				shouldUpdate = true
-				newViolationSince = sql.NullTime{Time: time.Now(), Valid: true}
+				newViolationSince = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 			}
 		} else {
 			// No current violation
@@ -129,7 +130,7 @@ func (sl *Selector) trackConstraintViolations(
 
 				// Update pause reason and last constraint check
 				err = db.UpdateServerScorePauseReason(sl.ctx, ntpdb.UpdateServerScorePauseReasonParams{
-					PauseReason: sql.NullString{String: string(pauseConstraintViolation), Valid: true},
+					PauseReason: pgtype.Text{String: string(pauseConstraintViolation), Valid: true},
 					ServerID:    serverID,
 					MonitorID:   monitor.ID,
 				})
@@ -156,7 +157,7 @@ func (sl *Selector) trackConstraintViolations(
 // updateConstraintCheckTimestamps updates the last_constraint_check timestamp for evaluated paused monitors
 func (sl *Selector) updateConstraintCheckTimestamps(
 	db ntpdb.QuerierTx,
-	serverID uint32,
+	serverID int64,
 	evaluatedPausedMonitors []evaluatedMonitor,
 ) error {
 	for _, eval := range evaluatedPausedMonitors {
@@ -210,7 +211,7 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 
 	// Account ID
 	if row.AccountID.Valid {
-		accountID := uint32(row.AccountID.Int32)
+		accountID := row.AccountID.Int64
 		candidate.AccountID = &accountID
 	}
 
@@ -228,17 +229,10 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	}
 
 	// Health status
-	if healthy, ok := row.Healthy.(int64); ok {
-		candidate.IsHealthy = healthy > 0
-	}
+	candidate.IsHealthy = row.Healthy
 
 	// RTT
-	if avgRtt, ok := row.AvgRtt.([]uint8); ok {
-		x := sql.NullFloat64{}
-		if err := x.Scan(avgRtt); err == nil {
-			candidate.RTT = x.Float64
-		}
-	}
+	candidate.RTT = float64(row.AvgRtt)
 
 	// Priority (from database calculation)
 	candidate.Priority = int(row.MonitorPriority)

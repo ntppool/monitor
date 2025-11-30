@@ -28,7 +28,7 @@ const (
 
 // statusChange represents a planned status transition
 type statusChange struct {
-	monitorID  uint32
+	monitorID  int64
 	fromStatus ntpdb.ServerScoresStatus
 	toStatus   ntpdb.ServerScoresStatus
 	reason     string
@@ -62,7 +62,7 @@ type changeLimits struct {
 type selectionContext struct {
 	evaluatedMonitors []evaluatedMonitor
 	server            *serverInfo
-	accountLimits     map[uint32]*accountLimit
+	accountLimits     map[int64]*accountLimit
 	assignedMonitors  []ntpdb.GetMonitorPriorityRow
 	limits            changeLimits
 	targetNumber      int
@@ -90,16 +90,16 @@ type ruleResult struct {
 func (sl *Selector) loadServerInfo(
 	ctx context.Context,
 	db ntpdb.QuerierTx,
-	serverID uint32,
+	serverID int64,
 ) (*serverInfo, error) {
 	server, err := db.GetServer(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server: %w", err)
 	}
 
-	var accountID *uint32
+	var accountID *int64
 	if server.AccountID.Valid {
-		id := uint32(server.AccountID.Int32)
+		id := server.AccountID.Int64
 		accountID = &id
 	}
 
@@ -364,7 +364,7 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 	selCtx selectionContext,
 	testingMonitors []evaluatedMonitor,
 	activeMonitors []evaluatedMonitor,
-	workingAccountLimits map[uint32]*accountLimit,
+	workingAccountLimits map[int64]*accountLimit,
 	workingActiveCount int,
 	workingTestingCount int,
 ) ruleResult {
@@ -445,7 +445,7 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 	selCtx selectionContext,
 	candidateMonitors []evaluatedMonitor,
 	testingMonitors []evaluatedMonitor,
-	workingAccountLimits map[uint32]*accountLimit,
+	workingAccountLimits map[int64]*accountLimit,
 	workingActiveCount int,
 	workingTestingCount int,
 ) ruleResult {
@@ -629,7 +629,7 @@ func (sl *Selector) applyRule6BootstrapPromotion(
 	selCtx selectionContext,
 	testingMonitors []evaluatedMonitor,
 	candidateMonitors []evaluatedMonitor,
-	workingAccountLimits map[uint32]*accountLimit,
+	workingAccountLimits map[int64]*accountLimit,
 	workingActiveCount int,
 	workingTestingCount int,
 ) ruleResult {
@@ -883,7 +883,7 @@ func (sl *Selector) applySelectionRules(
 	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
 	server *serverInfo,
-	accountLimits map[uint32]*accountLimit,
+	accountLimits map[int64]*accountLimit,
 	assignedMonitors []ntpdb.GetMonitorPriorityRow,
 ) []statusChange {
 	// Categorize monitors by current status
@@ -949,7 +949,7 @@ func (sl *Selector) applySelectionRules(
 		"maxRemovals", state.maxRemovals)
 
 	// Create working copy of account limits for iterative constraint checking
-	workingAccountLimits := make(map[uint32]*accountLimit)
+	workingAccountLimits := make(map[int64]*accountLimit)
 	for k, v := range accountLimits {
 		workingAccountLimits[k] = &accountLimit{
 			AccountID:    v.AccountID,
@@ -1079,7 +1079,7 @@ func calculateChangeLimits(currentActiveMonitors, blockedMonitors int) changeLim
 func (sl *Selector) applyStatusChange(
 	ctx context.Context,
 	db ntpdb.QuerierTx,
-	serverID uint32,
+	serverID int64,
 	change statusChange,
 	monitor *monitorCandidate,
 ) error {
@@ -1180,7 +1180,7 @@ func (sl *Selector) handleOutOfOrder(
 	nsl := newStatusList{}
 
 	// Add current statuses (accounting for planned changes)
-	statusMap := make(map[uint32]ntpdb.ServerScoresStatus)
+	statusMap := make(map[int64]ntpdb.ServerScoresStatus)
 	for _, em := range active {
 		statusMap[em.monitor.ID] = em.monitor.ServerStatus
 	}
@@ -1229,7 +1229,7 @@ func (sl *Selector) attemptPerformanceReplacement(
 	selCtx selectionContext,
 	replacerMonitors []evaluatedMonitor, // candidates or testing monitors (pre-sorted by performance)
 	targetMonitors []evaluatedMonitor, // testing or active monitors
-	workingAccountLimits map[uint32]*accountLimit,
+	workingAccountLimits map[int64]*accountLimit,
 	changesRemaining int,
 	repType replacementType,
 ) []statusChange {

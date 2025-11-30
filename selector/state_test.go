@@ -196,8 +196,8 @@ func TestIsOutOfOrder(t *testing.T) {
 	tests := []struct {
 		name        string
 		statusList  newStatusList
-		wantBest    uint32
-		wantReplace uint32
+		wantBest    int64
+		wantReplace int64
 		wantFound   bool
 	}{
 		{

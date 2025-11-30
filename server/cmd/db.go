@@ -2,19 +2,23 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"go.ntppool.org/monitor/ntpdb"
 )
 
 type dbCmd struct {
-	Mon dbMonitorCmd `cmd:"" help:"monitor config debug"`
+	ConfigFile string       `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+	Mon        dbMonitorCmd `cmd:"" help:"monitor config debug"`
 }
 
 type dbMonitorCmd struct {
-	Name string `arg:"" help:"monitor name"`
+	ConfigFile string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+	Name       string `arg:"" help:"monitor name"`
 }
 
 func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
@@ -23,15 +27,15 @@ func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
 		return fmt.Errorf("db mon [monitername]")
 	}
 
-	dbconn, err := ntpdb.OpenDB()
+	dbconn, err := ntpdb.OpenDB(ctx, cmd.ConfigFile)
 	if err != nil {
 		return err
 	}
 	db := ntpdb.New(dbconn)
 
-	mons, err := db.GetMonitorsTLSName(ctx, sql.NullString{String: name, Valid: true})
+	mons, err := db.GetMonitorsTLSName(ctx, pgtype.Text{String: name, Valid: true})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			fmt.Println("No monitor found")
 			return nil
 		}

@@ -3,7 +3,6 @@ package mqserver
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +20,8 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	slogecho "github.com/samber/slog-echo"
 
@@ -44,7 +45,7 @@ import (
 type server struct {
 	cm     *autopaho.ConnectionManager
 	db     *ntpdb.Queries
-	dbconn *sql.DB
+	dbconn *pgxpool.Pool
 	log    *slog.Logger
 
 	clients map[string]*client
@@ -71,7 +72,7 @@ type promTargetGroup struct {
 	Labels  map[string]string `json:"labels"`
 }
 
-func Setup(log *slog.Logger, dbconn *sql.DB, promRegistry prometheus.Registerer) (*server, error) {
+func Setup(log *slog.Logger, dbconn *pgxpool.Pool, promRegistry prometheus.Registerer) (*server, error) {
 	clients := map[string]*client{}
 	mqs := &server{clients: clients, dbconn: dbconn, log: log.WithGroup("mqtt")}
 	if dbconn != nil {
@@ -182,7 +183,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 		ctx := context.Background()
 
 		if mqs.db != nil { // for running tests without the DB
-			mons, err := mqs.db.GetMonitorsTLSName(ctx, sql.NullString{String: name, Valid: true})
+			mons, err := mqs.db.GetMonitorsTLSName(ctx, pgtype.Text{String: name, Valid: true})
 			if err != nil {
 				mqs.log.Error("fetching monitor details", "err", err, "tls_name", name)
 			} else {
@@ -225,7 +226,7 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 				accountID := "0"
 				if m.AccountID.Valid {
-					accountID = strconv.Itoa(int(m.AccountID.Int32))
+					accountID = strconv.Itoa(int(m.AccountID.Int64))
 				}
 				mqs.promGauge.WithLabelValues(
 					m.Hostname,

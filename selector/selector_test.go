@@ -19,7 +19,7 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           1,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -33,7 +33,7 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           2,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -47,7 +47,7 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           3,
-				AccountID:    ptr(uint32(2)),
+				AccountID:    ptr(int64(2)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -61,7 +61,7 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           4,
-				AccountID:    ptr(uint32(2)),
+				AccountID:    ptr(int64(2)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -76,10 +76,10 @@ func TestZeroActiveMonitorsWithConstraintViolations(t *testing.T) {
 
 	server := &serverInfo{
 		ID:        14,
-		AccountID: ptr(uint32(3)),
+		AccountID: ptr(int64(3)),
 	}
 
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 2},
 		2: {AccountID: 2, MaxPerServer: 2, ActiveCount: 0, TestingCount: 2},
 	}
@@ -138,7 +138,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           10,
-				AccountID:    ptr(uint32(2)),
+				AccountID:    ptr(int64(2)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				IsHealthy:    true,
@@ -148,7 +148,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           11,
-				AccountID:    ptr(uint32(2)),
+				AccountID:    ptr(int64(2)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				IsHealthy:    true,
@@ -158,7 +158,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           12,
-				AccountID:    ptr(uint32(3)),
+				AccountID:    ptr(int64(3)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				IsHealthy:    true,
@@ -168,7 +168,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           1,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -179,7 +179,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           2,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -190,7 +190,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           3,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -202,11 +202,11 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 
 	server := &serverInfo{
 		ID:        1,
-		AccountID: ptr(uint32(2)), // Different account
+		AccountID: ptr(int64(2)), // Different account
 	}
 
 	// Account limit: max 2 active per server
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 3},
 		2: {AccountID: 2, MaxPerServer: 2, ActiveCount: 2, TestingCount: 0},
 		3: {AccountID: 3, MaxPerServer: 2, ActiveCount: 1, TestingCount: 0},
@@ -249,7 +249,7 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           1,
-				AccountID:    ptr(uint32(1)),
+				AccountID:    ptr(int64(1)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -262,7 +262,7 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           2,
-				AccountID:    ptr(uint32(2)),
+				AccountID:    ptr(int64(2)),
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				HasMetrics:   true,
@@ -273,7 +273,7 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 		{
 			monitor: monitorCandidate{
 				ID:           3,
-				AccountID:    ptr(uint32(3)),
+				AccountID:    ptr(int64(3)),
 				GlobalStatus: ntpdb.MonitorsStatusActive, // Must be globally active for emergency promotion
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
@@ -285,10 +285,10 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 
 	server := &serverInfo{
 		ID:        1,
-		AccountID: ptr(uint32(4)),
+		AccountID: ptr(int64(4)),
 	}
 
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		1: {AccountID: 1, MaxPerServer: 1, ActiveCount: 0, TestingCount: 1},
 		2: {AccountID: 2, MaxPerServer: 1, ActiveCount: 0, TestingCount: 1},
 		3: {AccountID: 3, MaxPerServer: 1, ActiveCount: 0, TestingCount: 1},
@@ -345,7 +345,7 @@ func TestPromotionConstraintChecking(t *testing.T) {
 	// Monitor has limit violation in testing but not in active
 	monitor := &monitorCandidate{
 		ID:           1,
-		AccountID:    ptr(uint32(1)),
+		AccountID:    ptr(int64(1)),
 		IP:           "10.0.0.1",
 		GlobalStatus: ntpdb.MonitorsStatusActive,
 		ServerStatus: ntpdb.ServerScoresStatusTesting,
@@ -355,14 +355,14 @@ func TestPromotionConstraintChecking(t *testing.T) {
 
 	server := &serverInfo{
 		ID:        1,
-		AccountID: ptr(uint32(2)),
+		AccountID: ptr(int64(2)),
 		IP:        "192.168.1.1",
 	}
 
 	// Testing limit reached (2), but active limit not reached (1 < 2)
 	// Total is 1 + 2 = 3, which is at the max total limit (MaxPerServer + 1 = 3)
 	// But since this monitor is already in testing, it's already counted in TestingCount
-	accountLimits := map[uint32]*accountLimit{
+	accountLimits := map[int64]*accountLimit{
 		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 1, TestingCount: 2},
 	}
 
@@ -379,7 +379,7 @@ func TestPromotionConstraintChecking(t *testing.T) {
 
 	// For more accurate testing, let's also verify with empty account limits
 	// to isolate the constraint checking
-	emptyLimits := map[uint32]*accountLimit{
+	emptyLimits := map[int64]*accountLimit{
 		1: {AccountID: 1, MaxPerServer: 2, ActiveCount: 0, TestingCount: 0},
 	}
 	canPromoteEmpty := sl.canPromoteToActive(monitor, server, emptyLimits, assignedMonitors, false)
@@ -389,7 +389,7 @@ func TestPromotionConstraintChecking(t *testing.T) {
 }
 
 // Helper functions
-func ptr(v uint32) *uint32 {
+func ptr(v int64) *int64 {
 	return &v
 }
 

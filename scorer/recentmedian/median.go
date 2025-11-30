@@ -2,25 +2,26 @@ package recentmedian
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/exp/slices"
 
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer/score"
-	"golang.org/x/exp/slices"
 )
 
 type RecentMedian struct {
-	scorerID uint32
+	scorerID int64
 }
 
 func New() *RecentMedian {
 	return &RecentMedian{}
 }
 
-func (s *RecentMedian) Setup(id uint32) {
+func (s *RecentMedian) Setup(id int64) {
 	s.scorerID = id
 }
 
@@ -49,7 +50,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 
 	if len(recent) == 0 {
 		arg.TimeLookback = 2700
-		arg.MonitorStatus2 = ntpdb.ServerScoresStatusTesting
+		arg.MonitorStatus2 = ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true}
 		recent, err = db.GetScorerRecentScores(ctx, arg)
 		if err != nil {
 			return score.Score{}, err
@@ -60,7 +61,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	if len(recent) == 0 {
 		arg.TimeLookback = 7200 // Extend lookback to 2 hours
 		arg.MonitorStatus = ntpdb.ServerScoresStatusCandidate
-		arg.MonitorStatus2 = ntpdb.ServerScoresStatusTesting
+		arg.MonitorStatus2 = ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true}
 		recent, err = db.GetScorerRecentScores(ctx, arg)
 		if err != nil {
 			return score.Score{}, err
@@ -111,7 +112,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 			return score.Score{
 				LogScore: ntpdb.LogScore{
 					ServerID:  ls.ServerID,
-					MonitorID: sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
+					MonitorID: pgtype.Int8{Valid: true, Int64: s.scorerID},
 					Ts:        latest.Ts,
 				},
 			}, err
@@ -124,7 +125,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	if err != nil {
 		log.Error("could not marshal attributes", "attributes", attributes, "err", err)
 	}
-	attributeStr := sql.NullString{
+	attributeStr := pgtype.Text{
 		String: string(b),
 		Valid:  true,
 	}
@@ -134,7 +135,7 @@ func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore
 	ns := score.Score{
 		LogScore: ntpdb.LogScore{
 			ServerID:   ls.ServerID,
-			MonitorID:  sql.NullInt32{Valid: true, Int32: int32(s.scorerID)},
+			MonitorID:  pgtype.Int8{Valid: true, Int64: s.scorerID},
 			Ts:         latest.Ts,
 			Step:       ls.Step,
 			Score:      ls.Score,

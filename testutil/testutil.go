@@ -2,21 +2,19 @@ package testutil
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
 // TestDB represents a test database connection with utilities
 type TestDB struct {
-	*sql.DB
+	*pgxpool.Pool
 	queries *ntpdb.Queries
 	ctx     context.Context
 }
@@ -28,29 +26,27 @@ func NewTestDB(t *testing.T) *TestDB {
 		t.Skip("TEST_DATABASE_URL not set, skipping integration test")
 	}
 
-	db, err := sql.Open("mysql", dbURL)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		t.Fatalf("Failed to connect to test database: %v", err)
 	}
 
 	// Test connection
-	if err := db.Ping(); err != nil {
+	if err := pool.Ping(ctx); err != nil {
 		t.Fatalf("Failed to ping test database: %v", err)
 	}
 
 	return &TestDB{
-		DB:      db,
-		queries: ntpdb.New(db),
-		ctx:     context.Background(),
+		Pool:    pool,
+		queries: ntpdb.New(pool),
+		ctx:     ctx,
 	}
 }
 
 // Close closes the database connection
 func (tdb *TestDB) Close() {
-	if err := tdb.DB.Close(); err != nil {
-		// Log error but don't fail test cleanup
-		log.Printf("Error closing test database: %v", err)
-	}
+	tdb.Pool.Close()
 }
 
 // Queries returns the ntpdb queries instance
@@ -65,12 +61,7 @@ func (tdb *TestDB) Context() context.Context {
 
 // CleanupTestData removes all test data from the database
 func (tdb *TestDB) CleanupTestData(t *testing.T) {
-	// Disable foreign key checks temporarily
-	_, err := tdb.ExecContext(tdb.ctx, "SET FOREIGN_KEY_CHECKS = 0")
-	if err != nil {
-		t.Logf("Error disabling foreign key checks: %v", err)
-	}
-
+	// PostgreSQL uses TRUNCATE CASCADE or DELETE with proper ordering
 	// Clean up in reverse dependency order
 	tables := []string{
 		"server_scores",
@@ -94,34 +85,28 @@ func (tdb *TestDB) CleanupTestData(t *testing.T) {
 		default:
 			query = fmt.Sprintf("DELETE FROM %s WHERE id >= 1000 AND id <= 9999", table)
 		}
-		_, err := tdb.ExecContext(tdb.ctx, query)
+		_, err := tdb.Exec(tdb.ctx, query)
 		if err != nil {
 			t.Logf("Error cleaning up table %s: %v", table, err)
 		}
 	}
 
 	// Clean up monitors by account_id since they might not have sequential IDs
-	_, err = tdb.ExecContext(tdb.ctx, "DELETE FROM monitors WHERE account_id >= 1000 AND account_id <= 9999")
+	_, err := tdb.Exec(tdb.ctx, "DELETE FROM monitors WHERE account_id >= 1000 AND account_id <= 9999")
 	if err != nil {
 		t.Logf("Error cleaning up monitors: %v", err)
 	}
 
 	// Clean up server_scores that reference test monitors
-	_, err = tdb.ExecContext(tdb.ctx, "DELETE FROM server_scores WHERE monitor_id >= 2000 AND monitor_id <= 2999")
+	_, err = tdb.Exec(tdb.ctx, "DELETE FROM server_scores WHERE monitor_id >= 2000 AND monitor_id <= 2999")
 	if err != nil {
 		t.Logf("Error cleaning up server_scores: %v", err)
 	}
 
 	// Clean up test system settings
-	_, err = tdb.ExecContext(tdb.ctx, "DELETE FROM system_settings WHERE "+"`key`"+" LIKE 'test_%'")
+	_, err = tdb.Exec(tdb.ctx, "DELETE FROM system_settings WHERE key LIKE 'test_%'")
 	if err != nil {
 		t.Logf("Error cleaning up system_settings: %v", err)
-	}
-
-	// Re-enable foreign key checks
-	_, err = tdb.ExecContext(tdb.ctx, "SET FOREIGN_KEY_CHECKS = 1")
-	if err != nil {
-		t.Logf("Error re-enabling foreign key checks: %v", err)
 	}
 }
 
@@ -188,79 +173,79 @@ func NewDataFactory(tdb *TestDB) *DataFactory {
 }
 
 // CreateTestAccount creates a test account
-func (df *DataFactory) CreateTestAccount(t *testing.T, id uint32, email string) {
+func (df *DataFactory) CreateTestAccount(t *testing.T, id int64, email string) {
 	query := `
 		INSERT INTO accounts (id, name, created_on)
-		VALUES (?, ?, NOW())
-		ON DUPLICATE KEY UPDATE name = VALUES(name)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, email)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, id, email)
 	if err != nil {
 		t.Fatalf("Failed to create test account: %v", err)
 	}
 }
 
 // CreateTestMonitor creates a test monitor
-func (df *DataFactory) CreateTestMonitor(t *testing.T, id uint32, tlsName string, accountID uint32, ip string, status string) {
+func (df *DataFactory) CreateTestMonitor(t *testing.T, id int64, tlsName string, accountID int64, ip string, status string) {
 	df.CreateTestMonitorWithType(t, id, tlsName, accountID, ip, status, "monitor")
 }
 
 // CreateTestMonitorWithType creates a test monitor with specified type
-func (df *DataFactory) CreateTestMonitorWithType(t *testing.T, id uint32, tlsName string, accountID uint32, ip string, status string, monitorType string) {
+func (df *DataFactory) CreateTestMonitorWithType(t *testing.T, id int64, tlsName string, accountID int64, ip string, status string, monitorType string) {
 	query := `
 		INSERT INTO monitors (id, tls_name, account_id, ip, status, type, config, created_on)
-		VALUES (?, ?, ?, ?, ?, ?, '{}', NOW())
-		ON DUPLICATE KEY UPDATE
-			tls_name = VALUES(tls_name),
-			account_id = VALUES(account_id),
-			ip = VALUES(ip),
-			status = VALUES(status),
-			type = VALUES(type)
+		VALUES ($1, $2, $3, $4, $5, $6, '{}', NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			tls_name = EXCLUDED.tls_name,
+			account_id = EXCLUDED.account_id,
+			ip = EXCLUDED.ip,
+			status = EXCLUDED.status,
+			type = EXCLUDED.type
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, tlsName, accountID, ip, status, monitorType)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, id, tlsName, accountID, ip, status, monitorType)
 	if err != nil {
 		t.Fatalf("Failed to create test monitor: %v", err)
 	}
 }
 
 // CreateTestServer creates a test server
-func (df *DataFactory) CreateTestServer(t *testing.T, id uint32, ip string, ipVersion string, accountID *uint32) {
+func (df *DataFactory) CreateTestServer(t *testing.T, id int64, ip string, ipVersion string, accountID *int64) {
 	query := `
 		INSERT INTO servers (id, ip, ip_version, account_id, created_on)
-		VALUES (?, ?, ?, ?, NOW())
-		ON DUPLICATE KEY UPDATE
-			ip = VALUES(ip),
-			ip_version = VALUES(ip_version),
-			account_id = VALUES(account_id)
+		VALUES ($1, $2, $3, $4, NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			ip = EXCLUDED.ip,
+			ip_version = EXCLUDED.ip_version,
+			account_id = EXCLUDED.account_id
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, id, ip, ipVersion, accountID)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, id, ip, ipVersion, accountID)
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
 }
 
 // CreateTestServerScore creates a test server score
-func (df *DataFactory) CreateTestServerScore(t *testing.T, serverID, monitorID uint32, status string, scoreRaw float64) {
+func (df *DataFactory) CreateTestServerScore(t *testing.T, serverID, monitorID int64, status string, scoreRaw float64) {
 	query := `
 		INSERT INTO server_scores (server_id, monitor_id, status, score_raw, created_on)
-		VALUES (?, ?, ?, ?, NOW())
-		ON DUPLICATE KEY UPDATE
-			status = VALUES(status),
-			score_raw = VALUES(score_raw)
+		VALUES ($1, $2, $3, $4, NOW())
+		ON CONFLICT (server_id, monitor_id) DO UPDATE SET
+			status = EXCLUDED.status,
+			score_raw = EXCLUDED.score_raw
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, serverID, monitorID, status, scoreRaw)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, serverID, monitorID, status, scoreRaw)
 	if err != nil {
 		t.Fatalf("Failed to create test server score: %v", err)
 	}
 }
 
 // CreateTestLogScore creates a test log score
-func (df *DataFactory) CreateTestLogScore(t *testing.T, serverID, monitorID uint32, score, step float64, rtt *int32, ts time.Time) {
+func (df *DataFactory) CreateTestLogScore(t *testing.T, serverID, monitorID int64, score, step float64, rtt *int32, ts time.Time) {
 	query := `
 		INSERT INTO log_scores (server_id, monitor_id, ts, score, step, rtt)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, serverID, monitorID, ts, score, step, rtt)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, serverID, monitorID, ts, score, step, rtt)
 	if err != nil {
 		t.Fatalf("Failed to create test log score: %v", err)
 	}
@@ -269,11 +254,11 @@ func (df *DataFactory) CreateTestLogScore(t *testing.T, serverID, monitorID uint
 // SetSystemSetting sets a system setting for tests
 func (df *DataFactory) SetSystemSetting(t *testing.T, key, value string) {
 	query := `
-		INSERT INTO system_settings (` + "`key`" + `, ` + "`value`" + `, created_on)
-		VALUES (?, ?, NOW())
-		ON DUPLICATE KEY UPDATE ` + "`value`" + ` = VALUES(` + "`value`" + `)
+		INSERT INTO system_settings (key, value, created_on)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
 	`
-	_, err := df.tdb.ExecContext(df.tdb.ctx, query, key, value)
+	_, err := df.tdb.Exec(df.tdb.ctx, query, key, value)
 	if err != nil {
 		t.Fatalf("Failed to set system setting: %v", err)
 	}

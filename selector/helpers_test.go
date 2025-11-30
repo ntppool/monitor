@@ -119,8 +119,8 @@ func TestFilterBootstrapCandidates(t *testing.T) {
 	}
 
 	// Verify healthy monitors are correct
-	healthyIDs := []uint32{healthy[0].monitor.ID, healthy[1].monitor.ID}
-	expectedHealthy := []uint32{1, 3}
+	healthyIDs := []int64{healthy[0].monitor.ID, healthy[1].monitor.ID}
+	expectedHealthy := []int64{1, 3}
 	for i, expectedID := range expectedHealthy {
 		if healthyIDs[i] != expectedID {
 			t.Errorf("Expected healthy monitor %d at position %d, got %d", expectedID, i, healthyIDs[i])
@@ -128,8 +128,8 @@ func TestFilterBootstrapCandidates(t *testing.T) {
 	}
 
 	// Verify other monitors are correct
-	otherIDs := []uint32{other[0].monitor.ID, other[1].monitor.ID}
-	expectedOther := []uint32{2, 4}
+	otherIDs := []int64{other[0].monitor.ID, other[1].monitor.ID}
+	expectedOther := []int64{2, 4}
 	for i, expectedID := range expectedOther {
 		if otherIDs[i] != expectedID {
 			t.Errorf("Expected other monitor %d at position %d, got %d", expectedID, i, otherIDs[i])
@@ -148,17 +148,17 @@ func TestAttemptPromotion(t *testing.T) {
 		ID:           1,
 		GlobalStatus: ntpdb.MonitorsStatusActive,
 		IsHealthy:    true,
-		AccountID:    uint32Ptr(100),
+		AccountID:    int64Ptr(100),
 	}
 
 	server := &serverInfo{
 		ID:        1,
 		IP:        "192.168.1.1",
-		AccountID: uint32Ptr(200), // Different account
+		AccountID: int64Ptr(200), // Different account
 		IPVersion: "4",
 	}
 
-	workingLimits := map[uint32]*accountLimit{
+	workingLimits := map[int64]*accountLimit{
 		100: {
 			AccountID:    100,
 			MaxPerServer: 2,
@@ -277,7 +277,7 @@ func TestAttemptPromotion(t *testing.T) {
 	}
 }
 
-// Helper function for creating uint32 pointers
-func uint32Ptr(val uint32) *uint32 {
+// Helper function for creating int64 pointers
+func int64Ptr(val int64) *int64 {
 	return &val
 }

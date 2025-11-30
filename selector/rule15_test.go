@@ -20,7 +20,7 @@ func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(i + 1), // Monitors 8-9 have highest RTT (worst performance)
@@ -32,7 +32,7 @@ func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
 
@@ -56,8 +56,8 @@ func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	}
 
 	// Should demote worst performers (monitors 8 and 9 with highest RTT)
-	expectedDemotions := []uint32{8, 9}
-	actualDemotions := []uint32{}
+	expectedDemotions := []int64{8, 9}
+	actualDemotions := []int64{}
 	for _, change := range changes {
 		if change.fromStatus == ntpdb.ServerScoresStatusActive && change.toStatus == ntpdb.ServerScoresStatusTesting {
 			actualDemotions = append(actualDemotions, change.monitorID)
@@ -90,7 +90,7 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
@@ -102,7 +102,7 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, testingMonitors, server, accountLimits, nil)
 
@@ -148,7 +148,7 @@ func TestRule15_SafetyCheck(t *testing.T) {
 	}
 
 	server := &serverInfo{ID: 1982}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
 
@@ -178,7 +178,7 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(i + 1),
@@ -193,7 +193,7 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(i + 10),
@@ -208,7 +208,7 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		candidateMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 20),
+				ID:           int64(i + 20),
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
@@ -220,7 +220,7 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 
 	allMonitors := append(append(activeMonitors, testingMonitors...), candidateMonitors...)
 	server := &serverInfo{ID: 1486}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil)
 
@@ -272,7 +272,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		activeMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 1),
+				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
@@ -287,7 +287,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		testingMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 10),
+				ID:           int64(i + 10),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
@@ -302,7 +302,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		candidateMonitors[i] = evaluatedMonitor{
 			monitor: monitorCandidate{
-				ID:           uint32(i + 20),
+				ID:           int64(i + 20),
 				ServerStatus: ntpdb.ServerScoresStatusCandidate,
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				IsHealthy:    true,
@@ -315,7 +315,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 
 	allMonitors := append(append(activeMonitors, testingMonitors...), candidateMonitors...)
 	server := &serverInfo{ID: 1065}
-	accountLimits := make(map[uint32]*accountLimit)
+	accountLimits := make(map[int64]*accountLimit)
 
 	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil)
 

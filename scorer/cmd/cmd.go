@@ -9,6 +9,8 @@ import (
 )
 
 type RootCmd struct {
+	ConfigFile string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+
 	Scorer   ScorerCmd    `cmd:"scorer" help:"Scoring commands"`
 	Selector selector.Cmd `cmd:"selector" help:"monitor selection"`
 
@@ -24,12 +26,16 @@ type ScorerCmd struct {
 
 type (
 	scorerOnceCmd struct {
-		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		ConfigFile  string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+		MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	scorerServerCmd struct {
-		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		ConfigFile  string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+		MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
-	scorerSetupCmd struct{}
+	scorerSetupCmd struct {
+		ConfigFile string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+	}
 )
 
 type versionCmd struct{}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -40,7 +40,7 @@ type Server struct {
 	tokens      *vtm.TokenManager
 	m           *metrics.Metrics
 	db          ntpdb.QuerierTx
-	dbconn      *sql.DB
+	dbconn      *pgxpool.Pool
 	jwtAuth     *JWTAuthenticator
 	clientCAs   *x509.CertPool
 	shutdownFns []func(ctx context.Context) error
@@ -53,7 +53,7 @@ type Config struct {
 	CertProvider  apitls.AuthProvider
 }
 
-func NewServer(ctx context.Context, cfg Config, dbconn *sql.DB, promRegistry prometheus.Registerer) (*Server, error) {
+func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegistry prometheus.Registerer) (*Server, error) {
 	db := ntpdb.NewWrappedQuerier(ntpdb.New(dbconn))
 	log := logger.FromContext(ctx)
 
@@ -172,7 +172,7 @@ func (srv *Server) Run() error {
 					},
 					{
 						Key:   "monitor_account",
-						Value: mon.AccountID.Int32,
+						Value: mon.AccountID.Int64,
 					},
 				}
 				if acc != nil && acc.IDToken.Valid {

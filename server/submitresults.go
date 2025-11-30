@@ -2,13 +2,13 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/oklog/ulid/v2"
 	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/otel/attribute"
@@ -135,8 +135,8 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 
 	if err := srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
 		ID:         monitor.ID,
-		LastSubmit: sql.NullTime{Time: batchTime, Valid: true},
-		LastSeen:   sql.NullTime{Time: now, Valid: true},
+		LastSubmit: pgtype.Timestamptz{Time: batchTime, Valid: true},
+		LastSeen:   pgtype.Timestamptz{Time: now, Valid: true},
 	}); err != nil {
 		// Log warning but don't fail the request
 		log.WarnContext(ctx, "failed to update monitor submit", "err", err)
@@ -221,11 +221,11 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 		}
 
 		if status.Stratum > 0 {
-			nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
-			if !serverScore.Stratum.Valid || serverScore.Stratum.Int16 != nullStratum.Int16 {
+			newStratum := pgtype.Int2{Int16: int16(status.Stratum), Valid: true}
+			if !serverScore.Stratum.Valid || serverScore.Stratum.Int16 != newStratum.Int16 {
 				if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
 					ID:      serverScore.ID,
-					Stratum: nullStratum,
+					Stratum: newStratum,
 				}); err != nil {
 					return fmt.Errorf("updating server score stratum: %w", err)
 				}
@@ -233,7 +233,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 			if !server.Stratum.Valid || int32(server.Stratum.Int16) != status.Stratum {
 				if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
 					ID:      server.ID,
-					Stratum: nullStratum,
+					Stratum: newStratum,
 				}); err != nil {
 					return fmt.Errorf("updating server stratum: %w", err)
 				}
@@ -242,7 +242,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 
 		if err := db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
 			ID:       serverScore.ID,
-			ScoreTs:  sql.NullTime{Time: score.Ts, Valid: true},
+			ScoreTs:  pgtype.Timestamptz{Time: score.Ts.Time, Valid: true},
 			ScoreRaw: serverScore.ScoreRaw,
 		}); err != nil {
 			return fmt.Errorf("updating server score: %w", err)
@@ -250,7 +250,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 
 		ls := ntpdb.InsertLogScoreParams{
 			ServerID:   server.ID,
-			MonitorID:  sql.NullInt32{Int32: int32(monitor.ID), Valid: true}, // todo: sqlc type
+			MonitorID:  pgtype.Int8{Int64: monitor.ID, Valid: true},
 			Ts:         score.Ts,
 			Step:       score.Step,
 			Offset:     score.Offset,
