@@ -17,12 +17,12 @@ import (
 	"go.ntppool.org/monitor/scorer"
 )
 
-func (cmd *scorerOnceCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, cmd.ConfigFile, false, cmd.MetricsPort)
+func (cmd *scorerOnceCmd) Run(ctx context.Context, root *RootCmd) error {
+	return scorerRun(ctx, root.ConfigFile, false, cmd.MetricsPort)
 }
 
-func (cmd *scorerServerCmd) Run(ctx context.Context) error {
-	return scorerRun(ctx, cmd.ConfigFile, true, cmd.MetricsPort)
+func (cmd *scorerServerCmd) Run(ctx context.Context, root *RootCmd) error {
+	return scorerRun(ctx, root.ConfigFile, true, cmd.MetricsPort)
 }
 
 func scorerRun(ctx context.Context, configFile string, continuous bool, metricsPort int) error {
@@ -137,10 +137,10 @@ func isConnectionError(err error) bool {
 	return false
 }
 
-func (cmd *scorerSetupCmd) Run(ctx context.Context) error {
+func (cmd *scorerSetupCmd) Run(ctx context.Context, root *RootCmd) error {
 	log := logger.FromContext(ctx)
 
-	dbconn, err := ntpdb.OpenDB(ctx, cmd.ConfigFile)
+	dbconn, err := ntpdb.OpenDB(ctx, root.ConfigFile)
 	if err != nil {
 		return err
 	}

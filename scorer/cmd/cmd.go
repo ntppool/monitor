@@ -18,6 +18,11 @@ type RootCmd struct {
 	Version versionCmd `cmd:"version" help:"Show version"`
 }
 
+// GetConfigFile implements selector.ParentConfig
+func (r *RootCmd) GetConfigFile() string {
+	return r.ConfigFile
+}
+
 type ScorerCmd struct {
 	Run    scorerOnceCmd   `cmd:"run" help:"Run once"`
 	Server scorerServerCmd `cmd:"server" help:"Run continuously"`
@@ -26,16 +31,12 @@ type ScorerCmd struct {
 
 type (
 	scorerOnceCmd struct {
-		ConfigFile  string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-		MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
 	scorerServerCmd struct {
-		ConfigFile  string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-		MetricsPort int    `default:"9000" help:"Metrics server port" flag:"metrics-port"`
+		MetricsPort int `default:"9000" help:"Metrics server port" flag:"metrics-port"`
 	}
-	scorerSetupCmd struct {
-		ConfigFile string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-	}
+	scorerSetupCmd struct{}
 )
 
 type versionCmd struct{}

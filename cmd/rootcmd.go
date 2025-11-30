@@ -10,13 +10,13 @@ import (
 	"github.com/alecthomas/kong"
 )
 
-func Run(cmd any, name, description string) {
+func Run(cmd any, name, description string, options ...kong.Option) {
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM,
 	)
 	defer cancel()
 
-	parser, err := kong.New(cmd,
+	defaultOptions := []kong.Option{
 		kong.Name(name),
 		kong.Description(description),
 		kong.BindTo(ctx, (*context.Context)(nil)),
@@ -24,7 +24,9 @@ func Run(cmd any, name, description string) {
 			Tree: true,
 		}),
 		kong.UsageOnError(),
-	)
+	}
+
+	parser, err := kong.New(cmd, append(defaultOptions, options...)...)
 	if err != nil {
 		log.Printf("error: %v", err)
 		os.Exit(1)

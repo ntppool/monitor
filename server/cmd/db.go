@@ -17,17 +17,16 @@ type dbCmd struct {
 }
 
 type dbMonitorCmd struct {
-	ConfigFile string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-	Name       string `arg:"" help:"monitor name"`
+	Name string `arg:"" help:"monitor name"`
 }
 
-func (cmd *dbMonitorCmd) Run(ctx context.Context) error {
+func (cmd *dbMonitorCmd) Run(ctx context.Context, parent *dbCmd) error {
 	name := cmd.Name
 	if name == "" {
 		return fmt.Errorf("db mon [monitername]")
 	}
 
-	dbconn, err := ntpdb.OpenDB(ctx, cmd.ConfigFile)
+	dbconn, err := ntpdb.OpenDB(ctx, parent.ConfigFile)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,11 @@ import (
 	"go.ntppool.org/monitor/ntpdb"
 )
 
+// ParentConfig provides configuration from the parent command
+type ParentConfig interface {
+	GetConfigFile() string
+}
+
 // Cmd provides the command structure for CLI integration
 type Cmd struct {
 	Server   ServerCmd   `cmd:"server" help:"run continously"`
@@ -39,15 +44,15 @@ type (
 	}
 )
 
-func (cmd ServerCmd) Run(ctx context.Context) error {
-	return Run(ctx, true, cmd.MetricsPort, nil)
+func (cmd ServerCmd) Run(ctx context.Context, parent ParentConfig) error {
+	return run(ctx, parent.GetConfigFile(), true, cmd.MetricsPort, nil)
 }
 
-func (cmd OnceCmd) Run(ctx context.Context) error {
-	return Run(ctx, false, cmd.MetricsPort, cmd.ServerID)
+func (cmd OnceCmd) Run(ctx context.Context, parent ParentConfig) error {
+	return run(ctx, parent.GetConfigFile(), false, cmd.MetricsPort, cmd.ServerID)
 }
 
-func (cmd SimulateCmd) Run(ctx context.Context) error {
+func (cmd SimulateCmd) Run(ctx context.Context, parent ParentConfig) error {
 	log := logger.FromContext(ctx)
 
 	// Set debug level if verbose is enabled
@@ -65,7 +70,7 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 		"verbose", cmd.Verbose)
 
 	// Open database connection
-	dbconn, err := ntpdb.OpenDB(ctx, "database.yaml")
+	dbconn, err := ntpdb.OpenDB(ctx, parent.GetConfigFile())
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -108,13 +113,13 @@ func (cmd SimulateCmd) Run(ctx context.Context) error {
 	return nil
 }
 
-// Run executes the selector logic either continuously or once
-func Run(ctx context.Context, continuous bool, metricsPort int, serverID *int64) error {
+// run executes the selector logic either continuously or once
+func run(ctx context.Context, configFile string, continuous bool, metricsPort int, serverID *int64) error {
 	log := logger.FromContext(ctx)
 
 	log.InfoContext(ctx, "selector starting", "version", version.Version())
 
-	dbconn, err := ntpdb.OpenDB(ctx, "database.yaml")
+	dbconn, err := ntpdb.OpenDB(ctx, configFile)
 	if err != nil {
 		return err
 	}

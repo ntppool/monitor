@@ -11,12 +11,11 @@ import (
 )
 
 type dbCmd struct {
-	ConfigFile   string `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-	ScorerStatus bool   `cmd:"" help:"Show scorer status"`
+	ScorerStatus bool `cmd:"" help:"Show scorer status"`
 }
 
-func (cmd *dbCmd) Run(ctx context.Context) error {
-	dbconn, err := ntpdb.OpenDB(ctx, cmd.ConfigFile)
+func (cmd *dbCmd) Run(ctx context.Context, root *RootCmd) error {
+	dbconn, err := ntpdb.OpenDB(ctx, root.ConfigFile)
 	if err != nil {
 		return err
 	}
