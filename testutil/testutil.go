@@ -62,8 +62,9 @@ func (tdb *TestDB) Context() context.Context {
 // CleanupTestData removes all test data from the database
 func (tdb *TestDB) CleanupTestData(t *testing.T) {
 	// PostgreSQL uses TRUNCATE CASCADE or DELETE with proper ordering
-	// Clean up in reverse dependency order
+	// Clean up in reverse dependency order (scorer_status references monitors)
 	tables := []string{
+		"scorer_status",
 		"server_scores",
 		"log_scores",
 		"servers_monitor_review",
@@ -79,6 +80,9 @@ func (tdb *TestDB) CleanupTestData(t *testing.T) {
 		switch table {
 		case "servers_monitor_review":
 			query = fmt.Sprintf("DELETE FROM %s WHERE server_id >= 1000 AND server_id <= 9999", table)
+		case "scorer_status":
+			// scorer_status uses scorer_id which references monitors
+			query = "DELETE FROM scorer_status WHERE scorer_id >= 2000 AND scorer_id <= 2999"
 		case "system_settings":
 			// System settings uses a different approach - cleaned separately below
 			continue

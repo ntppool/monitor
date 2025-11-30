@@ -5,56 +5,37 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
 echo "=== Starting minimal CI test ==="
 
-# Cleanup any existing containers
-docker rm -f monitor-ci-test-db 2>/dev/null || true
+# Configuration
+DB_NAME="monitor_test"
+DB_USER="monitor"
+DB_PASSWORD="test123"
+DB_HOST="localhost"
+DB_PORT="5432"
 
-# Start MySQL
-echo "Starting MySQL..."
-docker run -d \
-    --name monitor-ci-test-db \
-    -e MYSQL_ROOT_PASSWORD=root \
-    -e MYSQL_DATABASE=monitor_test \
-    -e MYSQL_USER=monitor \
-    -e MYSQL_PASSWORD=test123 \
-    mysql:8.0
+# Setup test database using native PostgreSQL
+echo "Setting up test database..."
+"$SCRIPT_DIR/test-db.sh" restart
 
-# Wait for MySQL
-echo "Waiting for MySQL..."
-sleep 10
+# Export test database URL
+export TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
 # Test connection directly
-echo "Testing direct connection..."
-docker exec monitor-ci-test-db mysql -u monitor -ptest123 -e "SELECT 1" monitor_test
+echo "Testing database connection..."
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1"
 
-# Load schema
-echo "Loading schema..."
-docker exec -i monitor-ci-test-db mysql -u monitor -ptest123 monitor_test < schema.sql
+# Show tables
+echo "Showing tables..."
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c '\dt'
 
-# Run just the integration tests
-echo "Running tests..."
-docker run --rm \
-    --link monitor-ci-test-db:database \
-    -e TEST_DATABASE_URL="monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true" \
-    -v "$(pwd):/app" \
-    -w /app \
-    golang:1.24 \
-    bash -c "
-        # Install mysql client
-        apt-get update && apt-get install -y default-mysql-client
-
-        # Test database connection from golang container
-        echo 'Testing connection from golang container...'
-        mysql -h database -u monitor -ptest123 -e 'SHOW TABLES' monitor_test
-
-        # Run only the integration tests
-        echo 'Running integration tests...'
-        go test -tags=integration -v ./scorer/... ./selector/... -run Integration
-    "
-
-# Cleanup
-echo "Cleaning up..."
-docker rm -f monitor-ci-test-db
+# Run only the integration tests
+echo "Running integration tests..."
+go test -tags=integration -v ./scorer/... ./selector/... -run Integration
 
 echo "=== Test complete ==="

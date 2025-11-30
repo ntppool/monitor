@@ -13,7 +13,6 @@ cd "$PROJECT_ROOT"
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
@@ -29,69 +28,33 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Start MySQL container separately
-print_status "Starting MySQL container..."
-docker run -d \
-    --name monitor-test-db \
-    -e MYSQL_ROOT_PASSWORD=root \
-    -e MYSQL_DATABASE=monitor_test \
-    -e MYSQL_USER=monitor \
-    -e MYSQL_PASSWORD=test123 \
-    -p 3308:3306 \
-    --health-cmd='mysqladmin ping --silent' \
-    --health-interval=10s \
-    --health-timeout=5s \
-    --health-retries=5 \
-    mysql:8.0
+# Configuration
+DB_NAME="monitor_test"
+DB_USER="monitor"
+DB_PASSWORD="test123"
+DB_HOST="localhost"
+DB_PORT="5432"
 
-# Wait for MySQL to be healthy
-print_status "Waiting for MySQL to be healthy..."
-for i in $(seq 1 30); do
-    if docker exec monitor-test-db mysqladmin ping -h localhost --silent >/dev/null 2>&1; then
-        print_success "MySQL is ready!"
-        break
-    fi
-    echo "Waiting for MySQL... ($i/30)"
-    sleep 2
-done
+# Setup test database using native PostgreSQL
+print_status "Setting up test database..."
+"$SCRIPT_DIR/test-db.sh" restart
 
-# Load schema
-print_status "Loading database schema..."
-docker exec -i monitor-test-db mysql -u root -proot monitor_test < schema.sql
+# Export test database URL
+export TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
-# Run tests in a golang container
-print_status "Running tests in golang container..."
-docker run --rm \
-    --name monitor-test-runner \
-    --link monitor-test-db:database \
-    -e TEST_DATABASE_URL="monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true" \
-    -v "$PROJECT_ROOT:/workspace" \
-    -w /workspace \
-    golang:1.24 \
-    bash -c "
-        set -e
-        echo '=== Installing dependencies ==='
-        apt update && apt install -y default-mysql-client git
+print_status "Testing database connection..."
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c 'SELECT 1'
 
-        echo '=== Testing database connection ==='
-        mysql -h database -u monitor -ptest123 -e 'SELECT 1' monitor_test
+print_status "Running go test -v ./... -short..."
+go test -v ./... -short
 
-        echo '=== Running go test -v ./... -short ==='
-        go test -v ./... -short
+print_status "Running make test-integration..."
+make test-integration
 
-        echo '=== Running make test-integration ==='
-        make test-integration
-
-        echo '=== Running go build ./... ==='
-        go build ./...
-    "
+print_status "Running go build ./..."
+go build ./...
 
 EXIT_CODE=$?
-
-# Cleanup
-print_status "Cleaning up..."
-docker stop monitor-test-db >/dev/null 2>&1 || true
-docker rm monitor-test-db >/dev/null 2>&1 || true
 
 if [ $EXIT_CODE -eq 0 ]; then
     print_success "All tests passed!"

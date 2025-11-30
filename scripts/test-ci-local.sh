@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to run CI-like tests locally using Docker Compose
+# Script to run CI-like tests locally using native PostgreSQL
 # This emulates the Drone CI environment
 
 set -e
@@ -33,41 +33,49 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-# Function to cleanup containers
+# Configuration
+DB_NAME="monitor_test"
+DB_USER="monitor"
+DB_PASSWORD="test123"
+DB_HOST="localhost"
+DB_PORT="5432"
+
+# Function to cleanup
 cleanup() {
-    print_status "Cleaning up containers..."
-    docker-compose -f docker-compose.test.yml down -v || true
+    print_status "Cleaning up..."
+    "$SCRIPT_DIR/test-db.sh" stop 2>/dev/null || true
 }
 
-# Set trap to cleanup on exit
-trap cleanup EXIT
-
-# Check if Docker is running
-if ! docker info >/dev/null 2>&1; then
-    print_error "Docker is not running. Please start Docker and try again."
-    exit 1
-fi
+# Set trap to cleanup on exit (optional - comment out to keep DB running)
+# trap cleanup EXIT
 
 print_status "Starting CI-like test environment..."
 
-# Stop any existing containers
-cleanup
+# Start the test database
+print_status "Setting up test database..."
+"$SCRIPT_DIR/test-db.sh" restart
 
-# Start the test environment
-print_status "Starting database and test runner..."
-docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test-runner
+# Export test database URL
+export TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
-# Check exit code
+# Run the build
+print_status "Building project..."
+go build ./...
+
+# Run short tests
+print_status "Running short tests..."
+go test -v ./... -short
+
+# Run integration tests
+print_status "Running integration tests..."
+make test-integration
+
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
     print_success "All tests passed!"
 else
     print_error "Tests failed with exit code: $EXIT_CODE"
-
-    # Show logs for debugging
-    print_status "Showing recent logs..."
-    docker-compose -f docker-compose.test.yml logs --tail=100
 fi
 
 exit $EXIT_CODE

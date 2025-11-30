@@ -5,9 +5,21 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
 echo "=== CI Diagnostic Script ==="
 echo "This script will run each CI step individually to help diagnose failures"
 echo ""
+
+# Configuration
+DB_NAME="monitor_test"
+DB_USER="monitor"
+DB_PASSWORD="test123"
+DB_HOST="localhost"
+DB_PORT="5432"
 
 # Function to run a command and check its result
 run_step() {
@@ -28,85 +40,30 @@ run_step() {
     echo ""
 }
 
-# Check for existing database on port 3308
-if lsof -i :3308 >/dev/null 2>&1; then
-    echo "❌ ERROR: Port 3308 is already in use. Another database may be running."
-    echo "You can stop the existing database with: make test-db-stop"
-    exit 1
-fi
+# Setup test database using native PostgreSQL
+echo "Setting up test database..."
+"$SCRIPT_DIR/test-db.sh" restart
 
-# Clean up any existing containers
-echo "Cleaning up existing containers..."
-docker rm -f ci-diag-mysql 2>/dev/null || true
-
-# Start MySQL
-echo "Starting MySQL container..."
-docker run -d \
-    --name ci-diag-mysql \
-    -e MYSQL_ROOT_PASSWORD=root \
-    -e MYSQL_DATABASE=monitor_test \
-    -e MYSQL_USER=monitor \
-    -e MYSQL_PASSWORD=test123 \
-    -p 3308:3306 \
-    mysql:8.0
-
-# Wait for MySQL to be ready
-echo "Waiting for MySQL to start..."
-sleep 15
+# Export test database URL
+export TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
 # Run diagnostic steps
-run_step "Test MySQL root connection" \
-    "docker exec ci-diag-mysql mysql -u root -proot -e 'SELECT 1'"
-
-run_step "Test MySQL monitor user connection" \
-    "docker exec ci-diag-mysql mysql -u monitor -ptest123 -e 'SELECT 1' monitor_test"
-
-run_step "Load schema into database" \
-    "docker exec -i ci-diag-mysql mysql -u monitor -ptest123 monitor_test < schema.sql"
+run_step "Test PostgreSQL connection" \
+    "PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c 'SELECT 1'"
 
 run_step "Verify tables exist" \
-    "docker exec ci-diag-mysql mysql -u monitor -ptest123 -e 'SHOW TABLES' monitor_test"
+    "PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c '\dt'"
 
-# Now test from a golang container
-echo "Testing from golang container (like CI)..."
+run_step "Check Go environment" \
+    "go version"
 
-run_step "Run golang container test" \
-    "docker run --rm \
-        --link ci-diag-mysql:database \
-        -v $(pwd):/workspace \
-        -w /workspace \
-        golang:1.24 \
-        bash -c '
-            echo \"Installing mysql-client...\"
-            apt-get update >/dev/null 2>&1 && apt-get install -y default-mysql-client >/dev/null 2>&1
+run_step "Run simple Go test" \
+    "go test -v -run TestGetServerName ./api"
 
-            echo \"Testing connection to database...\"
-            mysql -h database -u monitor -ptest123 -e \"SELECT 1\" monitor_test
+run_step "Run short tests" \
+    "go test -v -short ./api"
 
-            echo \"Checking Go environment...\"
-            go version
-
-            echo \"Running simple Go test...\"
-            go test -v -run TestGetServerName ./api
-        '"
-
-# Test with exact CI environment variables
-run_step "Test with CI environment" \
-    "docker run --rm \
-        --link ci-diag-mysql:database \
-        -e TEST_DATABASE_URL='monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true' \
-        -e GOCACHE=/cache/pkg/cache \
-        -e GOMODCACHE=/cache/pkg/mod \
-        -v $(pwd):/workspace \
-        -w /workspace \
-        golang:1.24 \
-        bash -c '
-            mkdir -p /cache/pkg/cache /cache/pkg/mod
-            go test -v -short ./api
-        '"
-
-# Clean up
-echo "Cleaning up..."
-docker rm -f ci-diag-mysql
+run_step "Build project" \
+    "go build ./..."
 
 echo "=== Diagnostic complete ==="

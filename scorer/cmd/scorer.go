@@ -125,7 +125,7 @@ func isConnectionError(err error) bool {
 		"no such host",
 		"connection timed out",
 		"Too many connections",
-		"Can't connect to MySQL server",
+		"connection refused",
 	}
 
 	for _, pattern := range connectionErrors {

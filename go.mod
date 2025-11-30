@@ -34,7 +34,7 @@ require (
 	github.com/samber/slog-echo v1.18.0
 	github.com/stretchr/testify v1.11.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.6.2
+	go.ntppool.org/common v0.6.3-0.20251129195245-283d3936f6d0
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.63.0

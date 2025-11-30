@@ -69,9 +69,7 @@ func int32Ptr(v int32) *int32 {
 	return &v
 }
 
-func int64Ptr(v int64) *int64 {
-	return &v
-}
+// int64Ptr is defined in helpers_test.go
 
 func TestSelectorIntegration_CompleteFlow(t *testing.T) {
 	t.Skip("Integration tests require database setup")

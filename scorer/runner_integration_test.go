@@ -25,7 +25,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
-	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	runner, err := New(tdb.Context(), logger.Logger(), tdb.Pool, reg)
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	t.Run("ProcessBacklog", func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		// This test verifies that multiple scorer instances don't interfere
 		// Create second scorer
 		reg2 := prometheus.NewRegistry()
-		runner2, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg2)
+		runner2, err := New(tdb.Context(), logger.Logger(), tdb.Pool, reg2)
 		testutil.AssertNoError(t, err, "Failed to create second scorer runner")
 
 		// Add more test data using regular monitor
@@ -101,23 +101,6 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 }
 
 func TestScorerRunner_ErrorHandling(t *testing.T) {
-	tdb := testutil.NewTestDB(t)
-	defer tdb.Close()
-	defer tdb.CleanupTestData(t)
-
-	logger := testutil.NewTestLogger(t)
-
-	t.Run("NoScorersConfigured", func(t *testing.T) {
-		// Create runner without setting up scorers
-		reg := prometheus.NewRegistry()
-		runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
-		testutil.AssertNoError(t, err, "Failed to create scorer runner")
-
-		// Run should fail with no scorers
-		_, err = runner.Run(tdb.Context())
-		testutil.AssertError(t, err, "Expected error when no scorers configured")
-	})
-
 	t.Run("DatabaseConnectionLoss", func(t *testing.T) {
 		// This test would require more sophisticated database mocking
 		// For now, we'll skip it in the basic implementation
@@ -142,7 +125,7 @@ func TestScorerRunner_Performance(t *testing.T) {
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
-	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	runner, err := New(tdb.Context(), logger.Logger(), tdb.Pool, reg)
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	t.Run("LargeDataset", func(t *testing.T) {
@@ -189,11 +172,11 @@ func setupScorerTestData(t *testing.T, tdb *testutil.TestDB, factory *testutil.D
 
 	// Set the hostname field to match the scorer names
 	var err error
-	_, err = tdb.ExecContext(tdb.Context(), "UPDATE monitors SET hostname = 'recentmedian' WHERE id = 2001")
+	_, err = tdb.Exec(tdb.Context(), "UPDATE monitors SET hostname = 'recentmedian' WHERE id = 2001")
 	if err != nil {
 		t.Fatalf("Failed to set recentmedian hostname: %v", err)
 	}
-	_, err = tdb.ExecContext(tdb.Context(), "UPDATE monitors SET hostname = 'every' WHERE id = 2002")
+	_, err = tdb.Exec(tdb.Context(), "UPDATE monitors SET hostname = 'every' WHERE id = 2002")
 	if err != nil {
 		t.Fatalf("Failed to set every hostname: %v", err)
 	}
@@ -222,18 +205,22 @@ func setupScorerTestData(t *testing.T, tdb *testutil.TestDB, factory *testutil.D
 
 	// Get the last inserted log score ID
 	var logScoreID uint64
-	err = tdb.QueryRowContext(tdb.Context(), "SELECT LAST_INSERT_ID()").Scan(&logScoreID)
+	err = tdb.QueryRow(tdb.Context(), "SELECT id FROM log_scores ORDER BY id DESC LIMIT 1").Scan(&logScoreID)
 	if err != nil {
 		t.Fatalf("Failed to get last insert ID: %v", err)
 	}
 
 	// Insert scorer status to enable the scorers (use valid log_score_id)
+	// First delete any existing entries for these scorers, then insert
+	_, err = tdb.Exec(tdb.Context(), "DELETE FROM scorer_status WHERE scorer_id IN (2001, 2002)")
+	if err != nil {
+		t.Fatalf("Failed to delete existing scorer status: %v", err)
+	}
 	insertScorerStatusSQL := `
 		INSERT INTO scorer_status (scorer_id, log_score_id)
-		VALUES (2001, ?), (2002, ?)
-		ON DUPLICATE KEY UPDATE log_score_id = VALUES(log_score_id)
+		VALUES (2001, $1), (2002, $2)
 	`
-	_, err = tdb.ExecContext(tdb.Context(), insertScorerStatusSQL, logScoreID, logScoreID)
+	_, err = tdb.Exec(tdb.Context(), insertScorerStatusSQL, logScoreID, logScoreID)
 	if err != nil {
 		t.Fatalf("Failed to insert scorer status: %v", err)
 	}

@@ -25,11 +25,11 @@ make test-all
 
 ### Test Database Script
 
-The `test-db.sh` script manages a MySQL database in Docker for integration testing:
+The `test-db.sh` script manages a PostgreSQL database for integration testing:
 
-- **Database**: `monitor_test` on port 3308
+- **Database**: `monitor_test` on port 5432
 - **User**: `monitor` / `test123`
-- **Container**: `ntpmonitor-test-db`
+- **Requires**: PostgreSQL running on localhost
 
 #### Commands
 
@@ -38,7 +38,7 @@ The `test-db.sh` script manages a MySQL database in Docker for integration testi
 ./scripts/test-db.sh stop       # Stop and remove database
 ./scripts/test-db.sh restart    # Restart database
 ./scripts/test-db.sh status     # Show database status
-./scripts/test-db.sh shell      # Open MySQL shell
+./scripts/test-db.sh shell      # Open psql shell
 ./scripts/test-db.sh reset      # Reset with fresh data
 ```
 
@@ -99,7 +99,7 @@ Test cleanup is automatic via `defer tdb.CleanupTestData(t)` which:
 ### Drone CI Pipeline
 
 The `.drone.yml` includes:
-- MySQL service container
+- PostgreSQL service container
 - Database schema loading
 - Unit test execution
 - Integration test execution
@@ -195,7 +195,7 @@ TEST_DATABASE_URL="..." go test ./scorer/cmd -tags=integration -v
 
 # Check test data
 ./scripts/test-db.sh shell
-mysql> SELECT * FROM monitors WHERE id >= 2000;
+monitor_test=> SELECT * FROM monitors WHERE id >= 2000;
 ```
 
 ### Performance Issues
@@ -256,11 +256,10 @@ func TestNewFeature_Load(t *testing.T) {
 - `GOMAXPROCS`: Control CPU usage in tests
 - `GOGC`: Control garbage collection in performance tests
 
-## Docker Dependencies
+## Dependencies
 
-- **MySQL 8.0**: Test database
-- **Docker**: Container runtime
-- **Docker Compose**: Multi-service testing (future)
+- **PostgreSQL 17+**: Test database
+- **psql**: PostgreSQL client for shell access
 
 ## Future Enhancements
 
