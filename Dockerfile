@@ -1,4 +1,4 @@
-FROM alpine:3.21.3
+FROM alpine:3.22
 
 RUN apk --no-cache upgrade
 RUN apk --no-cache add ca-certificates tzdata zsh jq tmux curl
