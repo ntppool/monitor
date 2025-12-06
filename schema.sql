@@ -2,7 +2,6 @@
 -- PostgreSQL database dump
 --
 
-\restrict hegjoDWhYzb1G6uvHNQIG8SW7N0XtgNb8RuzztjhPsk20m2SllImVX6pMvgL1F3
 
 -- Dumped from database version 18.1 (Postgres.app)
 -- Dumped by pg_dump version 18.1 (Postgres.app)
@@ -111,6 +110,38 @@ CREATE TYPE public.server_scores_status AS ENUM (
 CREATE TYPE public.servers_ip_version AS ENUM (
     'v4',
     'v6'
+);
+
+
+--
+-- Name: service_ip_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.service_ip_type AS ENUM (
+    'service',
+    'anycast',
+    'management'
+);
+
+
+--
+-- Name: service_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.service_type AS ENUM (
+    'dns'
+);
+
+
+--
+-- Name: services_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.services_status AS ENUM (
+    'pending',
+    'active',
+    'paused',
+    'deleted'
 );
 
 
@@ -341,6 +372,16 @@ ALTER SEQUENCE public.api_keys_id_seq OWNED BY public.api_keys.id;
 CREATE TABLE public.api_keys_monitors (
     api_key_id bigint NOT NULL,
     monitor_id bigint NOT NULL
+);
+
+
+--
+-- Name: api_keys_services; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_keys_services (
+    api_key_id bigint NOT NULL,
+    service_id bigint NOT NULL
 );
 
 
@@ -1063,6 +1104,66 @@ CREATE TABLE public.servers_monitor_review (
 
 
 --
+-- Name: service_ips; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.service_ips (
+    id bigint NOT NULL,
+    service_id bigint NOT NULL,
+    ip inet NOT NULL,
+    ip_type public.service_ip_type NOT NULL,
+    created_on timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: service_ips_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.service_ips ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.service_ips_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: services; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.services (
+    id bigint NOT NULL,
+    id_token character varying(36) NOT NULL,
+    account_id bigint,
+    type public.service_type NOT NULL,
+    name character varying(255) NOT NULL,
+    hostname character varying(255),
+    status public.services_status DEFAULT 'pending'::public.services_status NOT NULL,
+    config jsonb,
+    last_seen timestamp with time zone,
+    created_on timestamp with time zone DEFAULT now() NOT NULL,
+    modified_on timestamp with time zone
+);
+
+
+--
+-- Name: services_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.services ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.services_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: system_settings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1255,7 +1356,8 @@ CREATE TABLE public.users (
     name character varying(255),
     username character varying(40),
     public_profile boolean DEFAULT false NOT NULL,
-    deletion_on timestamp with time zone
+    deletion_on timestamp with time zone,
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
@@ -1642,6 +1744,14 @@ ALTER TABLE ONLY public.api_keys
 
 
 --
+-- Name: api_keys_services api_keys_services_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_services
+    ADD CONSTRAINT api_keys_services_pkey PRIMARY KEY (api_key_id, service_id);
+
+
+--
 -- Name: combust_cache combust_cache_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1831,6 +1941,38 @@ ALTER TABLE ONLY public.servers_monitor_review
 
 ALTER TABLE ONLY public.servers
     ADD CONSTRAINT servers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: service_ips service_ips_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_ips
+    ADD CONSTRAINT service_ips_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: services services_id_token_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_id_token_key UNIQUE (id_token);
+
+
+--
+-- Name: services services_name_type_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_name_type_key UNIQUE (name, type);
+
+
+--
+-- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_pkey PRIMARY KEY (id);
 
 
 --
@@ -2488,6 +2630,13 @@ CREATE INDEX idx_18395_parent ON public.zones USING btree (parent_id);
 
 
 --
+-- Name: idx_api_keys_services_service; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_api_keys_services_service ON public.api_keys_services USING btree (service_id);
+
+
+--
 -- Name: idx_emails_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2548,6 +2697,41 @@ CREATE INDEX idx_precheck_tokens_active ON public.server_precheck_tokens USING b
 --
 
 CREATE INDEX idx_precheck_tokens_cleanup ON public.server_precheck_tokens USING btree (expires_on);
+
+
+--
+-- Name: idx_service_ips_ip; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_service_ips_ip ON public.service_ips USING btree (ip);
+
+
+--
+-- Name: idx_service_ips_service_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_service_ips_service_id ON public.service_ips USING btree (service_id);
+
+
+--
+-- Name: idx_services_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_services_account_id ON public.services USING btree (account_id);
+
+
+--
+-- Name: idx_services_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_services_status ON public.services USING btree (status);
+
+
+--
+-- Name: idx_services_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_services_type ON public.services USING btree (type);
 
 
 --
@@ -2627,6 +2811,22 @@ ALTER TABLE ONLY public.api_keys_monitors
 
 ALTER TABLE ONLY public.api_keys_monitors
     ADD CONSTRAINT api_keys_monitors_monitors_fk FOREIGN KEY (monitor_id) REFERENCES public.monitors(id);
+
+
+--
+-- Name: api_keys_services api_keys_services_api_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_services
+    ADD CONSTRAINT api_keys_services_api_key_id_fkey FOREIGN KEY (api_key_id) REFERENCES public.api_keys(id) ON DELETE CASCADE;
+
+
+--
+-- Name: api_keys_services api_keys_services_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_keys_services
+    ADD CONSTRAINT api_keys_services_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id) ON DELETE CASCADE;
 
 
 --
@@ -2838,6 +3038,22 @@ ALTER TABLE ONLY public.servers
 
 
 --
+-- Name: service_ips service_ips_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_ips
+    ADD CONSTRAINT service_ips_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id) ON DELETE CASCADE;
+
+
+--
+-- Name: services services_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+
+
+--
 -- Name: user_equipment_applications user_equipment_applications_user_id; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2933,5 +3149,3 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict hegjoDWhYzb1G6uvHNQIG8SW7N0XtgNb8RuzztjhPsk20m2SllImVX6pMvgL1F3

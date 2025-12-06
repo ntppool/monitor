@@ -1,6 +1,6 @@
 version: "2"
 sql:
-  - schema: "../api/db/migrations/"
+  - schema: "schema.sql"
     queries: "query.sql"
     engine: "postgresql"
     strict_order_by: false
