@@ -106,6 +106,9 @@ nfpms:
     # No global dependencies - each format specifies its own
     bindir: /usr/bin
 
+    replaces:
+      - ntppool-monitor
+
     overrides:
       deb:
         dependencies:
