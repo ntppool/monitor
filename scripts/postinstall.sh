@@ -42,6 +42,16 @@ WantedBy=multi-user.target
 EOF
 fi
 
+# Disable and stop any old ntppool-monitor units
+# Note: systemctl output has status indicator (●) in column 1 for failed units,
+# so we grep for the actual unit name pattern instead of using awk column
+for unit in $(systemctl list-units --all --no-legend 'ntppool-monitor@*' 2>/dev/null | grep -oE 'ntppool-monitor@[^[:space:]]+'); do
+    systemctl disable --now "$unit" 2>/dev/null || true
+done
+
+# Clear any failed/ghost unit records for old ntppool-monitor
+systemctl reset-failed 'ntppool-monitor@*' 2>/dev/null || true
+
 # Reload systemd and restart services
 systemctl daemon-reload
 systemctl restart 'ntppool-agent@*'
