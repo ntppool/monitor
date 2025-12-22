@@ -60,7 +60,12 @@ Show version information.
 Show context-sensitive help.
 .TP
 .B \-\-debug
-Enable debug logging.
+Enable debug logging. Overrides both stderr and OTLP log levels to debug.
+.TP
+.B \-\-log\-level=\fILEVEL\fR
+Set log level for stderr output (debug, info, warn, error). Can also be set via the
+.B MONITOR_LOG_LEVEL
+environment variable. Default: info.
 .TP
 .B \-\-state\-dir=\fIDIR\fR
 Directory for storing state files. Can also be set via the
@@ -87,6 +92,9 @@ Directory for storing persistent state and configuration files. Equivalent to th
 .TP
 .B MONITOR_DEBUG
 Enable debug logging when set to "true". Equivalent to the \-\-debug flag.
+.TP
+.B MONITOR_LOG_LEVEL
+Set log level for stderr output (debug, info, warn, error). Equivalent to the \-\-log\-level flag. Default: info.
 .TP
 .B MONITOR_DEBUG_NTP_QUERIES
 Enable verbose NTP query debug logging when set to "true". Shows detailed information for each NTP query including RTT, offset, and error details.
