@@ -12,11 +12,12 @@ import (
 )
 
 type MonitorConfig struct {
-	Samples    int32    `json:"samples"`
-	NatIP      string   `json:"nat_ip,omitempty"` // have the monitor bind to a different IP
-	BaseChecks []string `json:"base_checks,omitempty"`
-	ip         string
-	MQTT       *checkconfig.MQTTConfig
+	Samples      int32    `json:"samples"`
+	NatIP        string   `json:"nat_ip,omitempty"` // have the monitor bind to a different IP
+	BaseChecks   []string `json:"base_checks,omitempty"`
+	OtlpLogLevel string   `json:"otlp_log_level,omitempty"`
+	ip           string
+	MQTT         *checkconfig.MQTTConfig
 }
 
 func (m *Monitor) IsLive() bool {
@@ -57,7 +58,8 @@ func (m *Monitor) getConfig(conf []byte) (*MonitorConfig, error) {
 
 func (cfg *MonitorConfig) APIv2() (*apiv2.GetConfigResponse, error) {
 	rcfg := &apiv2.GetConfigResponse{
-		Samples: cfg.Samples,
+		Samples:      cfg.Samples,
+		OtlpLogLevel: cfg.OtlpLogLevel,
 	}
 
 	if len(cfg.BaseChecks) > 0 {
@@ -121,7 +123,8 @@ func (cfg *MonitorConfig) PbConfig() (*pb.Config, error) {
 
 func (cfg *MonitorConfig) ApiConfig() (*apiv2.GetConfigResponse, error) {
 	rcfg := &apiv2.GetConfigResponse{
-		Samples: cfg.Samples,
+		Samples:      cfg.Samples,
+		OtlpLogLevel: cfg.OtlpLogLevel,
 	}
 
 	if len(cfg.BaseChecks) > 0 {

@@ -79,6 +79,10 @@ type AppConfig interface {
 
 	// Configuration change notifications
 	WaitForConfigChange(ctx context.Context) *ConfigChangeWaiter
+
+	// OTLP log level cached from server config
+	CachedOtlpLogLevel() string
+	SetCachedOtlpLogLevel(level string) error
 }
 
 type IPConfig struct {
@@ -96,10 +100,11 @@ type appConfig struct {
 	}
 
 	Data struct {
-		Name    string
-		TLSName string
-		IPv4    IPConfig
-		IPv6    IPConfig
+		Name         string
+		TLSName      string
+		IPv4         IPConfig
+		IPv6         IPConfig
+		OtlpLogLevel string // Cached from last gRPC config
 	}
 	DataSha string
 
@@ -697,6 +702,28 @@ func (ac *appConfig) IPv6() IPConfig {
 	ac.lock.RLock()
 	defer ac.lock.RUnlock()
 	return ac.Data.IPv6
+}
+
+// CachedOtlpLogLevel returns the server-configured OTLP log level cached from
+// the last gRPC config response. Thread-safe for concurrent reads.
+// Returns empty string if no level has been cached.
+func (ac *appConfig) CachedOtlpLogLevel() string {
+	ac.lock.RLock()
+	defer ac.lock.RUnlock()
+	return ac.Data.OtlpLogLevel
+}
+
+// SetCachedOtlpLogLevel updates the cached OTLP log level and persists it to
+// state.json. Thread-safe. Skips save if level unchanged.
+func (ac *appConfig) SetCachedOtlpLogLevel(level string) error {
+	ac.lock.Lock()
+	if ac.Data.OtlpLogLevel == level {
+		ac.lock.Unlock()
+		return nil
+	}
+	ac.Data.OtlpLogLevel = level
+	ac.lock.Unlock()
+	return ac.save()
 }
 
 func (ipconfig IPConfig) IsLive() bool {

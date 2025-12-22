@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ type ClientCmd struct {
 	Config config.AppConfig `kong:"-"`
 
 	Debug    bool   `name:"debug" help:"Enable debug logging"`
+	LogLevel string `name:"log-level" env:"MONITOR_LOG_LEVEL" default:"info" help:"Log level for stderr (debug, info, warn, error)"`
 	StateDir string `name:"state-dir" env:"MONITOR_STATE_DIR" help:"Directory for storing state"`
 
 	DeployEnv depenv.DeploymentEnvironment `name:"env" short:"e" aliases:"deploy-env" required:"" default:"test" env:"DEPLOYMENT_MODE" help:"Deployment environment (prod, test, devel)"`
@@ -116,7 +118,23 @@ func (c *ClientCmd) BeforeApply() error {
 }
 
 func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
+	// Configuration initialization order:
+	// 1. Apply local stderr log level from CLI flag
+	// 2. Apply --debug override for both stderr and OTLP
+	// 3. Load AppConfig from disk (includes cached OTLP level)
+	// 4. Apply cached OTLP level unless --debug already set it
+
+	// 1. Apply --log-level for stderr
+	if level, err := logger.ParseLevel(c.LogLevel); err != nil {
+		return fmt.Errorf("invalid log level %q: %w (valid: debug, info, warn, error)", c.LogLevel, err)
+	} else {
+		logger.SetLevel(level)
+	}
+
+	// 2. --debug overrides BOTH stderr AND OTLP to DEBUG
 	if c.Debug {
+		logger.SetLevel(slog.LevelDebug)
+		logger.SetOTLPLevel(slog.LevelDebug)
 		if err := os.Setenv("MONITOR_DEBUG", "true"); err != nil {
 			return fmt.Errorf("failed to set MONITOR_DEBUG environment variable: %w", err)
 		}
@@ -160,6 +178,15 @@ func (c *ClientCmd) AfterApply(kctx *kong.Context, ctx context.Context) error {
 	c.Config, err = config.NewAppConfig(ctx, c.DeployEnv, c.StateDir, false)
 	if err != nil {
 		return err
+	}
+
+	// Apply cached OTLP level from last server config (unless --debug overrode it)
+	if !c.Debug {
+		if cachedLevel := c.Config.CachedOtlpLogLevel(); cachedLevel != "" {
+			if level, err := logger.ParseLevel(cachedLevel); err == nil {
+				logger.SetOTLPLevel(level)
+			}
+		}
 	}
 
 	return nil

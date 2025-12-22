@@ -30,6 +30,7 @@ message GetConfigResponse {
   bytes ip_nat_bytes = 3;
   repeated bytes base_checks = 4;
   MQTTConfig mqtt_config = 5;
+  string otlp_log_level = 6; // Log level for OTLP stream (debug, info, warn, error)
 }
 
 message MQTTConfig {

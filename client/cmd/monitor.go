@@ -332,6 +332,22 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 				mqconfigger.SetConfigFromApi(cfgresp)
 				monconf.SetConfigFromApi(cfgresp)
 
+				// Apply OTLP log level from server config
+				// Empty level means server has no preference, keep current setting
+				if level := monconf.OtlpLogLevel(); level != "" {
+					if parsed, err := logger.ParseLevel(level); err != nil {
+						log.WarnContext(ctx, "invalid OTLP log level from server config",
+							"level", level, "err", err)
+					} else {
+						logger.SetOTLPLevel(parsed)
+					}
+					// Cache for next startup (even if invalid, so we can see server's intent)
+					if err := appConfig.SetCachedOtlpLogLevel(level); err != nil {
+						log.WarnContext(ctx, "failed to cache OTLP log level",
+							"level", level, "err", err)
+					}
+				}
+
 				// Only signal completion on first run if we have valid BaseChecks for LocalOK
 				if firstRun {
 					if cfgresp != nil && len(cfgresp.BaseChecks) > 0 {

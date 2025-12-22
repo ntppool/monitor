@@ -25,3 +25,10 @@ If you installed from the .deb or .rpm package, you can start
 the test monitor with
 
    sudo systemctl enable --now ntppool-agent@test
+
+## Logging
+
+Control local log verbosity with `--log-level` flag or `MONITOR_LOG_LEVEL`
+environment variable. Valid levels: debug, info, warn, error.
+
+Example: `ntppool-agent --log-level=debug --env=test monitor`

@@ -45,8 +45,9 @@ type ConfigProvider interface {
 }
 
 type Configger struct {
-	cfg     *Config
-	lastSet time.Time
+	cfg          *Config
+	lastSet      time.Time
+	otlpLogLevel string
 	sync.RWMutex
 }
 
@@ -104,6 +105,16 @@ func (c *Configger) SetConfigFromApi(cfg *apiv2.GetConfigResponse) {
 	if c.cfg.MQTTConfig == nil && mqtt != nil {
 		c.cfg.MQTTConfig = mqtt
 	}
+
+	// Store the OTLP log level (caller handles applying and persisting)
+	c.otlpLogLevel = cfg.GetOtlpLogLevel()
+}
+
+// OtlpLogLevel returns the server-configured OTLP log level
+func (c *Configger) OtlpLogLevel() string {
+	c.RLock()
+	defer c.RUnlock()
+	return c.otlpLogLevel
 }
 
 func (c *Configger) SetConfigFromPb(cfg *pb.Config) {
