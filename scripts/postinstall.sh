@@ -1,5 +1,17 @@
 #!/bin/sh
 
+# Check if systemctl is available and systemd is running
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo "systemctl not found, skipping systemd configuration"
+    exit 0
+fi
+
+# Check if systemd is actually running (not just installed)
+if ! systemctl --version >/dev/null 2>&1; then
+    echo "systemd not running, skipping systemd configuration"
+    exit 0
+fi
+
 # Function to get systemd version
 get_systemd_version() {
     systemctl --version | head -1 | awk '{print $2}'
