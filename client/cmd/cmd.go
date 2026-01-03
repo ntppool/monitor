@@ -18,6 +18,10 @@ import (
 
 func init() {
 	logger.ConfigPrefix = "MONITOR"
+
+	// Set OTEL service name early, before any OTEL components are initialized.
+	// This ensures both logger and tracer providers use the correct service name.
+	os.Setenv("OTEL_SERVICE_NAME", "ntppool-agent")
 }
 
 type ClientCmd struct {

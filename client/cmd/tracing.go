@@ -37,7 +37,6 @@ func InitTracing(ctx context.Context, deployEnv depenv.DeploymentEnvironment, tl
 
 	tpShutdownFn, err := tracing.InitTracer(ctx,
 		&tracing.TracerConfig{
-			ServiceName:         "monitor",
 			Environment:         deployEnv.String(),
 			RootCAs:             capool,
 			CertificateProvider: tlsAuth.GetClientCertificate,
