@@ -10,7 +10,7 @@ devel/
 
 # Generated man page (source is man/ntppool-agent.1.template)
 man/ntppool-agent.1
-
+.tags
 
 devspace.yaml
 devspace_start.sh
