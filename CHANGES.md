@@ -1,6 +1,6 @@
 # NTP Pool Monitor Changes
 
-## Unreleased
+## v4.1.2
 
 ### Client
 - **Configurable log levels**: New `--log-level` flag and `MONITOR_LOG_LEVEL` env var for stderr; OTLP log level is server-controlled via gRPC config and cached to state.json; `--debug` overrides both to DEBUG
@@ -11,6 +11,10 @@
 
 ### API
 - New internal CA
+
+### Build
+- Build with Go 1.26 and refresh dependencies
+- Migrate CI from Drone to Woodpecker
 
 ## v4.1.1
 
