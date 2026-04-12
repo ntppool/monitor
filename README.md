@@ -15,7 +15,21 @@ sudo apt install -y ntppool-agent
 for f in test prod; do
   sudo systemctl enable --now ntppool-agent@$f;
 done
+```
 
+Register the agent for each environment you enabled and follow
+the instructions the `setup` command prints (it'll show a URL to
+complete registration in the web UI):
+
+```
+sudo -u ntpmon ntppool-agent --env test setup
+sudo -u ntpmon ntppool-agent --env prod setup
+```
+
+Once registration is complete, watch the logs to confirm the agent
+is running:
+
+```
 sudo journalctl -u ntppool-agent@\* -f
 ```
 
@@ -71,7 +85,7 @@ See **[plans/](plans/)** directory for comprehensive implementation planning:
 - **Archive** - Historical context from completed implementations
 
 ### Project Documentation
-- **[LLM_CODING_AGENT.md](LLM_CODING_AGENT.md)** - Comprehensive developer guidelines and architectural patterns
+- **[AGENTS.md](AGENTS.md)** / **[CLAUDE.md](CLAUDE.md)** - Developer guidelines and architectural patterns
 - **[plans/README.md](plans/README.md)** - Planning documentation overview and status summary
 
 ### Monitor Types
