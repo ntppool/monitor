@@ -11,5 +11,5 @@ fi
 
 for f in dist/*.rpm dist/*.deb; do
   echo Uploading $f
-  curl -sf -F package=@$f https://${FURY_TOKEN}@push.fury.io/${account}/
+  curl -Ssf -F package=@$f https://${FURY_TOKEN}@push.fury.io/${account}/
 done

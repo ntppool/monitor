@@ -1,0 +1,157 @@
+when:
+  - event: [push, tag, pull_request, manual]
+
+variables:
+  - &go_env
+    GOMODCACHE: /go/pkg/mod
+    GOCACHE: /go/pkg/cache
+  - &go_volumes
+    - go-pkg:/go/pkg
+
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      tags: true
+
+services:
+  - name: database
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: monitor_test
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: test123
+
+steps:
+  - name: generate-tags
+    image: ghcr.io/abh/woodpecker-docker-tags-plugin:0.2.1-abh
+    depends_on: []
+    settings:
+      tags: |
+        branch
+        raw -v build-${CI_PIPELINE_NUMBER}
+        raw -v ${CI_COMMIT_SHA:0:7}
+        semver --auto
+
+  - name: test
+    image: golang:1.26
+    pull: true
+    depends_on: []
+    environment:
+      <<: *go_env
+      TEST_DATABASE_URL: monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true
+    volumes: *go_volumes
+    commands:
+      - apt update && apt install -y default-mysql-client git
+      - go build ./...
+      - |
+        echo "Waiting for database to be ready..."
+        for i in $(seq 1 30); do
+          if mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false -e "SELECT 1" monitor_test 2>/dev/null; then
+            echo "Database is ready!"
+            break
+          fi
+          echo "Waiting for database... ($i/30)"
+          sleep 2
+        done
+      - mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false monitor_test < schema.sql
+      - go test -v ./... -short
+      - make test-integration
+      - echo OK
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 128Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+
+  - name: goreleaser
+    image: golang:1.26
+    pull: true
+    depends_on: [test]
+    environment:
+      <<: *go_env
+      GITHUB_TOKEN:
+        from_secret: GITHUB_TOKEN
+    volumes: *go_volumes
+    commands:
+      - apt update && apt install -y git
+      - ./scripts/run-goreleaser
+      - echo Done
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 10000m
+            memory: 2Gi
+          limits:
+            cpu: 16000m
+            memory: 8Gi
+
+  - name: docker
+    image: woodpeckerci/plugin-kaniko
+    pull: true
+    depends_on: [goreleaser, generate-tags]
+    settings:
+      registry: harbor.ntppool.org
+      repo: ntppool/monitor-api
+      cache: true
+      username:
+        from_secret: harbor_username
+      password:
+        from_secret: harbor_password
+
+  - name: upload
+    image: woodpeckerci/plugin-s3
+    depends_on: [goreleaser]
+    settings:
+      access_key:
+        from_secret: s3_access_key
+      secret_key:
+        from_secret: s3_secret_key
+      bucket: ntp-releases
+      target: /ntppool-agent/builds/test/${CI_PIPELINE_NUMBER}
+      source: dist/*
+      strip_prefix: dist/
+      endpoint: https://c3.hkga.ntp.dev/
+      path_style: true
+    when:
+      - event: push
+        branch: main
+      - event: tag
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+
+  - name: fury-publish
+    image: golang:1.26
+    pull: true
+    depends_on: [goreleaser]
+    environment:
+      FURY_TOKEN:
+        from_secret: fury_test_token
+    commands:
+      - ./scripts/fury-publish ntppool-test
+    when:
+      - event: push
+        branch: main
+      - event: tag
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi

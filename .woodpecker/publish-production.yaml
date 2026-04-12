@@ -1,0 +1,62 @@
+when:
+  - event: deployment
+    evaluate: 'CI_PIPELINE_DEPLOY_TARGET == "publish"'
+
+steps:
+  - name: download
+    image: registry.fedoraproject.org/fedora:42
+    depends_on: []
+    commands:
+      - ./scripts/download-release ntppool-agent test/${CI_PIPELINE_PARENT} dist/
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+
+  - name: upload
+    image: woodpeckerci/plugin-s3
+    depends_on: [download]
+    settings:
+      access_key:
+        from_secret: s3_access_key
+      secret_key:
+        from_secret: s3_secret_key
+      bucket: ntp-releases
+      target: /ntppool-agent/builds/release/${CI_PIPELINE_PARENT}
+      source: dist/*
+      strip_prefix: dist/
+      endpoint: https://c3.hkga.ntp.dev/
+      path_style: true
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+
+  - name: fury-publish
+    image: golang:1.26
+    pull: true
+    depends_on: [download]
+    environment:
+      FURY_TOKEN:
+        from_secret: fury_token
+    commands:
+      - ./scripts/fury-publish ntppool
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
