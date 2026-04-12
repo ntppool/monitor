@@ -1,5 +1,9 @@
 # NTP Pool Monitor Changes
 
+
+- **MQTT session takeover backoff**
+  When the broker reports a session takeover (reasonCode `0x8E`), the agent escalates the reconnect backoff (2m → 5m → 10m → 15m) instead of reconnecting on the 10s default, and pauses NTP checks and result submission while another client holds the session. The backoff resets after 30 minutes of stable connection. The disconnect reasonCode is now always logged.
+
 ## v4.1.2
 
 ### Client

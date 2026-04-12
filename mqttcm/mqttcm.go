@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/packets"
 	"github.com/eclipse/paho.golang/paho"
 
 	"go.ntppool.org/common/logger"
@@ -20,7 +21,11 @@ import (
 	"go.ntppool.org/monitor/client/config/checkconfig"
 )
 
-func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf checkconfig.MQConfigger, cp apitls.AuthProvider) (*autopaho.ConnectionManager, error) {
+// Setup creates an autopaho connection manager with session-takeover backoff
+// wired in. If state is nil, Setup uses a throwaway state internal to this
+// connection. Callers that need to observe takeover state from outside (e.g.
+// to pause work) pass a non-nil state they own.
+func Setup(ctx context.Context, name, statusChannel string, subscribe []string, router paho.Router, conf checkconfig.MQConfigger, cp apitls.AuthProvider, state *TakeoverState) (*autopaho.ConnectionManager, error) {
 	log := logger.Setup()
 
 	cfg := conf.GetMQTTConfig()
@@ -32,6 +37,10 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 
 	if cp == nil {
 		return nil, apitls.ErrNoAuthProvider
+	}
+
+	if state == nil {
+		state = NewTakeoverState()
 	}
 
 	tlsConfig := &tls.Config{
@@ -110,7 +119,8 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		ConnectPassword: cfg.JWT,
 
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-			log.Info("mqtt connection up")
+			log.Info("mqtt connection up", "clientID", clientID)
+			state.markConnectionUp()
 
 			if len(subscribe) > 0 {
 
@@ -163,13 +173,31 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 				log.Error("mqtt client error", "err", err)
 			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
+				reason := ""
 				if d.Properties != nil {
-					log.Error("mqtt server requested disconnect", "reason", d.Properties.ReasonString)
-				} else {
-					log.Error("mqtt server requested disconnect", "reasonCode", d.ReasonCode)
+					reason = d.Properties.ReasonString
 				}
+				label := ""
+				if d.ReasonCode == packets.DisconnectSessionTakenOver {
+					label = "session_taken_over"
+				}
+				log.Error("mqtt server requested disconnect",
+					"reasonCode", d.ReasonCode,
+					"reason", reason,
+					"label", label)
+				state.recordDisconnect(d.ReasonCode)
 			},
 		},
+	}
+
+	mqttcfg.ReconnectBackoff = func(attempt int) time.Duration {
+		delay := state.reconnectDelay()
+		if delay > defaultReconnectDelay {
+			log.Warn("mqtt reconnect delayed due to session takeover",
+				"delay", delay,
+				"attempt", attempt)
+		}
+		return delay
 	}
 
 	if router != nil {

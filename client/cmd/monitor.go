@@ -143,6 +143,11 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 
 	mqconfigger := checkconfig.NewConfigger(nil)
 
+	// Shared across v4/v6 monitor goroutines and the MQTT client: when MQTT
+	// reports session takeover, monitor loops pause so we don't submit
+	// results while another client holds our session.
+	takeoverState := mqttcm.NewTakeoverState()
+
 	for ix, ipc := range []config.IPConfig{cli.Config.IPv4(), cli.Config.IPv6()} {
 		var ipVersion string
 		switch ix {
@@ -196,7 +201,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 				}
 			}
 
-			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, cli.Config)
+			err := cmd.runMonitor(ctx, ipc, api, mqconfigger, cli.Config, takeoverState)
 			ipLog.DebugContext(ctx, "monitor done", "err", err)
 			return err
 		})
@@ -216,7 +221,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 			}
 		}
 		log.InfoContext(ctx, "starting mqtt client", "name", cli.Config.TLSName())
-		return runMQTTClient(ctx, cli, mqconfigger)
+		return runMQTTClient(ctx, cli, mqconfigger, takeoverState)
 	})
 
 	err = g.Wait()
@@ -228,7 +233,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	return nil
 }
 
-func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.ConfigGetter) error {
+func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.ConfigGetter, takeoverState *mqttcm.TakeoverState) error {
 	log := logger.FromContext(ctx)
 
 	var mq *autopaho.ConnectionManager
@@ -253,7 +258,7 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 				ctx, cli.Config.TLSName(), statusChannel,
 				[]string{
 					topics.RequestSubscription(cli.Config.TLSName()),
-				}, router, mqconfigger, cli.Config,
+				}, router, mqconfigger, cli.Config, takeoverState,
 			)
 			if err != nil {
 				return fmt.Errorf("mqtt: %w", err)
@@ -290,7 +295,7 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 	return nil
 }
 
-func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, appConfig config.AppConfig) error {
+func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, mqconfigger checkconfig.ConfigUpdater, appConfig config.AppConfig, takeoverState *mqttcm.TakeoverState) error {
 	log := logger.FromContext(ctx).With("monitor_ip", ipc.IP.String())
 
 	log.InfoContext(ctx, "starting monitor")
@@ -404,6 +409,16 @@ runLoop:
 		// Check if protocol is still live, wait for reactivation if not
 		if !cmd.waitForProtocolActivation(ctx, ipc, appConfig, log) {
 			return nil // Context was cancelled
+		}
+
+		// While another client appears to hold our MQTT session, submitting
+		// NTP results would duplicate that client's work.
+		if takeoverState.InBackoff() {
+			log.WarnContext(ctx, "pausing NTP work: MQTT session takeover backoff active")
+			if err := takeoverState.WaitRecovered(ctx); err != nil {
+				return nil
+			}
+			log.InfoContext(ctx, "resuming NTP work after MQTT recovery")
 		}
 
 		boff := backoff.NewExponentialBackOff()

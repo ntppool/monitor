@@ -176,7 +176,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		ctx, tlsName,
 		"",                           // status channel
 		[]string{topicPrefix + "/#"}, // subscriptions
-		router, &mqcfg, wrapCertMan(cm),
+		router, &mqcfg, wrapCertMan(cm), nil,
 	)
 	if err != nil {
 		// todo: autopaho should handle reconnecting, so temporary errors

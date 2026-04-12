@@ -201,7 +201,7 @@ func testGRPCAPI(ctx context.Context, cli *ClientCmd, log *slog.Logger) error {
 		conf := checkconfig.NewConfigger(nil)
 		conf.SetConfigFromApi(cfg)
 
-		mq, err := mqttcm.Setup(ctx, cli.Config.TLSName(), "", []string{}, nil, conf, cli.Config)
+		mq, err := mqttcm.Setup(ctx, cli.Config.TLSName(), "", []string{}, nil, conf, cli.Config, nil)
 		if err != nil {
 			log.WarnContext(ctx, "  MQTT setup failed", "err", err)
 		} else {
