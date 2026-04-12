@@ -1,5 +1,46 @@
 # NTP Pool Monitor Changes
 
+## Unreleased
+
+### Client
+- **Configurable log levels**: New `--log-level` flag and `MONITOR_LOG_LEVEL` env var for stderr; OTLP log level is server-controlled via gRPC config and cached to state.json; `--debug` overrides both to DEBUG
+- **OTEL service name**: Set explicit `OTEL_SERVICE_NAME=ntppool-agent` so logs appear in Loki with the correct service name
+
+### Packaging
+- **Systemd detection**: Postinstall script exits gracefully on non-systemd systems and in containers where systemctl exists but systemd isn't PID 1
+
+### API
+- New internal CA
+
+## v4.1.1
+
+### Packaging
+- **Replace legacy units on upgrade**: Postinstall disables all `ntppool-monitor@*` systemd units and clears failed unit records; goreleaser `conflicts` directive ensures clean package replacement
+
+### Build
+- Upgrade goreleaser
+
+## v4.1.0
+
+### Server
+- **Access logs**: Include real client IP (via Fastly + RFC1918 XFF) and monitor name from the auth context
+- **Middleware ordering**: Run authentication before logging so the certificate name is available when logs are generated (fixes `monitor=unknown` and `certificateKey didn't return a string` errors)
+
+### Scorer
+- **Score deduplication**: Reject out-of-order timestamps, fix zero-score edge cases in percentage comparison, and extract magic numbers to named constants
+- **Skip unresolvable old log_scores**: Prevents the scorer from falling more than 3 hours behind when older entries can't be scored
+- **SQL update metrics**: New `scorer_sql_updates_total` counter broken down by operation type to identify frequent update patterns
+
+### API
+- **Fewer stratum updates**: Minimize stratum update queries that were unnecessarily busy on the database
+
+### Packaging
+- **Replace legacy package**: Add `replaces` directive so deb/rpm/apk packages automatically uninstall the old `ntppool-monitor` package on upgrade
+
+### Build
+- Build with Go 1.25
+- Allow manual build triggers; disable MySQL/MariaDB cert verification in test config
+
 ## v4.0.5
 
 ### MQTT & Ad Hoc Requests
