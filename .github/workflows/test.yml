@@ -1,0 +1,67 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, selector-candidates ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: monitor_test
+          MYSQL_USER: monitor
+          MYSQL_PASSWORD: test123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.26'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y default-mysql-client
+
+    - name: Wait for MySQL
+      run: |
+        for i in {1..30}; do
+          if mysql -h 127.0.0.1 -u monitor -ptest123 -e "SELECT 1" monitor_test 2>/dev/null; then
+            echo "Database is ready!"
+            break
+          fi
+          echo "Waiting for database... ($i/30)"
+          sleep 2
+        done
+
+    - name: Load database schema
+      run: mysql -h 127.0.0.1 -u monitor -ptest123 monitor_test < schema.sql
+
+    - name: Run tests
+      env:
+        TEST_DATABASE_URL: "monitor:test123@tcp(127.0.0.1:3306)/monitor_test?parseTime=true&multiStatements=true"
+      run: |
+        echo "Running short tests..."
+        go test -v ./... -short
+
+        echo "Running integration tests..."
+        make test-integration
+
+        echo "Building all packages..."
+        go build ./...
