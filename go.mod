@@ -34,7 +34,7 @@ require (
 	github.com/samber/slog-echo v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	go.ntppool.org/common v0.10.0
+	go.ntppool.org/common v0.10.1
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.68.0
@@ -163,6 +163,7 @@ require (
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/systemd/slog-journal v0.1.2 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect

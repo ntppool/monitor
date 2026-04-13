@@ -1,6 +1,10 @@
 # NTP Pool Monitor Changes
 
+## v4.1.3
 
+### Client
+- **Systemd journal integration**
+  When stderr is connected to journald, log records are delivered via the native journal protocol with per-record `PRIORITY=`, so `journalctl -p` and `LogLevelMax=` in the unit file filter by severity. `DEBUG_INVOCATION` (from `RestartMode=debug`) automatically raises stderr verbosity to debug on a failed-restart attempt.
 - **MQTT session takeover backoff**
   When the broker reports a session takeover (reasonCode `0x8E`), the agent escalates the reconnect backoff (2m → 5m → 10m → 15m) instead of reconnecting on the 10s default, and pauses NTP checks and result submission while another client holds the session. The backoff resets after 30 minutes of stable connection. The disconnect reasonCode is now always logged.
 
