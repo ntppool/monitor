@@ -3,8 +3,12 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,19 +17,114 @@ import (
 	"go.ntppool.org/common/logger"
 )
 
-// testEnv provides a test environment with temporary directory and config
+// testEnv provides a test environment with temporary directory and config.
+// The fakeAPI serves the HTTP endpoints client/config would otherwise reach
+// on the live devel deployment.
 type testEnv struct {
 	ctx    context.Context
 	cfg    AppConfig
 	tmpDir string
+	api    *fakeAPI
 }
 
-// setupTestConfig creates a test configuration in a temporary directory
+// fakeAPI is an in-process httptest.Server that serves the endpoints
+// client/config calls: /monitor/api/config and /api/oidc/token.
+//
+// setupTestConfig points API_HOST at this server (process-global env var),
+// so every code path that calls depenv.DeploymentEnvironment.APIHost() —
+// LoadAPIAppConfig, JWT token refresh, Manager reloads — hits this handler
+// instead of the network. That means tests in this package MUST NOT call
+// t.Parallel(): parallel subtests would race over API_HOST.
+//
+// Default handlers satisfy the common case: an authorized /monitor/api/config
+// request returns an empty MonitorStatusConfig (no cert, no IPs), and the
+// OIDC endpoint returns 401. Tests that need different behavior replace
+// configFunc or tokenFunc before triggering the code path.
+type fakeAPI struct {
+	srv *httptest.Server
+
+	mu         sync.Mutex
+	configFunc http.HandlerFunc
+	tokenFunc  http.HandlerFunc
+
+	configCalls atomic.Int64
+	tokenCalls  atomic.Int64
+}
+
+func newFakeAPI(t *testing.T) *fakeAPI {
+	t.Helper()
+
+	api := &fakeAPI{}
+	api.configFunc = defaultConfigHandler
+	api.tokenFunc = defaultTokenHandler
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/monitor/api/config", func(w http.ResponseWriter, r *http.Request) {
+		api.configCalls.Add(1)
+		api.mu.Lock()
+		h := api.configFunc
+		api.mu.Unlock()
+		h(w, r)
+	})
+	mux.HandleFunc("/api/oidc/token", func(w http.ResponseWriter, r *http.Request) {
+		api.tokenCalls.Add(1)
+		api.mu.Lock()
+		h := api.tokenFunc
+		api.mu.Unlock()
+		h(w, r)
+	})
+
+	api.srv = httptest.NewServer(mux)
+	t.Cleanup(api.srv.Close)
+	return api
+}
+
+// URL returns the base URL of the fake API server.
+func (a *fakeAPI) URL() string {
+	return a.srv.URL
+}
+
+// SetConfigHandler replaces the handler for /monitor/api/config.
+func (a *fakeAPI) SetConfigHandler(h http.HandlerFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.configFunc = h
+}
+
+// SetTokenHandler replaces the handler for /api/oidc/token.
+func (a *fakeAPI) SetTokenHandler(h http.HandlerFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tokenFunc = h
+}
+
+func defaultConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") == "" || r.Header.Get("Authorization") == "Bearer " {
+		http.Error(w, "missing bearer token", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// MonitorStatusConfig with zero-value fields — SaveCertificates is a no-op
+	// when TLS.Cert is empty, and LoadAPIAppConfig skips IPs that have an
+	// empty IP string.
+	_ = json.NewEncoder(w).Encode(MonitorStatusConfig{})
+}
+
+func defaultTokenHandler(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+
+// setupTestConfig creates a test configuration backed by an in-process
+// fakeAPI. API_HOST is set before NewAppConfig so every HTTP call the
+// package makes under test is redirected to the fake server.
 func setupTestConfig(t *testing.T) (*testEnv, func()) {
 	t.Helper()
 
 	tmpDir, err := os.MkdirTemp("", "config-test-*")
 	require.NoError(t, err)
+
+	api := newFakeAPI(t)
+	t.Setenv("API_HOST", api.URL())
 
 	ctx := context.Background()
 	log := logger.Setup()
@@ -38,6 +137,7 @@ func setupTestConfig(t *testing.T) (*testEnv, func()) {
 			ctx:    ctx,
 			cfg:    cfg,
 			tmpDir: tmpDir,
+			api:    api,
 		}, func() {
 			_ = os.RemoveAll(tmpDir)
 		}
