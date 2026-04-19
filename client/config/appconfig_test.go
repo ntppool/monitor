@@ -62,15 +62,16 @@ func TestAPIKeyManagement(t *testing.T) {
 		err := env.cfg.SetAPIKey("persistent-key")
 		require.NoError(t, err)
 
-		// Load from disk only into a fresh appConfig. NewAppConfig would also
-		// trigger a network LoadAPIAppConfig when an API key is present, which
-		// is not what this test is verifying.
-		ac2 := &appConfig{e: depenv.DeployDevel, dir: env.tmpDir}
-		err = ac2.loadFromDisk(env.ctx)
+		// Create a new config instance. With the fake API in place, this
+		// exercises the full NewAppConfig path (disk + API) rather than just
+		// loadFromDisk.
+		cfg2, err := NewAppConfig(env.ctx, depenv.DeployDevel, env.tmpDir, false)
 		require.NoError(t, err)
 
 		// Verify persistence
-		assert.Equal(t, "persistent-key", ac2.APIKey())
+		assert.Equal(t, "persistent-key", cfg2.APIKey())
+		assert.Equal(t, int64(1), env.api.configCalls.Load(),
+			"NewAppConfig should call /monitor/api/config once when an API key is present on disk")
 	})
 
 	t.Run("API key change notifications to multiple waiters", func(t *testing.T) {
