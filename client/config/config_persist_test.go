@@ -187,13 +187,10 @@ func TestStateFilePersistence(t *testing.T) {
 		err = ac.save()
 		require.NoError(t, err)
 
-		// Create new config instance and load
-		cfg2, err := NewAppConfig(env.ctx, depenv.DeployDevel, env.tmpDir, false)
-		require.NoError(t, err)
-
-		ac2 := cfg2.(*appConfig)
-
-		// Load from disk only (not API) to verify persistence
+		// Load from disk only into a fresh appConfig. NewAppConfig would also
+		// trigger a network LoadAPIAppConfig when an API key is present, which
+		// is not what this test is verifying.
+		ac2 := &appConfig{e: depenv.DeployDevel, dir: env.tmpDir}
 		err = ac2.loadFromDisk(env.ctx)
 		require.NoError(t, err)
 
