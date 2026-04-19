@@ -14,6 +14,19 @@ import (
 	"go.ntppool.org/common/config/depenv"
 )
 
+// The Manager() tests in this file rely on the fake API set up by
+// setupTestConfig (see testutil_test.go). Every reload triggered by fsnotify
+// or the periodic timer goes through load() → LoadAPIAppConfig, which now
+// hits the in-process handler instead of the live devel deployment.
+//
+// Coverage gap: no test here exercises a reload when the API returns an
+// error (500, timeout, etc.). Before the fake API existed, the tests
+// effectively *were* covering that path — the network returned 401/404 and
+// load() warn-and-retried. Now the default handler returns 200, so that
+// behavior is no longer exercised. A targeted test that swaps
+// api.configFunc to return 500 and asserts on the retry interval would
+// close that gap.
+
 func TestFileWatcherSetup(t *testing.T) {
 	t.Run("watcher created successfully", func(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
@@ -62,7 +75,6 @@ func TestFileWatcherSetup(t *testing.T) {
 			ac.dir = originalDir
 		}()
 
-
 		ctx, cancel := context.WithTimeout(env.ctx, 1*time.Second)
 		defer cancel()
 
@@ -91,7 +103,6 @@ func TestFileWatcherSetup(t *testing.T) {
 	t.Run("watcher cleanup on context cancel", func(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
-
 
 		ctx, cancel := context.WithCancel(env.ctx)
 
@@ -151,6 +162,10 @@ func TestDebounceTimerCorrectness(t *testing.T) {
 		// Verify the change was loaded
 		time.Sleep(200 * time.Millisecond) // Give time for reload
 		assert.Equal(t, "changed-key", env.cfg.APIKey())
+		// With an API key on disk the reload includes LoadAPIAppConfig,
+		// so the fake API handler should have been invoked at least once.
+		assert.GreaterOrEqual(t, env.api.configCalls.Load(), int64(1),
+			"reload should include a LoadAPIAppConfig call now that an API key is set")
 	})
 
 	t.Run("multiple rapid events result in single reload", func(t *testing.T) {
@@ -338,7 +353,7 @@ func TestWatcherErrorRecovery(t *testing.T) {
 		// Start and stop manager multiple times
 		for i := 0; i < 3; i++ {
 			// Create a new registry for each iteration to avoid duplicate registration
-				ctx, cancel := context.WithCancel(env.ctx)
+			ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan struct{})
 			go func() {
@@ -409,7 +424,7 @@ func TestManagerLifecycle(t *testing.T) {
 
 		for i := 0; i < 3; i++ {
 			// Create a new registry for each iteration to avoid duplicate registration
-				ctx, cancel := context.WithCancel(env.ctx)
+			ctx, cancel := context.WithCancel(env.ctx)
 
 			managerDone := make(chan error, 1)
 			go func() {
