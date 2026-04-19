@@ -180,25 +180,37 @@ func TestStateFilePersistence(t *testing.T) {
 		ac.lock.Lock()
 		ac.Data.Name = "test-server"
 		ac.Data.TLSName = "test.example.com"
-		ac.DataSha = "test-sha"
 		ac.lock.Unlock()
 
 		// Save the state
 		err = ac.save()
 		require.NoError(t, err)
 
-		// Load from disk only into a fresh appConfig. NewAppConfig would also
-		// trigger a network LoadAPIAppConfig when an API key is present, which
-		// is not what this test is verifying.
-		ac2 := &appConfig{e: depenv.DeployDevel, dir: env.tmpDir}
-		err = ac2.loadFromDisk(env.ctx)
+		// Make the fake API echo back the same Name/TLSName so
+		// LoadAPIAppConfig does not clobber what we loaded from disk.
+		env.api.SetConfigResponse(MonitorStatusConfig{
+			Name:    "test-server",
+			TLSName: "test.example.com",
+		})
+
+		// Create a new config instance. With the fake API in place, this
+		// exercises the full NewAppConfig path (disk + API) rather than just
+		// loadFromDisk.
+		cfg2, err := NewAppConfig(env.ctx, depenv.DeployDevel, env.tmpDir, false)
 		require.NoError(t, err)
 
-		// Verify all data was preserved
+		ac2 := cfg2.(*appConfig)
+
+		// Verify data round-tripped through disk and survived the API load.
 		assert.Equal(t, "test-api-key", ac2.APIKey())
 		assert.Equal(t, "test-server", ac2.Data.Name)
 		assert.Equal(t, "test.example.com", ac2.Data.TLSName)
-		assert.Equal(t, "test-sha", ac2.DataSha)
+		// DataSha is recomputed by LoadAPIAppConfig from the current Data,
+		// so we only check that it is set (not equal to any specific value
+		// we wrote to disk earlier).
+		assert.NotEmpty(t, ac2.DataSha, "DataSha should be set after load")
+		assert.Equal(t, int64(1), env.api.configCalls.Load(),
+			"NewAppConfig should call /monitor/api/config once when an API key is present on disk")
 	})
 
 	t.Run("handle malformed JSON", func(t *testing.T) {

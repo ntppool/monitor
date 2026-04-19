@@ -98,6 +98,20 @@ func (a *fakeAPI) SetTokenHandler(h http.HandlerFunc) {
 	a.tokenFunc = h
 }
 
+// SetConfigResponse replaces the /monitor/api/config handler with one that
+// returns the given MonitorStatusConfig as JSON. Requests without a bearer
+// token still get 401.
+func (a *fakeAPI) SetConfigResponse(cfg MonitorStatusConfig) {
+	a.SetConfigHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" || r.Header.Get("Authorization") == "Bearer " {
+			http.Error(w, "missing bearer token", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cfg)
+	})
+}
+
 func defaultConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") == "" || r.Header.Get("Authorization") == "Bearer " {
 		http.Error(w, "missing bearer token", http.StatusUnauthorized)
