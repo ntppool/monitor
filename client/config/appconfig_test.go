@@ -2,7 +2,9 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/netip"
 	"os"
 	"sync"
@@ -607,34 +609,121 @@ func TestConfigurationInterfaceMethods(t *testing.T) {
 		assert.False(t, valid)
 	})
 
-	t.Run("wait methods", func(t *testing.T) {
+	t.Run("WaitUntilConfigured succeeds when cert and token are available", func(t *testing.T) {
 		env, cleanup := setupTestConfig(t)
 		defer cleanup()
 
-		// Test that methods exist and behave reasonably
+		ac := env.cfg.(*appConfig)
 
-		// Set API key first
-		err := env.cfg.SetAPIKey("test-key")
-		require.NoError(t, err)
+		// Pre-populate a valid cert on disk and in memory so
+		// WaitUntilCertificatesLoaded short-circuits on its initial
+		// HaveCertificate() check instead of polling with certBackoff's
+		// 4-second initial delay.
+		certPEM, keyPEM := generateTestCertificate(
+			t, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour),
+		)
+		require.NoError(t, ac.SaveCertificates(env.ctx, certPEM, keyPEM))
+		require.NoError(t, ac.LoadCertificates(env.ctx))
 
-		// WaitUntilConfigured will complete the API key part but timeout on certificates
-		// (since we have an invalid API key that can't fetch real certificates)
-		ctx, cancel := context.WithTimeout(env.ctx, 2*time.Second)
+		require.NoError(t, env.cfg.SetAPIKey("test-key"))
+
+		env.api.SetTokenHandler(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(OIDCTokenResponse{
+				AccessToken: "test-access-token",
+				TokenType:   "Bearer",
+				ExpiresIn:   3600,
+			})
+		})
+
+		ctx, cancel := context.WithTimeout(env.ctx, 3*time.Second)
 		defer cancel()
 
-		err = env.cfg.WaitUntilConfigured(ctx)
-		// This will timeout on certificates, which is expected with test API key
-		assert.Error(t, err)
+		err := env.cfg.WaitUntilConfigured(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), env.api.tokenCalls.Load(),
+			"WaitUntilConfigured should fetch exactly one JWT token")
+	})
 
-		// WaitUntilLive will timeout since we don't have live IPs or certificates
-		ctx2, cancel2 := context.WithTimeout(env.ctx, 100*time.Millisecond)
-		defer cancel2()
+	t.Run("WaitUntilLive succeeds when IPv4 status is testing", func(t *testing.T) {
+		env, cleanup := setupTestConfig(t)
+		defer cleanup()
 
-		err = env.cfg.WaitUntilLive(ctx2)
-		// Should fail - either timeout or unauthorized
-		require.Error(t, err)
-		// In CI with real API calls, we may get "api key unauthorized" instead of timeout
-		// Both are valid failure modes for this test
+		ac := env.cfg.(*appConfig)
+
+		certPEM, keyPEM := generateTestCertificate(
+			t, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour),
+		)
+		require.NoError(t, ac.SaveCertificates(env.ctx, certPEM, keyPEM))
+		require.NoError(t, ac.LoadCertificates(env.ctx))
+
+		require.NoError(t, env.cfg.SetAPIKey("test-key"))
+
+		env.api.SetConfigResponse(MonitorStatusConfig{
+			IPv4: MonitorStatus{Status: "testing", IP: "192.0.2.1"},
+		})
+		env.api.SetTokenHandler(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(OIDCTokenResponse{
+				AccessToken: "test-access-token",
+				TokenType:   "Bearer",
+				ExpiresIn:   3600,
+			})
+		})
+
+		// Drive one API fetch so the IPv4 status reaches memory before
+		// WaitUntilLive's initial isLive check. Otherwise WaitUntilLive
+		// would need its activationBackoff (1-minute initial) to tick.
+		_, err := ac.LoadAPIAppConfig(env.ctx)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(env.ctx, 3*time.Second)
+		defer cancel()
+
+		require.NoError(t, env.cfg.WaitUntilLive(ctx))
+	})
+
+	t.Run("WaitUntilLive blocks until deadline when IPv4 status is pending", func(t *testing.T) {
+		env, cleanup := setupTestConfig(t)
+		defer cleanup()
+
+		ac := env.cfg.(*appConfig)
+
+		certPEM, keyPEM := generateTestCertificate(
+			t, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour),
+		)
+		require.NoError(t, ac.SaveCertificates(env.ctx, certPEM, keyPEM))
+		require.NoError(t, ac.LoadCertificates(env.ctx))
+
+		require.NoError(t, env.cfg.SetAPIKey("test-key"))
+
+		env.api.SetConfigResponse(MonitorStatusConfig{
+			IPv4: MonitorStatus{Status: "pending", IP: "192.0.2.1"},
+		})
+		env.api.SetTokenHandler(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(OIDCTokenResponse{
+				AccessToken: "test-access-token",
+				TokenType:   "Bearer",
+				ExpiresIn:   3600,
+			})
+		})
+
+		_, err := ac.LoadAPIAppConfig(env.ctx)
+		require.NoError(t, err)
+
+		// WaitUntilLive returns nil on ctx.Done (not an error) — we verify
+		// it actually blocked for the timeout rather than short-circuiting.
+		ctx, cancel := context.WithTimeout(env.ctx, 200*time.Millisecond)
+		defer cancel()
+
+		start := time.Now()
+		err = env.cfg.WaitUntilLive(ctx)
+		elapsed := time.Since(start)
+
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, elapsed, 150*time.Millisecond,
+			"WaitUntilLive should block until the context deadline when no IP is live")
 	})
 }
 
