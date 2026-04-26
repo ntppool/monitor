@@ -1,5 +1,13 @@
 # NTP Pool Monitor Changes
 
+## v4.1.4
+
+### Client
+- **Journald improvements**: Pick up upstream `go.ntppool.org/common` v0.10.2 with better systemd journal support
+
+### Tests
+- Stop client/config tests from depending on the live devel API; route HTTP through an in-process fake and add a tripwire test that fails if any test reaches an external network
+
 ## v4.1.3
 
 ### Client
