@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -157,135 +158,142 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 		ctx, span := tracing.Start(ctx, "processStatus")
 		defer span.End()
 
-		for i, status := range in.List {
+		txErr := database.WithTransaction(ctx, srv.db, func(ctx context.Context, db ntpdb.QuerierTx) error {
+			for i, status := range in.List {
 
-			if in.Version > 2 {
-				ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
-				if err != nil || !ticketOk {
-					span.AddEvent("signature validation failed")
-					log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
-					counters.Sig.Counter += len(in.List) - i
-					return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
-				}
-			}
-
-			if !safeZeroOffset {
-				// client might have broken error handling for some
-				// network errors, so don't trust zero offset.
-				if status.Stratum == 0 && status.Offset.AsDuration() == 0 {
-					if status.Error == "" {
-						status.Offset = nil
-						status.Error = "untrusted zero offset"
+				if in.Version > 2 {
+					ticketOk, err := srv.ValidateIPs(status.Ticket, monitor.ID, bidb, status.GetIP())
+					if err != nil || !ticketOk {
+						span.AddEvent("signature validation failed")
+						log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
+						counters.Sig.Counter += len(in.List) - i
+						return twirp.NewError(twirp.InvalidArgument, "signature validation failed")
 					}
 				}
+
+				if !safeZeroOffset {
+					// client might have broken error handling for some
+					// network errors, so don't trust zero offset.
+					if status.Stratum == 0 && status.Offset.AsDuration() == 0 {
+						if status.Error == "" {
+							status.Offset = nil
+							status.Error = "untrusted zero offset"
+						}
+					}
+				}
+
+				if err := srv.processStatus(ctx, db, monitor, status, counters); err != nil {
+					span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
+					log.Error("error processing status", "status", status, "err", err)
+					return twirp.InternalErrorWith(err)
+				}
 			}
 
-			err = srv.processStatus(ctx, monitor, status, counters)
-			if err != nil {
-				span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
-				log.Error("error processing status", "status", status, "err", err)
-				return false, twirp.InternalErrorWith(err)
+			return nil
+		})
+
+		if txErr != nil {
+			var twErr twirp.Error
+			if errors.As(txErr, &twErr) {
+				return false, twErr
 			}
+			return false, twirp.InternalErrorWith(txErr)
 		}
-
 		return true, nil
 	}()
 
 	return rv, err
 }
 
-func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
-	return database.WithTransaction(ctx, srv.db, func(ctx context.Context, db ntpdb.QuerierTx) error {
-		server, err := db.GetServerIP(ctx, status.GetIP().String())
-		if err != nil {
-			return err
-		}
-		serverScore, err := db.GetServerScore(ctx, ntpdb.GetServerScoreParams{
-			MonitorID: monitor.ID,
-			ServerID:  server.ID,
-		})
-		if err != nil {
-			return err
-		}
-
-		scorer := statusscore.NewScorer()
-
-		score, err := scorer.Score(ctx, &server, status)
-		if err != nil {
-			return err
-		}
-
-		serverScore.ScoreRaw = (serverScore.ScoreRaw * 0.95) + score.Step
-		if score.HasMaxScore {
-			serverScore.ScoreRaw = math.Min(serverScore.ScoreRaw, score.MaxScore)
-		}
-
-		if status.Stratum > 0 {
-			nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
-			if !serverScore.Stratum.Valid || serverScore.Stratum.Int16 != nullStratum.Int16 {
-				if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
-					ID:      serverScore.ID,
-					Stratum: nullStratum,
-				}); err != nil {
-					return fmt.Errorf("updating server score stratum: %w", err)
-				}
-			}
-			if !server.Stratum.Valid || int32(server.Stratum.Int16) != status.Stratum {
-				if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
-					ID:      server.ID,
-					Stratum: nullStratum,
-				}); err != nil {
-					return fmt.Errorf("updating server stratum: %w", err)
-				}
-			}
-		}
-
-		if err := db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
-			ID:       serverScore.ID,
-			ScoreTs:  sql.NullTime{Time: score.Ts, Valid: true},
-			ScoreRaw: serverScore.ScoreRaw,
-		}); err != nil {
-			return fmt.Errorf("updating server score: %w", err)
-		}
-
-		ls := ntpdb.InsertLogScoreParams{
-			ServerID:   server.ID,
-			MonitorID:  sql.NullInt32{Int32: int32(monitor.ID), Valid: true}, // todo: sqlc type
-			Ts:         score.Ts,
-			Step:       score.Step,
-			Offset:     score.Offset,
-			Rtt:        score.Rtt,
-			Score:      serverScore.ScoreRaw,
-			Attributes: score.Attributes,
-		}
-
-		_, err = db.InsertLogScore(ctx, ls)
-		if err != nil {
-			return err
-		}
-
-		// todo: have score give a category
-		switch {
-		case ls.Step == -5:
-			counters.Timeout.Counter += 1
-		case ls.Step < 1:
-			counters.Offset.Counter += 1
-		default:
-			counters.Ok.Counter += 1
-		}
-
-		// todo:
-		//   if NoResponse == true OR score is low and step == 1:
-		//      mark for traceroute if it's not been done recently
-		//      maybe track why we traceroute'd last?
-		//      schedule new monitors?
-		//   if step < 0 and retesting isn't recent, mark server_scores for retesting?
-
-		// new schemas:
-		//    traceroute_queue
-		//       server_id, monitor_id, last_traceroute
-		//
-
-		return nil
+func (srv *Server) processStatus(ctx context.Context, db ntpdb.QuerierTx, monitor *ntpdb.Monitor, status *apiv2.ServerStatus, counters *SubmitCounters) error {
+	server, err := db.GetServerIP(ctx, status.GetIP().String())
+	if err != nil {
+		return err
+	}
+	serverScore, err := db.GetServerScore(ctx, ntpdb.GetServerScoreParams{
+		MonitorID: monitor.ID,
+		ServerID:  server.ID,
 	})
+	if err != nil {
+		return err
+	}
+
+	scorer := statusscore.NewScorer()
+
+	score, err := scorer.Score(ctx, &server, status)
+	if err != nil {
+		return err
+	}
+
+	serverScore.ScoreRaw = (serverScore.ScoreRaw * 0.95) + score.Step
+	if score.HasMaxScore {
+		serverScore.ScoreRaw = math.Min(serverScore.ScoreRaw, score.MaxScore)
+	}
+
+	if status.Stratum > 0 {
+		nullStratum := sql.NullInt16{Int16: int16(status.Stratum), Valid: true}
+		if !serverScore.Stratum.Valid || serverScore.Stratum.Int16 != nullStratum.Int16 {
+			if err := db.UpdateServerScoreStratum(ctx, ntpdb.UpdateServerScoreStratumParams{
+				ID:      serverScore.ID,
+				Stratum: nullStratum,
+			}); err != nil {
+				return fmt.Errorf("updating server score stratum: %w", err)
+			}
+		}
+		if !server.Stratum.Valid || int32(server.Stratum.Int16) != status.Stratum {
+			if err := db.UpdateServerStratum(ctx, ntpdb.UpdateServerStratumParams{
+				ID:      server.ID,
+				Stratum: nullStratum,
+			}); err != nil {
+				return fmt.Errorf("updating server stratum: %w", err)
+			}
+		}
+	}
+
+	if err := db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
+		ID:       serverScore.ID,
+		ScoreTs:  sql.NullTime{Time: score.Ts, Valid: true},
+		ScoreRaw: serverScore.ScoreRaw,
+	}); err != nil {
+		return fmt.Errorf("updating server score: %w", err)
+	}
+
+	ls := ntpdb.InsertLogScoreParams{
+		ServerID:   server.ID,
+		MonitorID:  sql.NullInt32{Int32: int32(monitor.ID), Valid: true}, // todo: sqlc type
+		Ts:         score.Ts,
+		Step:       score.Step,
+		Offset:     score.Offset,
+		Rtt:        score.Rtt,
+		Score:      serverScore.ScoreRaw,
+		Attributes: score.Attributes,
+	}
+
+	if _, err := db.InsertLogScore(ctx, ls); err != nil {
+		return err
+	}
+
+	// todo: have score give a category
+	switch {
+	case ls.Step == -5:
+		counters.Timeout.Counter += 1
+	case ls.Step < 1:
+		counters.Offset.Counter += 1
+	default:
+		counters.Ok.Counter += 1
+	}
+
+	// todo:
+	//   if NoResponse == true OR score is low and step == 1:
+	//      mark for traceroute if it's not been done recently
+	//      maybe track why we traceroute'd last?
+	//      schedule new monitors?
+	//   if step < 0 and retesting isn't recent, mark server_scores for retesting?
+
+	// new schemas:
+	//    traceroute_queue
+	//       server_id, monitor_id, last_traceroute
+	//
+
+	return nil
 }

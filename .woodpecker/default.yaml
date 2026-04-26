@@ -31,7 +31,7 @@ steps:
       tags: |
         branch
         raw -v build-${CI_PIPELINE_NUMBER}
-        raw -v ${CI_COMMIT_SHA:0:7}
+        sha
         semver --auto
 
   - name: test
