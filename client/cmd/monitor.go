@@ -16,7 +16,9 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/oklog/ulid/v2"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -445,9 +447,14 @@ runLoop:
 
 			// todo: proxy monconf so we also set mqconfigger
 
-			if count, err := cmd.doMonitorBatch(ctx, ipc, api, monconf); count == 0 || err != nil {
+			batchCtx, span := tracing.Start(ctx, "monitor-run")
+			defer span.End()
+
+			if count, err := cmd.doMonitorBatch(batchCtx, ipc, api, monconf); count == 0 || err != nil {
 				if err != nil {
-					log.ErrorContext(ctx, "batch processing", "err", err)
+					span.RecordError(err)
+					span.SetStatus(codes.Error, err.Error())
+					log.ErrorContext(batchCtx, "batch processing", "err", err)
 					return 0, err
 				}
 				if cmd.Once {
@@ -528,9 +535,6 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, cfgStore checkconfig.ConfigProvider) (int, error) {
 	log := logger.FromContext(ctx)
 
-	ctx, span := tracing.Start(ctx, "monitor-run")
-	defer span.End()
-
 	serverresp, err := api.GetServers(ctx,
 		connect.NewRequest(
 			&apiv2.GetServersRequest{
@@ -573,7 +577,7 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 
 	log = log.With("batchID", batchID.String())
 
-	span.SetAttributes(attribute.String("batchID", batchID.String()))
+	otrace.SpanFromContext(ctx).SetAttributes(attribute.String("batchID", batchID.String()))
 
 	log.DebugContext(ctx, "processing", "server_count", len(serverlist.Servers))
 
