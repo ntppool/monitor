@@ -42,7 +42,7 @@ func TestResponseHandler(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	rr.AddResponseID(id.String(), rc)
+	rr.AddResponseID(ctx, id.String(), rc)
 
 	wg.Add(1)
 	go func() {
@@ -76,4 +76,58 @@ func TestResponseHandler(t *testing.T) {
 	wg.Wait()
 
 	rr.CloseResponseID(id.String())
+}
+
+func TestResponseHandlerReceiverGone(t *testing.T) {
+	mqs, err := Setup(logger.Setup(), nil, prometheus.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := mqs.setupResponseRouter(context.Background(), "/devel/monitors/data/#")
+
+	id, err := ulid.MakeULID(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	rc := make(chan *paho.Publish)
+	rr.AddResponseID(reqCtx, id.String(), rc)
+
+	msg := &paho.Publish{
+		Topic:   fmt.Sprintf("/devel/monitors/data/%s/%s", "uspao-abc", id.String()),
+		Payload: []byte("{}"),
+	}
+	msg.InitProperties(&packets.Properties{})
+
+	handlerDone := make(chan struct{})
+	go func() {
+		h := rr.Handler()
+		h(msg)
+		close(handlerDone)
+	}()
+
+	select {
+	case <-handlerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler blocked despite receiver context being done")
+	}
+
+	// AddResponseID must not block while a stuck handler is in flight.
+	addDone := make(chan struct{})
+	go func() {
+		rr.AddResponseID(context.Background(), "next-id", make(chan *paho.Publish))
+		close(addDone)
+	}()
+	select {
+	case <-addDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AddResponseID blocked after stuck handler — router lock starved")
+	}
+
+	rr.CloseResponseID(id.String())
+	rr.CloseResponseID("next-id")
 }
