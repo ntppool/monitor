@@ -316,7 +316,7 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 
 		span.SetAttributes(attribute.String("Request-ID", id.String()))
 		span.SetAttributes(attribute.String("client_name", clientName))
-		mqs.rr.AddResponseID(id.String(), rc)
+		mqs.rr.AddResponseID(ctx, id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
 		cl, ok := mqs.clients[clientName]
@@ -448,7 +448,7 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 		rc := make(chan *paho.Publish)
 
 		span.SetAttributes(attribute.String("Request-ID", id.String()))
-		mqs.rr.AddResponseID(id.String(), rc)
+		mqs.rr.AddResponseID(ctx, id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
 		counter := sync.WaitGroup{}

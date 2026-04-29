@@ -13,10 +13,15 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
+type responseChan struct {
+	ch  chan<- *paho.Publish
+	ctx context.Context
+}
+
 type mqttResponseRouter struct {
 	prefix string
 	log    *slog.Logger
-	rm     map[string]chan<- *paho.Publish
+	rm     map[string]responseChan
 	mu     sync.RWMutex
 }
 
@@ -25,7 +30,7 @@ func (mqs *server) setupResponseRouter(_ context.Context, topicPrefix string) *m
 	return &mqttResponseRouter{
 		prefix: topicPrefix,
 		log:    mqs.log,
-		rm:     make(map[string]chan<- *paho.Publish, 100),
+		rm:     make(map[string]responseChan, 100),
 	}
 }
 
@@ -85,29 +90,45 @@ func (rr *mqttResponseRouter) Handler() paho.MessageHandler {
 		log.Debug("topic path", "path", topicPath)
 
 		rr.mu.RLock()
-		defer rr.mu.RUnlock()
+		rc, ok := rr.rm[topicPath[1]]
+		rr.mu.RUnlock()
 
-		if ch, ok := rr.rm[topicPath[1]]; ok {
-			// todo: include host from topicPath[0]
-			ch <- p
-		} else {
+		if !ok {
 			log.Warn("no response channel for", "id", topicPath[1])
 			span.RecordError(fmt.Errorf("no response channel"))
+			return
+		}
+
+		// CloseResponseID may close rc.ch concurrently with this send.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warn("send on closed response channel", "id", topicPath[1])
+			}
+		}()
+
+		select {
+		case rc.ch <- p:
+		case <-rc.ctx.Done():
+			log.Debug("receiver context done before delivery", "id", topicPath[1], "err", rc.ctx.Err())
 		}
 	}
 }
 
-func (rr *mqttResponseRouter) AddResponseID(id string, rc chan<- *paho.Publish) {
+func (rr *mqttResponseRouter) AddResponseID(ctx context.Context, id string, ch chan<- *paho.Publish) {
 	rr.log.Debug("adding channel", "id", id)
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
-	rr.rm[id] = rc
+	rr.rm[id] = responseChan{ch: ch, ctx: ctx}
 }
 
 func (rr *mqttResponseRouter) CloseResponseID(id string) {
 	rr.log.Debug("closing channel", "id", id)
 	rr.mu.Lock()
-	defer rr.mu.Unlock()
-	close(rr.rm[id])
+	rc, ok := rr.rm[id]
 	delete(rr.rm, id)
+	rr.mu.Unlock()
+	// Close outside the lock; Handler recovers from a racing send.
+	if ok {
+		close(rc.ch)
+	}
 }

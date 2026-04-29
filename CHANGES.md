@@ -1,5 +1,15 @@
 # NTP Pool Monitor Changes
 
+## v4.1.5
+
+### Server
+- **SubmitResults transaction batching**: Wrap the per-status loop in one transaction; cuts per-RPC `Begin`/`Commit` overhead from N to 1
+- **MQTT response router deadlock**: Fix a hang in `mqserver` that wedged all subsequent `CheckNTP`/`Metrics` requests when a receiver gave up on a late response
+
+### Client
+- **Higher RPC timeouts**: 30s response-header / 60s overall (was 10s/30s) so `SubmitResults` rides out database contention
+- **trace_id on batch errors**: Batch error logs now carry the matching `trace_id` and failed batches surface as errored spans
+
 ## v4.1.4
 
 ### Client
