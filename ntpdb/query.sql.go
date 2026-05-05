@@ -592,9 +592,8 @@ const getServers = `-- name: GetServers :many
 SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.netspeed_target, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on, s.flags
     FROM servers s
     LEFT JOIN server_scores ss
-        ON (s.id=ss.server_id)
-WHERE (monitor_id = ?
-    AND s.ip_version = ?
+        ON (s.id = ss.server_id AND ss.monitor_id = ?)
+WHERE s.ip_version = ?
     AND (ss.queue_ts IS NULL
           OR (ss.score_raw > -90 AND ss.status = "active"
                AND ss.queue_ts < DATE_SUB( NOW(), INTERVAL ? second))
@@ -603,7 +602,7 @@ WHERE (monitor_id = ?
           OR (ss.queue_ts < DATE_SUB( NOW(), INTERVAL 120 minute)))
     AND (s.score_ts IS NULL OR
         (s.score_ts < DATE_SUB( NOW(), INTERVAL ? second) ))
-    AND (deletion_on IS NULL or deletion_on > NOW()))
+    AND (deletion_on IS NULL or deletion_on > NOW())
 ORDER BY ss.queue_ts
 LIMIT  ?
 OFFSET ?
