@@ -36,14 +36,16 @@ type ScorerSettings struct {
 }
 
 type metrics struct {
-	processed  *prometheus.CounterVec
-	errcount   prometheus.Counter
-	runs       prometheus.Counter
-	batchTime  *prometheus.HistogramVec
-	batchSize  *prometheus.HistogramVec
-	deadlocks  prometheus.Counter
-	retries    *prometheus.CounterVec
-	sqlUpdates *prometheus.CounterVec
+	processed   *prometheus.CounterVec
+	errcount    prometheus.Counter
+	runs        prometheus.Counter
+	batchTime   *prometheus.HistogramVec
+	batchSize   *prometheus.HistogramVec
+	deadlocks   prometheus.Counter
+	retries     *prometheus.CounterVec
+	sqlUpdates  *prometheus.CounterVec
+	lastScoreTs *prometheus.GaugeVec
+	lastBatchTs *prometheus.GaugeVec
 }
 
 type runner struct {
@@ -108,6 +110,14 @@ func New(ctx context.Context, log *slog.Logger, dbconn *pgxpool.Pool, prom prome
 			Name: "scorer_sql_updates_total",
 			Help: "Total number of SQL update operations by type",
 		}, []string{"operation"}),
+		lastScoreTs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "scorer_last_score_timestamp_seconds",
+			Help: "Unix timestamp of the most recent log_score processed in the latest batch",
+		}, []string{"scorer"}),
+		lastBatchTs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "scorer_last_batch_timestamp_seconds",
+			Help: "Unix wall-clock time of the most recent non-empty batch. Stale value indicates upstream is not producing log_scores.",
+		}, []string{"scorer"}),
 	}
 
 	prom.MustRegister(met.processed)
@@ -118,6 +128,8 @@ func New(ctx context.Context, log *slog.Logger, dbconn *pgxpool.Pool, prom prome
 	prom.MustRegister(met.deadlocks)
 	prom.MustRegister(met.retries)
 	prom.MustRegister(met.sqlUpdates)
+	prom.MustRegister(met.lastScoreTs)
+	prom.MustRegister(met.lastBatchTs)
 
 	return &runner{
 		ctx:      ctx,
@@ -346,7 +358,8 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
 		if err != nil {
 			if ls.Ts.Time.Before(time.Now().Add(-3 * time.Hour)) {
-				log.WarnContext(ctx, "could not calculate score, skipping old entry",
+				log.WarnContext(
+					ctx, "could not calculate score, skipping old entry",
 					"server_id", ls.ServerID, "log_score_id", ls.ID,
 					"ls_ts", ls.Ts.Time.String(), "err", err,
 				)
@@ -430,6 +443,9 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	duration := time.Since(startTime)
 	r.m.batchTime.WithLabelValues(name).Observe(duration.Seconds())
 	r.m.batchSize.WithLabelValues(name).Observe(float64(count))
+	newestTs := logscores[len(logscores)-1].Ts
+	r.m.lastScoreTs.WithLabelValues(name).Set(float64(newestTs.Time.Unix()))
+	r.m.lastBatchTs.WithLabelValues(name).Set(float64(time.Now().Unix()))
 
 	span.SetAttributes(
 		attribute.Int("scorer.processed_count", count),
