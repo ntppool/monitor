@@ -325,6 +325,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	}()
 
 	count := 0
+	pending := map[int64]lastUpdate{}
 
 	db := ntpdb.New(tx)
 
@@ -400,15 +401,9 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		r.m.sqlUpdates.WithLabelValues("update_server_score").Inc()
 
 		if name == mainScorer {
-			err := db.UpdateServer(r.ctx, ntpdb.UpdateServerParams{
-				ID:       ns.ServerID,
-				ScoreTs:  pgtype.Timestamptz{Time: ns.Ts.Time, Valid: true},
-				ScoreRaw: ns.Score,
-			})
-			if err != nil {
-				return 0, err
+			if cur, ok := pending[ns.ServerID]; !ok || ns.Ts.Time.After(cur.ts) {
+				pending[ns.ServerID] = lastUpdate{ts: ns.Ts.Time, score: ns.Score}
 			}
-			r.m.sqlUpdates.WithLabelValues("update_server").Inc()
 		}
 	}
 
@@ -437,6 +432,44 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			r.m.deadlocks.Inc()
 		}
 		return 0, err
+	}
+
+	// Drain pending servers.score_ts updates with autocommit, one row per
+	// server. UpdateServer's WHERE clause (score_ts < ? OR score_ts IS NULL)
+	// is idempotent, so individual failures (including deadlocks) self-heal:
+	// the next batch moves score_ts forward for that server. This keeps
+	// `servers` X-locks held for ~1ms per statement instead of the full
+	// batch duration, which is what was blocking concurrent InsertLogScore
+	// from monitor clients via the log_scores_server FK.
+	//
+	// Deliberately sequential: parallelizing would reintroduce the lock
+	// storm we just eliminated and inflate connection-pool pressure (the
+	// scorer shares the pool with the API). A batched multi-row update
+	// is awkward because of the per-row score_ts guard.
+	if len(pending) > 0 {
+		pool := ntpdb.New(r.dbconn)
+		deduped := count - len(pending)
+		for id, u := range pending {
+			uerr := pool.UpdateServer(ctx, ntpdb.UpdateServerParams{
+				ID:       id,
+				ScoreTs:  pgtype.Timestamptz{Time: u.ts, Valid: true},
+				ScoreRaw: u.score,
+			})
+			if uerr != nil {
+				if isDeadlockError(uerr) {
+					r.m.deadlocks.Inc()
+				}
+				log.WarnContext(ctx, "post-commit UpdateServer failed",
+					"server_id", id, "err", uerr)
+				r.m.errcount.Add(1)
+				continue
+			}
+			r.m.sqlUpdates.WithLabelValues("update_server").Inc()
+		}
+		if deduped > 0 {
+			r.m.sqlUpdates.WithLabelValues("update_server_deduped").Add(float64(deduped))
+		}
+		span.SetAttributes(attribute.Int("scorer.deduped_count", deduped))
 	}
 
 	// Record successful batch metrics
