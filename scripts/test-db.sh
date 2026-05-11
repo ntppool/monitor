@@ -82,14 +82,21 @@ start_mysql() {
 }
 
 # Function to wait for MySQL to be ready
+# Uses an actual auth+query against the test user/database rather than
+# `mysqladmin ping`. The official MySQL image starts the daemon during
+# entrypoint init before the user, password, and database exist; ping
+# returns success in that window, but a real query as the test user
+# only succeeds once init has completed.
 wait_for_mysql() {
     print_status "Waiting for MySQL to be ready..."
 
-    local max_attempts=30
+    local max_attempts=45
     local attempt=1
 
     while [ $attempt -le $max_attempts ]; do
-        if docker exec "${CONTAINER_NAME}" mysqladmin ping -h localhost -u root -p"${DB_ROOT_PASSWORD}" --silent >/dev/null 2>&1; then
+        if docker exec "${CONTAINER_NAME}" \
+            mysql -h localhost -u "${DB_USER}" -p"${DB_PASSWORD}" \
+                "${DB_NAME}" -e 'SELECT 1' >/dev/null 2>&1; then
             print_success "MySQL is ready!"
             return 0
         fi

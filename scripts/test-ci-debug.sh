@@ -44,14 +44,19 @@ docker run -d \
     --health-retries=5 \
     mysql:8.0
 
-# Wait for MySQL to be healthy
+# Wait for MySQL to be ready.
+# Use an actual auth+query as the test user against the test database;
+# `mysqladmin ping` succeeds during entrypoint init before the user,
+# password, and database exist, which races the schema load below.
 print_status "Waiting for MySQL to be healthy..."
-for i in $(seq 1 30); do
-    if docker exec monitor-test-db mysqladmin ping -h localhost --silent >/dev/null 2>&1; then
+for i in $(seq 1 45); do
+    if docker exec monitor-test-db \
+        mysql -h localhost -u monitor -ptest123 monitor_test \
+            -e 'SELECT 1' >/dev/null 2>&1; then
         print_success "MySQL is ready!"
         break
     fi
-    echo "Waiting for MySQL... ($i/30)"
+    echo "Waiting for MySQL... ($i/45)"
     sleep 2
 done
 
