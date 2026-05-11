@@ -4,13 +4,28 @@
 package scorer
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/testutil"
 )
+
+// counterValue reads the current value of a Prometheus counter without
+// pulling in prometheus/client_golang/prometheus/testutil, which would
+// require updating go.mod / vendoring and isn't reachable from a
+// build-tagged test file via `go mod tidy`.
+func counterValue(t *testing.T, c prometheus.Counter) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := c.Write(&m); err != nil {
+		t.Fatalf("read counter: %v", err)
+	}
+	return m.GetCounter().GetValue()
+}
 
 func TestScorerRunner_FullCycle(t *testing.T) {
 	tdb := testutil.NewTestDB(t)
@@ -236,5 +251,59 @@ func setupScorerTestData(t *testing.T, tdb *testutil.TestDB, factory *testutil.D
 	_, err = tdb.ExecContext(tdb.Context(), insertScorerStatusSQL, logScoreID, logScoreID)
 	if err != nil {
 		t.Fatalf("Failed to insert scorer status: %v", err)
+	}
+}
+
+func TestScorerProcess_DedupesServerUpdates(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+	defer tdb.CleanupTestData(t)
+
+	factory := testutil.NewDataFactory(tdb)
+	logger := testutil.NewTestLogger(t)
+
+	setupScorerTestData(t, tdb, factory)
+
+	reg := prometheus.NewRegistry()
+	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	testutil.AssertNoError(t, err, "Failed to create scorer runner")
+
+	// Insert n log_scores for the SAME server (3001) from regular monitor 2003,
+	// with strictly increasing timestamps. After processing, the mainScorer
+	// (recentmedian) should execute exactly ONE UpdateServer against
+	// servers.id=3001, and servers.score_ts should equal the maximum timestamp.
+	//
+	// Use UTC for the test timestamps. MySQL DATETIME has no timezone and the
+	// driver round-trips through whatever loc the connection is configured
+	// with; comparing in UTC sidesteps the ambiguity.
+	now := time.Now().UTC().Truncate(time.Second)
+	const n = 5
+	tsByOffset := func(i int) time.Time { return now.Add(time.Duration(i) * time.Minute) }
+	for i := 0; i < n; i++ {
+		factory.CreateTestLogScore(t, 3001, 2003, 20.0+float64(i)/10, 0.8, nil, tsByOffset(i))
+	}
+	maxTs := tsByOffset(n - 1)
+
+	count, err := runner.Run(tdb.Context())
+	testutil.AssertNoError(t, err, "Scorer run failed")
+	testutil.AssertTrue(t, count >= n, "Expected to process at least %d log_scores, got %d", n, count)
+
+	var scoreTs sql.NullTime
+	err = tdb.QueryRowContext(tdb.Context(),
+		"SELECT score_ts FROM servers WHERE id = 3001").Scan(&scoreTs)
+	testutil.AssertNoError(t, err, "Failed to read servers.score_ts")
+	testutil.AssertTrue(t, scoreTs.Valid, "Expected servers.score_ts to be non-NULL")
+	if !scoreTs.Time.UTC().Equal(maxTs) {
+		t.Errorf("servers.score_ts mismatch: got %s, want %s", scoreTs.Time.UTC(), maxTs)
+	}
+
+	got := counterValue(t, runner.m.sqlUpdates.WithLabelValues("update_server"))
+	if got != 1 {
+		t.Errorf("update_server counter: got %v, want 1 (dedup failed)", got)
+	}
+
+	gotDeduped := counterValue(t, runner.m.sqlUpdates.WithLabelValues("update_server_deduped"))
+	if gotDeduped != float64(n-1) {
+		t.Errorf("update_server_deduped counter: got %v, want %d", gotDeduped, n-1)
 	}
 }
