@@ -33,6 +33,7 @@ type ScorerSettings struct {
 
 type metrics struct {
 	processed   *prometheus.CounterVec
+	skipped     *prometheus.CounterVec
 	errcount    prometheus.Counter
 	runs        prometheus.Counter
 	batchTime   *prometheus.HistogramVec
@@ -76,6 +77,10 @@ func New(log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner,
 			Name: "scorer_processed_count",
 			Help: "log_scores processed",
 		}, []string{"scorer"}),
+		skipped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "scorer_iterations_skipped_total",
+			Help: "Iterations skipped because the score hasn't materially changed since the last compute. Fires only when lagging behind real time.",
+		}, []string{"scorer"}),
 		errcount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "scorer_errors",
 			Help: "scorer errors",
@@ -117,6 +122,7 @@ func New(log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner,
 	}
 
 	prom.MustRegister(met.processed)
+	prom.MustRegister(met.skipped)
 	prom.MustRegister(met.errcount)
 	prom.MustRegister(met.runs)
 	prom.MustRegister(met.batchTime)
@@ -330,6 +336,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 	count := 0
 	pending := map[uint32]lastUpdate{}
+	localComputed := map[int]lastUpdate{}
 
 	logscores, err := r.getLogScores(ctx, db, log, sm.LastID, batchSize, false)
 	if err != nil {
@@ -343,6 +350,11 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	}
 
 	for _, ls := range logscores {
+		if name == mainScorer && sm.skipIteration(&ls, localComputed) {
+			r.m.skipped.WithLabelValues(name).Inc()
+			continue
+		}
+
 		ss, err := r.getServerScore(ctx, db, ls.ServerID, sm.ScorerID)
 		if err != nil {
 			return 0, err
@@ -406,6 +418,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			if cur, ok := pending[ns.ServerID]; !ok || ns.Ts.After(cur.ts) {
 				pending[ns.ServerID] = lastUpdate{ts: ns.Ts, score: ns.Score}
 			}
+			localComputed[int(ls.ServerID)] = lastUpdate{ts: ls.Ts, score: ls.Score}
 		}
 	}
 
@@ -436,6 +449,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		return 0, err
 	}
 	committed = true
+	sm.commitComputed(localComputed)
 
 	// Drain pending servers.score_ts updates with autocommit, one row per
 	// server. UpdateServer's WHERE clause (score_ts < ? OR score_ts IS NULL)
