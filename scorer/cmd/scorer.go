@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -9,9 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/database"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
+	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/scorer"
@@ -29,6 +32,21 @@ func scorerRun(ctx context.Context, configFile string, continuous bool, metricsP
 	log := logger.FromContext(ctx)
 	log.InfoContext(ctx, "starting monitor-scorer", "version", version.Version(), "continuous", continuous)
 
+	tpShutdown, err := tracing.InitTracer(ctx, &tracing.TracerConfig{
+		ServiceName: "monitor-scorer",
+		Environment: depenv.DeploymentEnvironmentFromString(os.Getenv("DEPLOYMENT_MODE")).String(),
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tpShutdown(shutdownCtx); err != nil {
+			log.Warn("tracer shutdown error", "err", err)
+		}
+	}()
+
 	metricssrv := metricsserver.New()
 	version.RegisterMetric("scorer", metricssrv.Registry())
 	go func() {
@@ -43,7 +61,7 @@ func scorerRun(ctx context.Context, configFile string, continuous bool, metricsP
 		return err
 	}
 
-	sc, err := scorer.New(ctx, log, dbconn, metricssrv.Registry())
+	sc, err := scorer.New(log, dbconn, metricssrv.Registry())
 	if err != nil {
 		return nil
 	}
@@ -147,7 +165,7 @@ func (cmd *scorerSetupCmd) Run(ctx context.Context, root *RootCmd) error {
 
 	db := ntpdb.New(dbconn)
 	err = database.WithTransaction(ctx, db, func(ctx context.Context, db ntpdb.QuerierTx) error {
-		scr, err := scorer.New(ctx, log, dbconn, prometheus.DefaultRegisterer)
+		scr, err := scorer.New(log, dbconn, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}

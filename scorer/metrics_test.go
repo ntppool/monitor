@@ -29,7 +29,7 @@ func TestMetricsInitialization(t *testing.T) {
 
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, pool, reg)
+	runner, err := New(logger, pool, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestSQLUpdateMetricsIncrement(t *testing.T) {
 
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, pool, reg)
+	runner, err := New(logger, pool, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}
