@@ -64,6 +64,7 @@ func New(log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner,
 
 	for _, sm := range reg {
 		sm.lastScore = map[int]*lastUpdate{}
+		sm.lastComputed = map[int]*lastUpdate{}
 	}
 
 	if _, ok := reg[mainScorer]; !ok {
