@@ -25,6 +25,18 @@ Number of times `Run()` has been invoked (one increment per scheduler tick, not 
 
 `log_scores` rows processed, partitioned by scorer name (`every`, `recentmedian`).
 
+#### `scorer_iterations_skipped_total`
+**Type**: Counter
+**Labels**: `scorer`
+
+Per-`log_score` iterations whose compute (`GetServerScore`, `Scorer.Score`, `UpdateServerScore`) was skipped because the score hasn't materially changed since the last compute for that server. Only emitted by the main scorer (`recentmedian`) and only when lagging behind real time:
+
+- never fires when lag < 5 min (steady state is identical to pre-change behavior)
+- fires within a 5 min freshness window when lag is 5 min–1 hr
+- fires within an 18 min freshness window when lag > 1 hr
+
+A score drift >5% from the last computed score always triggers compute regardless of tier, so significant degradations are never masked. Skipped iterations still advance `scorer_status.log_score_id` (they are part of the same batch), so the bookmark moves forward as expected.
+
 #### `scorer_batch_size`
 **Type**: Histogram
 **Labels**: `scorer`
