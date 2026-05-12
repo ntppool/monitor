@@ -75,7 +75,7 @@ archives:
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  version_template: '{{ .Tag }}{{ if index .Env "DRONE_BUILD_NUMBER" }}-{{ .Env.DRONE_BUILD_NUMBER }}{{ else }}-next{{ end }}'
+  version_template: '{{ .Tag }}{{ if index .Env "CI_PIPELINE_NUMBER" }}-{{ .Env.CI_PIPELINE_NUMBER }}{{ else }}-next{{ end }}'
 changelog:
   sort: asc
   filters:
