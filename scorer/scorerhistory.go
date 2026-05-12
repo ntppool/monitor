@@ -64,18 +64,12 @@ const (
 // skipIteration reports whether the full per-iteration compute
 // (GetServerScore, Scorer.Score, UpdateServerScore) can be skipped for ls.
 //
-// Returns false when lag < nearRealtimeLag so steady-state behavior is
-// unchanged. Returns true only when (a) the last compute for this server
-// was within the freshness window for the current lag tier, and (b) the
-// score is within 5% of the last computed score, so significant
-// degradations still trigger compute. Does not mutate state.
+// batchLocal holds ran-iteration entries from the current uncommitted
+// batch; consulted before sm.lastComputed so within-batch dedup works
+// without mutating the durable map before db.Commit succeeds.
 //
-// batchLocal holds ran-iteration entries written in the current batch but
-// not yet committed. Consulted first so within-batch dedup works without
-// mutating the durable map before db.Commit succeeds.
-//
-// This is orthogonal to IsNew: when an iteration runs, IsNew governs the
-// log_scores INSERT exactly as today.
+// Orthogonal to IsNew: when an iteration runs, IsNew still governs the
+// log_scores INSERT.
 func (sm *ScorerMap) skipIteration(ls *ntpdb.LogScore, batchLocal map[int]lastUpdate) bool {
 	lag := time.Since(ls.Ts.Time)
 	if lag < nearRealtimeLag {
@@ -99,10 +93,9 @@ func (sm *ScorerMap) skipIteration(ls *ntpdb.LogScore, batchLocal map[int]lastUp
 		sm.isPercentageClose(ls.Score, last.score)
 }
 
-// commitComputed merges a batch-local set of ran-iteration entries into
-// the durable lastComputed map. Called by the runner only after
-// db.Commit succeeds, so a rolled-back batch leaves lastComputed
-// untouched and the next attempt re-runs the same work.
+// commitComputed merges batchLocal into the durable lastComputed map.
+// Must be called only after db.Commit succeeds so a rolled-back batch
+// leaves lastComputed untouched and the next attempt re-runs the work.
 func (sm *ScorerMap) commitComputed(batchLocal map[int]lastUpdate) {
 	for sid, u := range batchLocal {
 		sm.lastComputed[sid] = &lastUpdate{ts: u.ts, score: u.score}
