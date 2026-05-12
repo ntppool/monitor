@@ -98,9 +98,6 @@ func TestScorerMap_SkipIteration(t *testing.T) {
 			want:    false,
 		},
 		{
-			// Within a batch, batchLocal entries take precedence over the
-			// stale durable entry so subsequent ls's for the same server
-			// dedup against the most recent in-batch compute.
 			name:       "batchLocal takes precedence over durable",
 			durable:    map[int]*lastUpdate{1: {ts: now.Add(-2 * time.Hour), score: 20.0}},
 			batchLocal: map[int]lastUpdate{1: {ts: now.Add(-31 * time.Minute), score: 20.0}},
