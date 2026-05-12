@@ -40,7 +40,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
-	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	runner, err := New(logger.Logger(), tdb.DB, reg)
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	t.Run("ProcessBacklog", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		// This test verifies that multiple scorer instances don't interfere
 		// Create second scorer
 		reg2 := prometheus.NewRegistry()
-		runner2, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg2)
+		runner2, err := New(logger.Logger(), tdb.DB, reg2)
 		testutil.AssertNoError(t, err, "Failed to create second scorer runner")
 
 		// Add more test data using regular monitor
@@ -125,7 +125,7 @@ func TestScorerRunner_ErrorHandling(t *testing.T) {
 	t.Run("NoScorersConfigured", func(t *testing.T) {
 		// Create runner without setting up scorers
 		reg := prometheus.NewRegistry()
-		runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+		runner, err := New(logger.Logger(), tdb.DB, reg)
 		testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 		// Run should fail with no scorers
@@ -157,7 +157,7 @@ func TestScorerRunner_Performance(t *testing.T) {
 
 	// Create scorer runner
 	reg := prometheus.NewRegistry()
-	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	runner, err := New(logger.Logger(), tdb.DB, reg)
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	t.Run("LargeDataset", func(t *testing.T) {
@@ -265,7 +265,7 @@ func TestScorerProcess_DedupesServerUpdates(t *testing.T) {
 	setupScorerTestData(t, tdb, factory)
 
 	reg := prometheus.NewRegistry()
-	runner, err := New(tdb.Context(), logger.Logger(), tdb.DB, reg)
+	runner, err := New(logger.Logger(), tdb.DB, reg)
 	testutil.AssertNoError(t, err, "Failed to create scorer runner")
 
 	// Insert n log_scores for the SAME server (3001) from regular monitor 2003,

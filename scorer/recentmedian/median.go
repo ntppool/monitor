@@ -24,7 +24,7 @@ func (s *RecentMedian) Setup(id uint32) {
 	s.scorerID = id
 }
 
-func (s *RecentMedian) Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, latest ntpdb.LogScore) (score.Score, error) {
+func (s *RecentMedian) Score(ctx context.Context, db ntpdb.Querier, serverScore ntpdb.ServerScore, latest ntpdb.LogScore) (score.Score, error) {
 	log := logger.Setup()
 
 	if s.scorerID == 0 {

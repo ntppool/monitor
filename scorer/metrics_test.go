@@ -1,7 +1,6 @@
 package scorer
 
 import (
-	"context"
 	"database/sql"
 	"log/slog"
 	"testing"
@@ -20,10 +19,9 @@ func TestMetricsInitialization(t *testing.T) {
 	}
 	defer db.Close()
 
-	ctx := context.Background()
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, db, reg)
+	runner, err := New(logger, db, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}
@@ -68,10 +66,9 @@ func TestSQLUpdateMetricsIncrement(t *testing.T) {
 	}
 	defer db.Close()
 
-	ctx := context.Background()
 	logger := slog.Default()
 
-	runner, err := New(ctx, logger, db, reg)
+	runner, err := New(logger, db, reg)
 	if err != nil {
 		t.Fatalf("Failed to create runner: %v", err)
 	}

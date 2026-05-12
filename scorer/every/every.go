@@ -21,7 +21,7 @@ func (s *EveryScore) Setup(id uint32) {
 	s.scorerID = id
 }
 
-func (s *EveryScore) Score(ctx context.Context, db *ntpdb.Queries, serverScore ntpdb.ServerScore, ls ntpdb.LogScore) (score.Score, error) {
+func (s *EveryScore) Score(ctx context.Context, db ntpdb.Querier, serverScore ntpdb.ServerScore, ls ntpdb.LogScore) (score.Score, error) {
 	if s.scorerID == 0 {
 		return score.Score{}, fmt.Errorf("EveryScore not Setup()")
 	}

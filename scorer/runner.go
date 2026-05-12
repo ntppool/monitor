@@ -45,7 +45,6 @@ type metrics struct {
 }
 
 type runner struct {
-	ctx      context.Context
 	dbconn   *sql.DB
 	log      *slog.Logger
 	registry map[string]*ScorerMap
@@ -57,7 +56,7 @@ type lastUpdate struct {
 	score float64
 }
 
-func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner, error) {
+func New(log *slog.Logger, dbconn *sql.DB, prom prometheus.Registerer) (*runner, error) {
 	reg := map[string]*ScorerMap{
 		"every":        {Scorer: every.New()},
 		"recentmedian": {Scorer: recentmedian.New()},
@@ -128,7 +127,6 @@ func New(ctx context.Context, log *slog.Logger, dbconn *sql.DB, prom prometheus.
 	prom.MustRegister(met.lastBatchTs)
 
 	return &runner{
-		ctx:      ctx,
 		dbconn:   dbconn,
 		registry: reg,
 		log:      log,
@@ -142,8 +140,14 @@ func (r *runner) Scorers() map[string]*ScorerMap {
 	return r.registry
 }
 
-func (r *runner) Settings(db *ntpdb.Queries) ScorerSettings {
-	settingsStr, err := db.GetSystemSetting(r.ctx, "scorer")
+// pool returns an autocommit Querier wrapped with OpenTelemetry tracing.
+// Calling Begin on the result yields a re-wrapped transaction-scoped querier.
+func (r *runner) pool() ntpdb.QuerierTx {
+	return ntpdb.NewWrappedQuerier(ntpdb.New(r.dbconn))
+}
+
+func (r *runner) Settings(ctx context.Context, db ntpdb.Querier) ScorerSettings {
+	settingsStr, err := db.GetSystemSetting(ctx, "scorer")
 	if err != nil {
 		r.log.Warn("could not fetch scorer settings", "err", err)
 	}
@@ -166,13 +170,13 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 	r.m.runs.Add(1)
 	log := r.log
 
-	db := ntpdb.New(r.dbconn)
+	db := r.pool()
 
-	settings := r.Settings(db)
+	settings := r.Settings(ctx, db)
 
 	registry := r.Scorers()
 
-	scorers, err := db.GetScorers(r.ctx)
+	scorers, err := db.GetScorers(ctx)
 	if err != nil {
 		r.m.errcount.Add(1)
 		return 0, err
@@ -255,11 +259,11 @@ func (r *runner) Run(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (r *runner) getLogScores(ctx context.Context, db *ntpdb.Queries, log *slog.Logger, lastID uint64, batchSize int32, retry bool) ([]ntpdb.LogScore, error) {
+func (r *runner) getLogScores(ctx context.Context, db ntpdb.Querier, log *slog.Logger, lastID uint64, batchSize int32, retry bool) ([]ntpdb.LogScore, error) {
 	// log.Printf("getting log scores from %d (limit %d)", sm.LastID, batchSize)
 
 	t1 := time.Now()
-	logscores, err := db.GetScorerLogScores(r.ctx,
+	logscores, err := db.GetScorerLogScores(ctx,
 		ntpdb.GetScorerLogScoresParams{
 			LogScoreID: lastID,
 			Limit:      batchSize,
@@ -312,18 +316,16 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		return 0, fmt.Errorf("connection validation failed: %w", err)
 	}
 
-	tx, err := r.dbconn.BeginTx(r.ctx, nil)
+	db, err := r.pool().Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() {
-		_ = tx.Rollback()
+		_ = db.Rollback(ctx)
 	}()
 
 	count := 0
 	pending := map[uint32]lastUpdate{}
-
-	db := ntpdb.New(r.dbconn).WithTx(tx)
 
 	logscores, err := r.getLogScores(ctx, db, log, sm.LastID, batchSize, false)
 	if err != nil {
@@ -337,13 +339,13 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	}
 
 	for _, ls := range logscores {
-		ss, err := r.getServerScore(db, ls.ServerID, sm.ScorerID)
+		ss, err := r.getServerScore(ctx, db, ls.ServerID, sm.ScorerID)
 		if err != nil {
 			return 0, err
 		}
 		if ss.Status != "active" {
 			// if we are calculating a score, it's active ...
-			if err := db.UpdateServerScoreStatus(r.ctx, ntpdb.UpdateServerScoreStatusParams{
+			if err := db.UpdateServerScoreStatus(ctx, ntpdb.UpdateServerScoreStatusParams{
 				ServerID:  ls.ServerID,
 				MonitorID: sm.ScorerID,
 				Status:    "active",
@@ -352,7 +354,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 			}
 			r.m.sqlUpdates.WithLabelValues("update_server_score_status").Inc()
 		}
-		ns, err := sm.Scorer.Score(r.ctx, db, ss, ls)
+		ns, err := sm.Scorer.Score(ctx, db, ss, ls)
 		if err != nil {
 			if ls.Ts.Before(time.Now().Add(-3 * time.Hour)) {
 				log.WarnContext(
@@ -379,14 +381,14 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 				Score:      ns.Score,
 				Attributes: ns.Attributes,
 			}
-			_, err = db.InsertLogScore(r.ctx, p)
+			_, err = db.InsertLogScore(ctx, p)
 			if err != nil {
 				return 0, err
 			}
 			r.m.sqlUpdates.WithLabelValues("insert_log_score").Inc()
 		}
 
-		err = db.UpdateServerScore(r.ctx, ntpdb.UpdateServerScoreParams{
+		err = db.UpdateServerScore(ctx, ntpdb.UpdateServerScoreParams{
 			ID:       ss.ID,
 			ScoreRaw: ns.Score,
 			ScoreTs:  sql.NullTime{Time: ns.Ts, Valid: true},
@@ -411,7 +413,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 	latestID := logscores[len(logscores)-1].ID
 	// log.Printf("updating scorer status %d, new latest id: %d", sm.ScorerID, latestID)
-	err = db.UpdateScorerStatus(r.ctx, ntpdb.UpdateScorerStatusParams{
+	err = db.UpdateScorerStatus(ctx, ntpdb.UpdateScorerStatusParams{
 		LogScoreID: latestID,
 		ScorerID:   sm.ScorerID,
 	})
@@ -420,7 +422,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	}
 	r.m.sqlUpdates.WithLabelValues("update_scorer_status").Inc()
 
-	err = tx.Commit()
+	err = db.Commit(ctx)
 	if err != nil {
 		span.RecordError(err)
 		// Check if this is a deadlock error
@@ -443,7 +445,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	// scorer shares the pool with the API). A batched multi-row update
 	// is awkward because of the per-row score_ts guard.
 	if len(pending) > 0 {
-		pool := ntpdb.New(r.dbconn)
+		pool := r.pool()
 		deduped := count - len(pending)
 		for id, u := range pending {
 			uerr := pool.UpdateServer(ctx, ntpdb.UpdateServerParams{
@@ -486,9 +488,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 
 // getServerScore returns the current server score for the serverID and monitorID.
 // If none currently exists, a new score with default values is inserted and returned.
-func (r *runner) getServerScore(db *ntpdb.Queries, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
-	ctx := r.ctx
-
+func (r *runner) getServerScore(ctx context.Context, db ntpdb.Querier, serverID, monitorID uint32) (ntpdb.ServerScore, error) {
 	p := ntpdb.GetServerScoreParams{
 		ServerID:  serverID,
 		MonitorID: monitorID,
