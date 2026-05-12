@@ -9,10 +9,11 @@ import (
 )
 
 type ScorerMap struct {
-	Scorer    types.Scorer
-	ScorerID  int64
-	LastID    int64
-	lastScore map[int]*lastUpdate
+	Scorer       types.Scorer
+	ScorerID     int64
+	LastID       int64
+	lastScore    map[int]*lastUpdate // governs IsNew / log_scores cadence
+	lastComputed map[int]*lastUpdate // governs skipIteration / compute cadence; durable (committed)
 }
 
 var minScoreInterval = 15 * time.Minute
@@ -51,6 +52,61 @@ func (sm *ScorerMap) IsNew(ls *ntpdb.LogScore) bool {
 	}
 
 	return true
+}
+
+const (
+	nearRealtimeLag     = 5 * time.Minute  // below this, never skip iteration
+	catchUpLagThreshold = time.Hour        // above this, allow wider freshness window
+	iterationWindowNear = 5 * time.Minute  // freshness window when 5min–1hr behind
+	iterationWindowFar  = 18 * time.Minute // freshness window when >1hr behind
+)
+
+// skipIteration reports whether the full per-iteration compute
+// (GetServerScore, Scorer.Score, UpdateServerScore) can be skipped for ls.
+//
+// Returns false when lag < nearRealtimeLag so steady-state behavior is
+// unchanged. Returns true only when (a) the last compute for this server
+// was within the freshness window for the current lag tier, and (b) the
+// score is within 5% of the last computed score, so significant
+// degradations still trigger compute. Does not mutate state.
+//
+// batchLocal holds ran-iteration entries written in the current batch but
+// not yet committed. Consulted first so within-batch dedup works without
+// mutating the durable map before db.Commit succeeds.
+//
+// This is orthogonal to IsNew: when an iteration runs, IsNew governs the
+// log_scores INSERT exactly as today.
+func (sm *ScorerMap) skipIteration(ls *ntpdb.LogScore, batchLocal map[int]lastUpdate) bool {
+	lag := time.Since(ls.Ts.Time)
+	if lag < nearRealtimeLag {
+		return false
+	}
+	var last lastUpdate
+	var found bool
+	if local, ok := batchLocal[int(ls.ServerID)]; ok {
+		last, found = local, true
+	} else if durable, ok := sm.lastComputed[int(ls.ServerID)]; ok {
+		last, found = *durable, true
+	}
+	if !found {
+		return false
+	}
+	window := iterationWindowNear
+	if lag > catchUpLagThreshold {
+		window = iterationWindowFar
+	}
+	return ls.Ts.Time.Sub(last.ts) < window &&
+		sm.isPercentageClose(ls.Score, last.score)
+}
+
+// commitComputed merges a batch-local set of ran-iteration entries into
+// the durable lastComputed map. Called by the runner only after
+// db.Commit succeeds, so a rolled-back batch leaves lastComputed
+// untouched and the next attempt re-runs the same work.
+func (sm *ScorerMap) commitComputed(batchLocal map[int]lastUpdate) {
+	for sid, u := range batchLocal {
+		sm.lastComputed[sid] = &lastUpdate{ts: u.ts, score: u.score}
+	}
 }
 
 const float64EqualityThreshold = 1e-12
