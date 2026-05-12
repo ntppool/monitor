@@ -320,8 +320,11 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 	if err != nil {
 		return 0, err
 	}
+	committed := false
 	defer func() {
-		_ = tx.Rollback(ctx)
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
 	}()
 
 	count := 0
@@ -433,6 +436,7 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		}
 		return 0, err
 	}
+	committed = true
 
 	// Drain pending servers.score_ts updates with autocommit, one row per
 	// server. UpdateServer's WHERE clause (score_ts < ? OR score_ts IS NULL)
