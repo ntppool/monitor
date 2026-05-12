@@ -115,16 +115,23 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 	})
 
 	t.Run("SkipsIterationsWhenLagging", func(t *testing.T) {
-		// Insert 6 log_scores for one server at 50-second intervals (5
-		// intervals × 50s = 250s, well within the 5-min mild-lag window),
+		// Insert 6 log_scores for a fresh server at 50-second intervals
+		// (5 intervals × 50s = 250s, well within the 5-min mild-lag window),
 		// all scores within 5% of each other, with the oldest ts ~30 min
 		// ago so the scorer sees them as lagging. The first iteration
 		// populates the batch-local shadow; the next 5 should skip.
 		serverID := uint32(3010)
 		monitorID := uint32(2003)
+
+		// FK setup: server row + active server_score for the data-producing
+		// monitor so GetScorerRecentScores finds the log_scores below.
+		factory.CreateTestServer(t, serverID, "192.0.2.10", "v4", nil)
+		factory.CreateTestServerScore(t, serverID, monitorID, "active", 20.0)
+
 		base := time.Now().Add(-30 * time.Minute)
 		for i := 0; i < 6; i++ {
-			factory.CreateTestLogScore(t, serverID, monitorID,
+			factory.CreateTestLogScore(
+				t, serverID, monitorID,
 				20.0+float64(i)*0.05, // mild drift, all within 5%
 				0.5,
 				nil,
