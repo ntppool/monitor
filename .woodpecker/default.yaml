@@ -30,8 +30,9 @@ steps:
     settings:
       tags: |
         branch
+        sha
+        edge -v latest
         raw -v build-${CI_PIPELINE_NUMBER}
-        raw -v ${CI_COMMIT_SHA:0:7}
         semver --auto
 
   - name: test
