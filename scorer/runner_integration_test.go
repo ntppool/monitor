@@ -113,6 +113,39 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		testutil.AssertNoError(t, err, "Failed to get server score")
 		testutil.AssertEqual(t, "active", string(scores.Status), "Expected server score status to be active")
 	})
+
+	t.Run("SkipsIterationsWhenLagging", func(t *testing.T) {
+		// Insert 6 log_scores for one server at 50-second intervals (5
+		// intervals × 50s = 250s, well within the 5-min mild-lag window),
+		// all scores within 5% of each other, with the oldest ts ~30 min
+		// ago so the scorer sees them as lagging. The first iteration
+		// populates the batch-local shadow; the next 5 should skip.
+		serverID := uint32(3010)
+		monitorID := uint32(2003)
+		base := time.Now().Add(-30 * time.Minute)
+		for i := 0; i < 6; i++ {
+			factory.CreateTestLogScore(t, serverID, monitorID,
+				20.0+float64(i)*0.05, // mild drift, all within 5%
+				0.5,
+				nil,
+				base.Add(time.Duration(i)*50*time.Second),
+			)
+		}
+
+		skippedCounter, err := runner.m.skipped.GetMetricWithLabelValues(mainScorer)
+		testutil.AssertNoError(t, err, "get skipped counter")
+		before := counterValue(t, skippedCounter)
+
+		count, err := runner.Run(tdb.Context())
+		testutil.AssertNoError(t, err, "scorer run")
+		testutil.AssertTrue(t, count >= 6, "processed at least 6 log_scores, got %d", count)
+
+		after := counterValue(t, skippedCounter)
+		skipped := int(after - before)
+		if skipped < 5 {
+			t.Errorf("expected at least 5 skipped iterations (5 of 6 after first compute), got %d", skipped)
+		}
+	})
 }
 
 func TestScorerRunner_ErrorHandling(t *testing.T) {
