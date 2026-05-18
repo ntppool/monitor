@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strconv"
@@ -16,20 +15,12 @@ import (
 
 	"go.ntppool.org/common/database"
 	"go.ntppool.org/common/logger"
-	"go.ntppool.org/common/timeutil"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/monitor/client/config/checkconfig"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/jwt"
 )
-
-type MonitorSettings struct {
-	IntervalActive  timeutil.Duration `json:"interval_active"`
-	IntervalTesting timeutil.Duration `json:"interval_testing"`
-	IntervalAll     timeutil.Duration `json:"interval_all"`
-	BatchSize       int32             `json:"batch_size"`
-}
 
 func (srv *Server) getMonitor(ctx context.Context, monIP string) (*ntpdb.Monitor, *ntpdb.Account, context.Context, error) {
 	log := logger.FromContext(ctx)
@@ -207,32 +198,7 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 		return nil, twirp.PermissionDenied.Error("monitor not active")
 	}
 
-	monitorSettingsStr, err := srv.db.GetSystemSetting(ctx, "monitors")
-	if err != nil {
-		log.Warn("could not fetch monitor settings", "err", err)
-	}
-	var settings MonitorSettings
-	if len(monitorSettingsStr) > 0 {
-		err := json.Unmarshal([]byte(monitorSettingsStr), &settings)
-		if err != nil {
-			log.Warn("could not unmarshal monitor settings", "err", err)
-		}
-	}
-
-	if settings.IntervalActive.Seconds() < 20 {
-		settings.IntervalActive = timeutil.Duration{Duration: 9 * time.Minute}
-	}
-	if settings.IntervalTesting.Seconds() < 60 {
-		settings.IntervalTesting = timeutil.Duration{Duration: 45 * time.Minute}
-	}
-	if settings.IntervalAll.Seconds() < 10 {
-		settings.IntervalAll = timeutil.Duration{Duration: 60 * time.Second}
-	}
-	if settings.BatchSize <= 0 {
-		settings.BatchSize = 10
-	}
-
-	// log.Debug("interval settings", "intervals", settings)
+	settings := srv.settings.Current()
 
 	interval := settings.IntervalActive
 	if monitor.Status != ntpdb.MonitorsStatusActive {
@@ -245,7 +211,7 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 		IntervalSeconds:        interval.Seconds(),
 		IntervalSecondsTesting: settings.IntervalTesting.Seconds(),
 		IntervalSecondsAll:     settings.IntervalAll.Seconds(),
-		Limit:                  (settings.BatchSize),
+		Limit:                  settings.BatchSize,
 		Offset:                 0,
 	}
 
@@ -304,7 +270,8 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 				ids[i] = s.ID
 			}
 
-			err = db.UpdateServerScoreQueue(ctx,
+			err = db.UpdateServerScoreQueue(
+				ctx,
 				ntpdb.UpdateServerScoreQueueParams{
 					MonitorID: monitor.ID,
 					QueueTs:   now,

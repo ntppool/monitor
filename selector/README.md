@@ -181,6 +181,53 @@ sum by (reason) (rate(selector_status_changes_total{to_status="new"}[5m]))
     summary: "Selector processing taking longer than expected"
 ```
 
+## Promotion Sample-Count Thresholds
+
+Rule 3 (testing → active) and Rule 5 (candidate → testing) each require a
+minimum number of `log_scores` rows per (monitor, server) within the
+trailing 24-hour window before a promotion is allowed. The window is set
+in the `GetMonitorPriority` SQL query (`interval 24 hour`); the
+thresholds live in `monitorsettings`.
+
+The thresholds are derived from the system-wide `monitors` setting so they
+scale with the configured polling cadence:
+
+```
+required = min(historicalFloor, ceil(0.80 × maxSamplesInWindow))
+maxSamplesInWindow = 24h / pollInterval
+```
+
+with an absolute floor of 8. `historicalFloor` is 32 for testing → active
+and 9 for candidate → testing.
+
+`pollInterval` differs by transition:
+
+- **testing → active**: `interval_testing` from `system_settings("monitors")`.
+- **candidate → testing**: hardcoded 120-minute fallback branch in
+  `GetServers` (candidate-status `server_scores` rows match neither the
+  active nor testing branch of the polling-eligibility `OR`).
+
+Resulting thresholds at various `interval_testing` values:
+
+| `interval_testing` | max samples / 24h | testing → active threshold |
+|---|---|---|
+| 15m | 96 | 32 (capped at historical floor) |
+| 30m (default) | 48 | 32 (capped) |
+| 45m | 32 | 26 |
+| 50m | 28 | 23 |
+| 60m | 24 | 20 |
+| 4h | 6 | 8 (clamped to absolute floor) |
+
+If `interval_testing` is configured such that the historical 32-sample
+floor is unreachable, the monitor-api logs a warning at startup and on
+each settings change. Settings are refreshed from `system_settings` every
+hour (jittered) by `monitorsettings.Watcher`, with concurrent forced
+refreshes coalesced via `singleflight`.
+
+When a testing or candidate monitor is skipped for insufficient samples,
+the selector emits a `Debug`-level log line with the monitor id, the
+observed count, and the required threshold.
+
 ## Implementation Notes
 
 - Metrics are automatically initialized when creating a new `Selector` instance
