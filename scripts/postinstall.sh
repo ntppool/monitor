@@ -1,5 +1,22 @@
 #!/bin/sh
 
+# Check if systemctl is available and systemd is running
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo "systemctl not found, skipping systemd configuration"
+    exit 0
+fi
+
+# Check that systemd is actually running as init (PID 1), not merely installed.
+# `systemctl --version` succeeds even in containers where systemd isn't the init
+# system, so it can't be used for this — but the bus-side commands below
+# (daemon-reload, restart, ...) will fail with
+# "System has not been booted with systemd as init system (PID 1)".
+# /run/systemd/system is created by systemd on boot and is the canonical signal.
+if [ ! -d /run/systemd/system ]; then
+    echo "systemd not running as init, skipping systemd configuration"
+    exit 0
+fi
+
 # Function to get systemd version
 get_systemd_version() {
     systemctl --version | head -1 | awk '{print $2}'
@@ -41,6 +58,16 @@ RestartSec=120
 WantedBy=multi-user.target
 EOF
 fi
+
+# Disable and stop any old ntppool-monitor units
+# Note: systemctl output has status indicator (●) in column 1 for failed units,
+# so we grep for the actual unit name pattern instead of using awk column
+for unit in $(systemctl list-units --all --no-legend 'ntppool-monitor@*' 2>/dev/null | grep -oE 'ntppool-monitor@[^[:space:]]+'); do
+    systemctl disable --now "$unit" 2>/dev/null || true
+done
+
+# Clear any failed/ghost unit records for old ntppool-monitor
+systemctl reset-failed 'ntppool-monitor@*' 2>/dev/null || true
 
 # Reload systemd and restart services
 systemctl daemon-reload

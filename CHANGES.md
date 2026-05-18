@@ -1,5 +1,81 @@
 # NTP Pool Monitor Changes
 
+## Next
+
+### Packaging
+- **Postinstall systemd detection**: Skip `systemctl` calls when systemd isn't PID 1. The v4.1.2 check used `systemctl --version`, which succeeds in any container with `systemctl` installed; now check for `/run/systemd/system` instead.
+
+## v4.1.5
+
+### Server
+- **SubmitResults transaction batching**: Wrap the per-status loop in one transaction; cuts per-RPC `Begin`/`Commit` overhead from N to 1
+- **MQTT response router deadlock**: Fix a hang in `mqserver` that wedged all subsequent `CheckNTP`/`Metrics` requests when a receiver gave up on a late response
+
+### Client
+- **Higher RPC timeouts**: 30s response-header / 60s overall (was 10s/30s) so `SubmitResults` rides out database contention
+- **trace_id on batch errors**: Batch error logs now carry the matching `trace_id` and failed batches surface as errored spans
+
+## v4.1.4
+
+### Client
+- **Journald improvements**: Pick up upstream `go.ntppool.org/common` v0.10.2 with better systemd journal support
+
+### Tests
+- Stop client/config tests from depending on the live devel API; route HTTP through an in-process fake and add a tripwire test that fails if any test reaches an external network
+
+## v4.1.3
+
+### Client
+- **Systemd journal integration**
+  When stderr is connected to journald, log records are delivered via the native journal protocol with per-record `PRIORITY=`, so `journalctl -p` and `LogLevelMax=` in the unit file filter by severity. `DEBUG_INVOCATION` (from `RestartMode=debug`) automatically raises stderr verbosity to debug on a failed-restart attempt.
+- **MQTT session takeover backoff**
+  When the broker reports a session takeover (reasonCode `0x8E`), the agent escalates the reconnect backoff (2m → 5m → 10m → 15m) instead of reconnecting on the 10s default, and pauses NTP checks and result submission while another client holds the session. The backoff resets after 30 minutes of stable connection. The disconnect reasonCode is now always logged.
+
+## v4.1.2
+
+### Client
+- **Configurable log levels**: New `--log-level` flag and `MONITOR_LOG_LEVEL` env var for stderr; OTLP log level is server-controlled via gRPC config and cached to state.json; `--debug` overrides both to DEBUG
+- **OTEL service name**: Set explicit `OTEL_SERVICE_NAME=ntppool-agent` so logs appear in Loki with the correct service name
+
+### Packaging
+- **Systemd detection**: Postinstall script exits gracefully on non-systemd systems and in containers where systemctl exists but systemd isn't PID 1
+
+### API
+- New internal CA
+
+### Build
+- Build with Go 1.26 and refresh dependencies
+- Migrate CI from Drone to Woodpecker
+
+## v4.1.1
+
+### Packaging
+- **Replace legacy units on upgrade**: Postinstall disables all `ntppool-monitor@*` systemd units and clears failed unit records; goreleaser `conflicts` directive ensures clean package replacement
+
+### Build
+- Upgrade goreleaser
+
+## v4.1.0
+
+### Server
+- **Access logs**: Include real client IP (via Fastly + RFC1918 XFF) and monitor name from the auth context
+- **Middleware ordering**: Run authentication before logging so the certificate name is available when logs are generated (fixes `monitor=unknown` and `certificateKey didn't return a string` errors)
+
+### Scorer
+- **Score deduplication**: Reject out-of-order timestamps, fix zero-score edge cases in percentage comparison, and extract magic numbers to named constants
+- **Skip unresolvable old log_scores**: Prevents the scorer from falling more than 3 hours behind when older entries can't be scored
+- **SQL update metrics**: New `scorer_sql_updates_total` counter broken down by operation type to identify frequent update patterns
+
+### API
+- **Fewer stratum updates**: Minimize stratum update queries that were unnecessarily busy on the database
+
+### Packaging
+- **Replace legacy package**: Add `replaces` directive so deb/rpm/apk packages automatically uninstall the old `ntppool-monitor` package on upgrade
+
+### Build
+- Build with Go 1.25
+- Allow manual build triggers; disable MySQL/MariaDB cert verification in test config
+
 ## v4.0.5
 
 ### MQTT & Ad Hoc Requests
