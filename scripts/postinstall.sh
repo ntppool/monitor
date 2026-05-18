@@ -6,9 +6,14 @@ if ! command -v systemctl >/dev/null 2>&1; then
     exit 0
 fi
 
-# Check if systemd is actually running (not just installed)
-if ! systemctl --version >/dev/null 2>&1; then
-    echo "systemd not running, skipping systemd configuration"
+# Check that systemd is actually running as init (PID 1), not merely installed.
+# `systemctl --version` succeeds even in containers where systemd isn't the init
+# system, so it can't be used for this — but the bus-side commands below
+# (daemon-reload, restart, ...) will fail with
+# "System has not been booted with systemd as init system (PID 1)".
+# /run/systemd/system is created by systemd on boot and is the canonical signal.
+if [ ! -d /run/systemd/system ]; then
+    echo "systemd not running as init, skipping systemd configuration"
     exit 0
 fi
 

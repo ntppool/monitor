@@ -1,5 +1,10 @@
 # NTP Pool Monitor Changes
 
+## Next
+
+### Packaging
+- **Postinstall systemd detection**: Skip `systemctl` calls when systemd isn't PID 1. The v4.1.2 check used `systemctl --version`, which succeeds in any container with `systemctl` installed; now check for `/run/systemd/system` instead.
+
 ## v4.1.5
 
 ### Server
