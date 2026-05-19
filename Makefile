@@ -37,9 +37,9 @@ test-unit:
 # Run integration tests (requires test database)
 test-integration:
 	@if [ -z "$$TEST_DATABASE_URL" ]; then \
-		echo "Starting test database..."; \
-		./scripts/test-db.sh start > /dev/null 2>&1 || true; \
-		echo "Running integration tests..."; \
+		echo "Starting test database..." && \
+		./scripts/test-db.sh start >/dev/null && \
+		echo "Running integration tests..." && \
 		TEST_DATABASE_URL="postgres://monitor:test123@localhost:5432/monitor_test?sslmode=disable" go test ./... -tags=integration -v; \
 	else \
 		echo "Using existing TEST_DATABASE_URL..."; \
@@ -49,9 +49,9 @@ test-integration:
 # Run load tests (requires test database)
 test-load:
 	@if [ -z "$$TEST_DATABASE_URL" ]; then \
-		echo "Starting test database..."; \
-		./scripts/test-db.sh start > /dev/null 2>&1 || true; \
-		echo "Running load tests..."; \
+		echo "Starting test database..." && \
+		./scripts/test-db.sh start >/dev/null && \
+		echo "Running load tests..." && \
 		TEST_DATABASE_URL="postgres://monitor:test123@localhost:5432/monitor_test?sslmode=disable" go test ./... -tags=load -v -timeout=30m; \
 	else \
 		echo "Using existing TEST_DATABASE_URL..."; \

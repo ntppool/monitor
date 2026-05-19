@@ -127,17 +127,31 @@ drop_database() {
     print_success "Database '${DB_NAME}' dropped"
 }
 
-# Function to test database connection
+# Function to test database connection.
+# Uses an actual auth+query as the test user against the test database
+# rather than `pg_isready` or an admin-side check. `pg_isready` reports
+# readiness as soon as the postmaster accepts connections, which can
+# precede the moment the test user and test database are usable; a
+# real `SELECT 1` as the test user only succeeds once the full setup
+# has settled. Retries briefly so the start command tolerates a
+# warming-up local PostgreSQL.
 test_connection() {
     print_status "Testing database connection..."
 
-    if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c '\q' >/dev/null 2>&1; then
-        print_success "Database connection test passed"
-        return 0
-    else
-        print_error "Failed to connect to database"
-        return 1
-    fi
+    local max_attempts=45
+    local attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        if PGPASSWORD="$DB_PASSWORD" psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c 'SELECT 1' >/dev/null 2>&1; then
+            print_success "Database connection test passed"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+
+    print_error "Failed to connect to database as ${DB_USER}@${DB_NAME} after ${max_attempts} attempts"
+    return 1
 }
 
 # Function to show connection information
