@@ -15,6 +15,7 @@ import (
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/version"
+	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -219,15 +220,48 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 
 // Selector manages the monitor selection process
 type Selector struct {
-	ctx     context.Context
-	dbconn  *pgxpool.Pool
-	log     *slog.Logger
-	metrics *Metrics
+	ctx      context.Context
+	dbconn   *pgxpool.Pool
+	log      *slog.Logger
+	metrics  *Metrics
+	settings settingsProvider
 }
 
-// NewSelector creates a new selector instance
+// settingsProvider is the minimal surface Selector needs from the
+// monitor-settings cache. Tests can pass nil to fall back to the historical
+// constants.
+type settingsProvider interface {
+	Current() monitorsettings.MonitorSettings
+}
+
+// NewSelector creates a new selector instance. The monitor-settings watcher
+// enables dynamic sample-count thresholds based on the current
+// interval_testing.
 func NewSelector(ctx context.Context, dbconn *pgxpool.Pool, log *slog.Logger, metrics *Metrics) (*Selector, error) {
-	return &Selector{ctx: ctx, dbconn: dbconn, log: log, metrics: metrics}, nil
+	settings, err := monitorsettings.NewWatcher(ctx, ntpdb.New(dbconn), log)
+	if err != nil {
+		return nil, fmt.Errorf("monitor settings watcher: %w", err)
+	}
+	return &Selector{ctx: ctx, dbconn: dbconn, log: log, metrics: metrics, settings: settings}, nil
+}
+
+// minCountForActive returns the per-Run sample-count threshold for the
+// testing -> active promotion, derived from the current interval_testing
+// when a settings watcher is configured, else the historical constant.
+func (sl *Selector) minCountForActive() int64 {
+	if sl.settings == nil {
+		return int64(minCountForActive)
+	}
+	return monitorsettings.RequiredCountForActive(sl.settings.Current().IntervalTesting.Duration)
+}
+
+// minCountForTesting returns the sample-count threshold for the
+// candidate -> testing promotion.
+func (sl *Selector) minCountForTesting() int64 {
+	if sl.settings == nil {
+		return int64(minCountForTesting)
+	}
+	return monitorsettings.RequiredCountForTesting()
 }
 
 // Run processes all servers that need monitor review

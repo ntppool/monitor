@@ -26,6 +26,7 @@ import (
 	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
+	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
 	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
@@ -42,6 +43,7 @@ type Server struct {
 	db          ntpdb.QuerierTx
 	dbconn      *pgxpool.Pool
 	jwtAuth     *JWTAuthenticator
+	settings    *monitorsettings.Watcher
 	clientCAs   *x509.CertPool
 	shutdownFns []func(ctx context.Context) error
 }
@@ -80,14 +82,20 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 		jwtAuth = nil // Continue without JWT support
 	}
 
+	settings, err := monitorsettings.NewWatcher(ctx, ntpdb.New(dbconn), log)
+	if err != nil {
+		return nil, fmt.Errorf("monitor settings watcher: %w", err)
+	}
+
 	srv := &Server{
-		ctx:     ctx,
-		cfg:     &cfg,
-		db:      db,
-		dbconn:  dbconn,
-		tokens:  tm,
-		m:       metrics,
-		jwtAuth: jwtAuth,
+		ctx:      ctx,
+		cfg:      &cfg,
+		db:       db,
+		dbconn:   dbconn,
+		tokens:   tm,
+		m:        metrics,
+		jwtAuth:  jwtAuth,
+		settings: settings,
 	}
 
 	// capool, err := apitls.CAPool()
@@ -95,7 +103,8 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 	// 	return nil, err
 	// }
 
-	tpShutdownFn, err := tracing.InitTracer(ctx,
+	tpShutdownFn, err := tracing.InitTracer(
+		ctx,
 		&tracing.TracerConfig{
 			ServiceName: "monitor-api",
 			Environment: cfg.DeploymentEnv.String(),
@@ -188,13 +197,15 @@ func (srv *Server) Run() error {
 		twirpmetrics.NewServerHooks(srv.m.Registry()),
 	)
 
-	twirpHandler := pb.NewMonitorServer(twSrv,
+	twirpHandler := pb.NewMonitorServer(
+		twSrv,
 		twirp.WithServerPathPrefix("/api/v1"),
 		twirp.WithServerHooks(hooks),
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle(twirpHandler.PathPrefix(),
+	mux.Handle(
+		twirpHandler.PathPrefix(),
 		twirptrace.WithTraceContext(
 			srv.dualAuthMiddleware(
 				WithUserAgent(
