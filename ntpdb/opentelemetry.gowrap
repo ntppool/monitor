@@ -40,6 +40,13 @@ func (_d {{$decorator}}) {{$method.Declaration}} {
     if _d._spanDecorator != nil {
       _d._spanDecorator(_span, {{$method.ParamsMap}}, {{$method.ResultsMap}})
     }{{- if $method.ReturnsError}} else if err != nil {
+      {{ if eq $method.Name "Rollback" }}
+      if errors.Is(err, sql.ErrTxDone) {
+        // If the transaction is already done, we don't need to record an error.
+        _span.SetStatus(_codes.Ok, "Transaction already done")
+        return
+      }
+      {{- end }}
       _span.RecordError(err)
       _span.SetStatus(_codes.Error, err.Error())
       _span.SetAttributes(

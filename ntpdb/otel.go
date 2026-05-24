@@ -7,6 +7,7 @@ package ntpdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -45,6 +46,7 @@ func (_d QuerierTxWithTracing) Begin(ctx context.Context) (q1 QuerierTx, err err
 				"q1":  q1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -68,6 +70,7 @@ func (_d QuerierTxWithTracing) ClearServerScoreConstraintViolation(ctx context.C
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -90,6 +93,7 @@ func (_d QuerierTxWithTracing) Commit(ctx context.Context) (err error) {
 				"ctx": ctx}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -113,6 +117,7 @@ func (_d QuerierTxWithTracing) DeleteServerScore(ctx context.Context, arg Delete
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -136,6 +141,7 @@ func (_d QuerierTxWithTracing) GetMinLogScoreID(ctx context.Context) (u1 uint64,
 				"u1":  u1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -160,6 +166,7 @@ func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID 
 				"ga1": ga1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -184,6 +191,7 @@ func (_d QuerierTxWithTracing) GetMonitorTLSNameIP(ctx context.Context, arg GetM
 				"g1":  g1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -208,6 +216,7 @@ func (_d QuerierTxWithTracing) GetMonitorsTLSName(ctx context.Context, tlsName s
 				"ma1": ma1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -232,6 +241,7 @@ func (_d QuerierTxWithTracing) GetScorerLogScores(ctx context.Context, arg GetSc
 				"la1": la1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -256,6 +266,7 @@ func (_d QuerierTxWithTracing) GetScorerNextLogScoreID(ctx context.Context, logS
 				"u1":  u1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -280,6 +291,7 @@ func (_d QuerierTxWithTracing) GetScorerRecentScores(ctx context.Context, arg Ge
 				"la1": la1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -303,6 +315,7 @@ func (_d QuerierTxWithTracing) GetScorerStatus(ctx context.Context) (ga1 []GetSc
 				"ga1": ga1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -326,6 +339,7 @@ func (_d QuerierTxWithTracing) GetScorers(ctx context.Context) (ga1 []GetScorers
 				"ga1": ga1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -350,6 +364,7 @@ func (_d QuerierTxWithTracing) GetServer(ctx context.Context, id uint32) (s1 Ser
 				"s1":  s1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -374,6 +389,7 @@ func (_d QuerierTxWithTracing) GetServerIP(ctx context.Context, ip string) (s1 S
 				"s1":  s1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -398,6 +414,7 @@ func (_d QuerierTxWithTracing) GetServerScore(ctx context.Context, arg GetServer
 				"s1":  s1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -422,6 +439,7 @@ func (_d QuerierTxWithTracing) GetServers(ctx context.Context, arg GetServersPar
 				"sa1": sa1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -445,6 +463,7 @@ func (_d QuerierTxWithTracing) GetServersMonitorReview(ctx context.Context) (ua1
 				"ua1": ua1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -469,6 +488,7 @@ func (_d QuerierTxWithTracing) GetSystemSetting(ctx context.Context, key string)
 				"s1":  s1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -493,6 +513,7 @@ func (_d QuerierTxWithTracing) InsertLogScore(ctx context.Context, arg InsertLog
 				"r1":  r1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -517,6 +538,7 @@ func (_d QuerierTxWithTracing) InsertScorer(ctx context.Context, arg InsertScore
 				"r1":  r1,
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -540,6 +562,7 @@ func (_d QuerierTxWithTracing) InsertScorerStatus(ctx context.Context, arg Inser
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -563,6 +586,7 @@ func (_d QuerierTxWithTracing) InsertServerScore(ctx context.Context, arg Insert
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -585,6 +609,12 @@ func (_d QuerierTxWithTracing) Rollback(ctx context.Context) (err error) {
 				"ctx": ctx}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
+			if errors.Is(err, sql.ErrTxDone) {
+				// If the transaction is already done, we don't need to record an error.
+				_span.SetStatus(_codes.Ok, "Transaction already done")
+				return
+			}
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -608,6 +638,7 @@ func (_d QuerierTxWithTracing) UpdateMonitorSeen(ctx context.Context, arg Update
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -631,6 +662,7 @@ func (_d QuerierTxWithTracing) UpdateMonitorSubmit(ctx context.Context, arg Upda
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -654,6 +686,7 @@ func (_d QuerierTxWithTracing) UpdateMonitorVersion(ctx context.Context, arg Upd
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -677,6 +710,7 @@ func (_d QuerierTxWithTracing) UpdateScorerStatus(ctx context.Context, arg Updat
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -700,6 +734,7 @@ func (_d QuerierTxWithTracing) UpdateServer(ctx context.Context, arg UpdateServe
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -723,6 +758,7 @@ func (_d QuerierTxWithTracing) UpdateServerScore(ctx context.Context, arg Update
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -746,6 +782,7 @@ func (_d QuerierTxWithTracing) UpdateServerScoreConstraintViolation(ctx context.
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -769,6 +806,7 @@ func (_d QuerierTxWithTracing) UpdateServerScoreLastConstraintCheck(ctx context.
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -792,6 +830,7 @@ func (_d QuerierTxWithTracing) UpdateServerScorePauseReason(ctx context.Context,
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -815,6 +854,7 @@ func (_d QuerierTxWithTracing) UpdateServerScoreQueue(ctx context.Context, arg U
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -838,6 +878,7 @@ func (_d QuerierTxWithTracing) UpdateServerScoreStatus(ctx context.Context, arg 
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -861,6 +902,7 @@ func (_d QuerierTxWithTracing) UpdateServerScoreStratum(ctx context.Context, arg
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -884,6 +926,7 @@ func (_d QuerierTxWithTracing) UpdateServerStratum(ctx context.Context, arg Upda
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -907,6 +950,7 @@ func (_d QuerierTxWithTracing) UpdateServersMonitorReview(ctx context.Context, a
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(
@@ -930,6 +974,7 @@ func (_d QuerierTxWithTracing) UpdateServersMonitorReviewChanged(ctx context.Con
 				"arg": arg}, map[string]interface{}{
 				"err": err})
 		} else if err != nil {
+
 			_span.RecordError(err)
 			_span.SetStatus(_codes.Error, err.Error())
 			_span.SetAttributes(

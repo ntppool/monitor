@@ -4,8 +4,8 @@ generate: sqlc
 	go generate ./...
 
 sqlc:
-	sqlc compile
-	sqlc generate
+	go tool sqlc compile
+	go tool sqlc generate
 
 test:
 	go test -v ./...
