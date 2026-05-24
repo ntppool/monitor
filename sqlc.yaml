@@ -19,5 +19,11 @@ sql:
             nullable: true
           - column: "accounts.flags"
             go_type: "*encoding/json.RawMessage"
+          - column: "log_scores.attributes"
+            go_type: "*encoding/json.RawMessage"
+          - column: "monitors.config"
+            go_type: "encoding/json.RawMessage"
+          - column: "servers.flags"
+            go_type: "encoding/json.RawMessage"
           # - column: "x.avg_rtt"
           #   go_type: "database/sql.NullFloat64"

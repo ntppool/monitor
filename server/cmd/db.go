@@ -42,10 +42,10 @@ func (cmd *dbMonitorCmd) Run(ctx context.Context, parent *dbCmd) error {
 	}
 
 	for _, mon := range mons {
-		fmt.Printf("Monitor: %+v\n", mon)
+		fmt.Printf("Monitor: %+v config: %s\n", mon, mon.Config)
 		smon, err := ntpdb.GetSystemMonitor(ctx, db, "settings", mon.IpVersion)
 		if err == nil {
-			mconf, err := mon.GetConfigWithDefaults([]byte(smon.Config))
+			mconf, err := mon.GetConfigWithDefaults(smon.Config)
 			if err != nil {
 				return err
 			}

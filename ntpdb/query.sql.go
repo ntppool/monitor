@@ -145,7 +145,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID int64) ([]Get
 const getMonitorTLSNameIP = `-- name: GetMonitorTLSNameIP :one
 SELECT
   monitors.id, monitors.id_token, monitors.type, monitors.user_id, monitors.account_id, monitors.hostname, monitors.location, monitors.ip, monitors.ip_version, monitors.tls_name, monitors.api_key, monitors.status, monitors.config, monitors.client_version, monitors.last_seen, monitors.last_submit, monitors.created_on, monitors.deleted_on, monitors.is_current,
-  accounts.id, accounts.id_token, accounts.name, accounts.organization_name, accounts.organization_url, accounts.public_profile, accounts.url_slug, accounts.flags, accounts.created_on, accounts.modified_on, accounts.stripe_customer_id
+  accounts.id, accounts.id_token, accounts.name, accounts.organization_name, accounts.organization_url, accounts.public_profile, accounts.url_slug, accounts.flags, accounts.created_on, accounts.modified_on, accounts.stripe_customer_id, accounts.deletion_on
 FROM monitors
 LEFT JOIN accounts ON monitors.account_id = accounts.id
 WHERE monitors.tls_name = $1
@@ -200,6 +200,7 @@ func (q *Queries) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSName
 		&i.Account.CreatedOn,
 		&i.Account.ModifiedOn,
 		&i.Account.StripeCustomerID,
+		&i.Account.DeletionOn,
 	)
 	return i, err
 }
@@ -692,7 +693,7 @@ type InsertLogScoreParams struct {
 	Step       float64            `json:"step"`
 	Offset     pgtype.Float8      `json:"offset"`
 	Rtt        pgtype.Int4        `json:"rtt"`
-	Attributes pgtype.Text        `json:"attributes"`
+	Attributes *json.RawMessage   `json:"attributes"`
 }
 
 func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error) {

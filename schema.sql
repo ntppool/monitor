@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 18.1 (Postgres.app)
--- Dumped by pg_dump version 18.1 (Postgres.app)
+-- Dumped from database version 18.4 (Postgres.app)
+-- Dumped by pg_dump version 18.4 (Postgres.app)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -129,7 +129,8 @@ CREATE TYPE public.service_ip_type AS ENUM (
 --
 
 CREATE TYPE public.service_type AS ENUM (
-    'dns'
+    'dns',
+    'stripe-gw'
 );
 
 
@@ -304,7 +305,8 @@ CREATE TABLE public.accounts (
     flags jsonb,
     created_on timestamp with time zone NOT NULL,
     modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    stripe_customer_id character varying(255)
+    stripe_customer_id character varying(255),
+    deletion_on timestamp with time zone
 );
 
 
@@ -528,7 +530,7 @@ CREATE TABLE public.log_scores (
     step double precision DEFAULT '0'::double precision NOT NULL,
     "offset" double precision,
     rtt integer,
-    attributes text
+    attributes jsonb
 );
 
 
@@ -594,7 +596,7 @@ CREATE TABLE public.logs (
     vendor_zone_id bigint,
     type character varying(50),
     message text,
-    changes text,
+    changes jsonb,
     created_on timestamp with time zone NOT NULL
 );
 
@@ -676,7 +678,7 @@ CREATE TABLE public.monitors (
     tls_name character varying(255),
     api_key character varying(64),
     status public.monitors_status NOT NULL,
-    config text NOT NULL,
+    config jsonb NOT NULL,
     client_version character varying(255) DEFAULT ''::character varying NOT NULL,
     last_seen timestamp with time zone,
     last_submit timestamp with time zone,
@@ -1067,7 +1069,7 @@ CREATE TABLE public.servers (
     score_ts timestamp with time zone,
     score_raw double precision DEFAULT '0'::double precision NOT NULL,
     deletion_on date,
-    flags character varying(4096) DEFAULT '{}'::character varying NOT NULL
+    flags jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -1099,7 +1101,7 @@ CREATE TABLE public.servers_monitor_review (
     last_review timestamp with time zone,
     next_review timestamp with time zone,
     last_change timestamp with time zone,
-    config character varying(4096) DEFAULT ''::character varying NOT NULL
+    config jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 

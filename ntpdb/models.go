@@ -239,6 +239,7 @@ type Account struct {
 	CreatedOn        pgtype.Timestamptz `json:"created_on"`
 	ModifiedOn       pgtype.Timestamptz `json:"modified_on"`
 	StripeCustomerID pgtype.Text        `json:"stripe_customer_id"`
+	DeletionOn       pgtype.Timestamptz `json:"deletion_on"`
 }
 
 type LogScore struct {
@@ -250,7 +251,7 @@ type LogScore struct {
 	Step       float64            `json:"step"`
 	Offset     pgtype.Float8      `json:"offset"`
 	Rtt        pgtype.Int4        `json:"rtt"`
-	Attributes pgtype.Text        `json:"attributes"`
+	Attributes *json.RawMessage   `json:"attributes"`
 }
 
 type Monitor struct {
@@ -266,7 +267,7 @@ type Monitor struct {
 	TlsName       pgtype.Text           `json:"tls_name"`
 	ApiKey        pgtype.Text           `json:"api_key"`
 	Status        MonitorsStatus        `json:"status"`
-	Config        string                `json:"config"`
+	Config        json.RawMessage       `json:"config"`
 	ClientVersion string                `json:"client_version"`
 	LastSeen      pgtype.Timestamptz    `json:"last_seen"`
 	LastSubmit    pgtype.Timestamptz    `json:"last_submit"`
@@ -292,7 +293,7 @@ type Server struct {
 	ScoreTs        pgtype.Timestamptz `json:"score_ts"`
 	ScoreRaw       float64            `json:"score_raw"`
 	DeletionOn     pgtype.Date        `json:"deletion_on"`
-	Flags          string             `json:"flags"`
+	Flags          json.RawMessage    `json:"flags"`
 }
 
 type ServerScore struct {

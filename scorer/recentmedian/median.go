@@ -106,8 +106,8 @@ func (s *RecentMedian) Score(ctx context.Context, db ntpdb.Querier, serverScore 
 
 	attributes := ntpdb.LogScoreAttributes{}
 
-	if ls.Attributes.Valid {
-		err := json.Unmarshal([]byte(ls.Attributes.String), &attributes)
+	if ls.Attributes != nil {
+		err := json.Unmarshal(*ls.Attributes, &attributes)
 		if err != nil {
 			return score.Score{
 				LogScore: ntpdb.LogScore{
@@ -125,10 +125,7 @@ func (s *RecentMedian) Score(ctx context.Context, db ntpdb.Querier, serverScore 
 	if err != nil {
 		log.Error("could not marshal attributes", "attributes", attributes, "err", err)
 	}
-	attributeStr := pgtype.Text{
-		String: string(b),
-		Valid:  true,
-	}
+	attributeStr := json.RawMessage(b)
 
 	// log.Printf("inserting median from LS %d", ls.ID)
 
@@ -139,7 +136,7 @@ func (s *RecentMedian) Score(ctx context.Context, db ntpdb.Querier, serverScore 
 			Ts:         latest.Ts,
 			Step:       ls.Step,
 			Score:      ls.Score,
-			Attributes: attributeStr,
+			Attributes: &attributeStr,
 			// Offset:     ls.Offset,
 			// Rtt:        ls.Rtt,
 		},

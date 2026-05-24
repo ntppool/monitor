@@ -88,8 +88,6 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 
 	sc.Step = step
 
-	attributeStr := pgtype.Text{}
-
 	if status.Leap > 0 || len(status.Error) > 0 {
 		log.Debug("Got attributes", "status", status)
 		attributes := ntpdb.LogScoreAttributes{
@@ -100,10 +98,9 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 		if err != nil {
 			log.Warn("could not marshal attributes", "attributes", attributes, "err", err)
 		}
-		attributeStr.String = string(b)
-		attributeStr.Valid = true
+		raw := json.RawMessage(b)
+		sc.Attributes = &raw
 	}
-	sc.Attributes = attributeStr
 
 	return &sc, nil
 }

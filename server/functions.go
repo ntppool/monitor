@@ -68,7 +68,7 @@ func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor)
 
 	smon, err := ntpdb.GetSystemMonitor(ctx, srv.db, "settings", monitor.IpVersion)
 	if err == nil {
-		cfg, err = monitor.GetConfigWithDefaults([]byte(smon.Config))
+		cfg, err = monitor.GetConfigWithDefaults(smon.Config)
 		if err != nil {
 			return nil, err
 		}

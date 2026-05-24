@@ -30,7 +30,7 @@ func (m *Monitor) IsLive() bool {
 }
 
 func (m *Monitor) GetConfigWithDefaults(defaults []byte) (*MonitorConfig, error) {
-	merged, err := jsonpatch.MergePatch(defaults, []byte(m.Config))
+	merged, err := jsonpatch.MergePatch(defaults, m.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +41,12 @@ func (m *Monitor) GetConfigWithDefaults(defaults []byte) (*MonitorConfig, error)
 }
 
 func (m *Monitor) GetConfig() (*MonitorConfig, error) {
-	return m.getConfig([]byte(m.Config))
+	return m.getConfig(m.Config)
 }
 
 func (m *Monitor) getConfig(conf []byte) (*MonitorConfig, error) {
 	moncfg := &MonitorConfig{}
-	err := json.Unmarshal([]byte(conf), moncfg)
+	err := json.Unmarshal(conf, moncfg)
 	if err != nil {
 		return nil, err
 	}
