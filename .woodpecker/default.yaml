@@ -16,12 +16,11 @@ clone:
 
 services:
   - name: database
-    image: mysql:8.0
+    image: postgres:18
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: monitor_test
-      MYSQL_USER: monitor
-      MYSQL_PASSWORD: test123
+      POSTGRES_DB: monitor_test
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: test123
 
 steps:
   - name: generate-tags
@@ -41,22 +40,22 @@ steps:
     depends_on: []
     environment:
       <<: *go_env
-      TEST_DATABASE_URL: monitor:test123@tcp(database:3306)/monitor_test?parseTime=true&multiStatements=true
+      TEST_DATABASE_URL: postgres://monitor:test123@database:5432/monitor_test?sslmode=disable
     volumes: *go_volumes
     commands:
-      - apt update && apt install -y default-mysql-client git
+      - apt update && apt install -y postgresql-client git
       - go build ./...
       - |
         echo "Waiting for database to be ready..."
         for i in $(seq 1 30); do
-          if mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false -e "SELECT 1" monitor_test 2>/dev/null; then
+          if psql "$TEST_DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
             echo "Database is ready!"
             break
           fi
           echo "Waiting for database... ($i/30)"
           sleep 2
         done
-      - mysql -h database -u monitor -ptest123 --ssl-verify-server-cert=false monitor_test < schema.sql
+      - psql "$TEST_DATABASE_URL" -f schema.sql
       - go test -v ./... -short
       - make test-integration
       - echo OK

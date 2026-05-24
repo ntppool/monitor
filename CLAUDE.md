@@ -445,7 +445,7 @@ if !ipc.IsLive() {
 
 - **Schema Changes**: Database schema changes are handled automatically by the deployment system
 - **Schema File**: `schema.sql` contains the current PostgreSQL database schema
-- **Local Development**: Use PostgreSQL 16 in Docker (available via `make test-db-start` or `./scripts/test-db.sh start`)
+- **Local Development**: Use PostgreSQL 18 in Docker (available via `make test-db-start` or `./scripts/test-db.sh start`)
 - **No Manual Migrations**: The codebase handles schema updates automatically during deployment
 - **Version Tracking**: Schema versions always increment forward and are managed separately from the code
 
