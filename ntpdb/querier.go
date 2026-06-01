@@ -34,7 +34,7 @@ type Querier interface {
 	GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error)
 	GetServers(ctx context.Context, arg GetServersParams) ([]Server, error)
 	GetServersMonitorReview(ctx context.Context) ([]int64, error)
-	GetSystemSetting(ctx context.Context, key string) (string, error)
+	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
 	InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error)
 	InsertScorer(ctx context.Context, arg InsertScorerParams) (int64, error)
 	InsertScorerStatus(ctx context.Context, arg InsertScorerStatusParams) error

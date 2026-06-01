@@ -19,14 +19,14 @@ type fakeQuerier struct {
 	calls atomic.Int64
 }
 
-func (f *fakeQuerier) GetSystemSetting(ctx context.Context, key string) (string, error) {
+func (f *fakeQuerier) GetSystemSetting(ctx context.Context, key string) ([]byte, error) {
 	f.calls.Add(1)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return "", f.err
+		return nil, f.err
 	}
-	return f.value, nil
+	return []byte(f.value), nil
 }
 
 func (f *fakeQuerier) set(v string) {

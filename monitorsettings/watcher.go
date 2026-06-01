@@ -17,7 +17,7 @@ import (
 // Querier is the minimum DB surface the Watcher needs. Both ntpdb.Queries
 // and ntpdb.QuerierTx satisfy it.
 type Querier interface {
-	GetSystemSetting(ctx context.Context, key string) (string, error)
+	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
 }
 
 // SettingsKey is the system_settings row key that holds the JSON payload.
@@ -89,12 +89,12 @@ func (w *Watcher) refresh(ctx context.Context, initial bool) error {
 	}
 
 	var parsed MonitorSettings
-	if raw != "" {
-		if jerr := json.Unmarshal([]byte(raw), &parsed); jerr != nil {
+	if len(raw) > 0 {
+		if jerr := json.Unmarshal(raw, &parsed); jerr != nil {
 			w.log.WarnContext(
 				ctx, "could not parse monitor settings; using defaults",
 				slog.String("err", jerr.Error()),
-				slog.String("raw", raw),
+				slog.String("raw", string(raw)),
 			)
 			parsed = MonitorSettings{}
 		}

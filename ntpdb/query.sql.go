@@ -671,9 +671,9 @@ const getSystemSetting = `-- name: GetSystemSetting :one
 SELECT value FROM system_settings WHERE "key" = $1
 `
 
-func (q *Queries) GetSystemSetting(ctx context.Context, key string) (string, error) {
+func (q *Queries) GetSystemSetting(ctx context.Context, key string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, getSystemSetting, key)
-	var value string
+	var value []byte
 	err := row.Scan(&value)
 	return value, err
 }

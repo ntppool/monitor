@@ -1172,7 +1172,7 @@ ALTER TABLE public.services ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 CREATE TABLE public.system_settings (
     id bigint NOT NULL,
     key character varying(255) NOT NULL,
-    value text NOT NULL,
+    value jsonb NOT NULL,
     created_on timestamp with time zone NOT NULL,
     modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

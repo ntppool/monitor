@@ -552,14 +552,14 @@ func (_d QuerierTxWithTracing) GetServersMonitorReview(ctx context.Context) (ia1
 }
 
 // GetSystemSetting implements QuerierTx
-func (_d QuerierTxWithTracing) GetSystemSetting(ctx context.Context, key string) (s1 string, err error) {
+func (_d QuerierTxWithTracing) GetSystemSetting(ctx context.Context, key string) (ba1 []byte, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSystemSetting")
 	defer func() {
 		if _d._spanDecorator != nil {
 			_d._spanDecorator(_span, map[string]interface{}{
 				"ctx": ctx,
 				"key": key}, map[string]interface{}{
-				"s1":  s1,
+				"ba1": ba1,
 				"err": err})
 		} else if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

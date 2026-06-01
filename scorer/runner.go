@@ -158,13 +158,13 @@ func (r *runner) pool() ntpdb.QuerierTx {
 }
 
 func (r *runner) Settings(ctx context.Context, db ntpdb.Querier) ScorerSettings {
-	settingsStr, err := db.GetSystemSetting(ctx, "scorer")
+	settingsRaw, err := db.GetSystemSetting(ctx, "scorer")
 	if err != nil {
 		r.log.Warn("could not fetch scorer settings", "err", err)
 	}
 	var settings ScorerSettings
-	if len(settingsStr) > 0 {
-		err := json.Unmarshal([]byte(settingsStr), &settings)
+	if len(settingsRaw) > 0 {
+		err := json.Unmarshal(settingsRaw, &settings)
 		if err != nil {
 			r.log.Warn("could not unmarshal scorer settings", "err", err)
 		}
