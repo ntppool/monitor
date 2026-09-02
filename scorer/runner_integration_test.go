@@ -156,6 +156,25 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 }
 
 func TestScorerRunner_ErrorHandling(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+	defer tdb.CleanupTestData(t)
+
+	logger := testutil.NewTestLogger(t)
+
+	t.Run("NoScorersConfigured", func(t *testing.T) {
+		// Start from a database with no scorers, whatever ran before.
+		tdb.CleanupTestData(t)
+
+		reg := prometheus.NewRegistry()
+		runner, err := New(logger.Logger(), tdb.Pool, reg)
+		testutil.AssertNoError(t, err, "Failed to create scorer runner")
+
+		// Run reports an error rather than quietly processing nothing.
+		_, err = runner.Run(tdb.Context())
+		testutil.AssertError(t, err, "Expected error when no scorers configured")
+	})
+
 	t.Run("DatabaseConnectionLoss", func(t *testing.T) {
 		// This test would require more sophisticated database mocking
 		// For now, we'll skip it in the basic implementation
