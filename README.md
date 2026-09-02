@@ -113,8 +113,11 @@ installed and available as well.
 ### Environment variables
 
 - `DEPLOYMENT_MODE` devel
-- `DATABASE_DSN` database connection string
-  - example: `"tcp(ntp-db-mysql)/betadb?charset=utf8&parseTime=true"`
+- `DATABASE_URI` PostgreSQL connection URI; takes priority over the
+  config file
+  - example: `"postgres://user:password@ntp-db/betadb?sslmode=require"`
+- `DATABASE_CONFIG_FILE` path to the database config file, overriding
+  the default search
 - `JWT_KEY` key for signing JWTs for the mosquitto server
 - `VAULT_CACERT` path for public vault signing certificate
 - `VAULT_ADDR` URL for vault server
@@ -122,15 +125,20 @@ installed and available as well.
 
 ### Files
 
-If you don't add username and password to the `DATABASE_DSN`, it has to
-be provided in a file named `database.yaml` or
-`/vault/secrets/database.yaml` in the format:
+Without `DATABASE_URI`, the connection details are read from a file
+named `database.yaml` or `/vault/secrets/database.yaml` in the format:
 
-```
-mysql:
+```yaml
+postgres:
   user: some-db-user
   pass: ...
+  host: ntp-db
+  port: 5432
+  name: betadb
+  sslmode: require
 ```
 
-You can also provide a `dsn:` field in that datastructure
-and omit the DATABASE_DSN altogether.
+`port` defaults to 5432 and `sslmode` to `prefer`. The `monitor-api`
+and `monitor-scorer` commands take `--config` (`-c`) to point at a
+different file. If no config file is found, the standard `PGHOST`,
+`PGUSER`, `PGPASSWORD` and `PGDATABASE` variables are used.
