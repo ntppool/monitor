@@ -160,12 +160,24 @@ CREATE TYPE public.user_equipment_applications_status AS ENUM (
 
 
 --
+-- Name: user_tasks_state; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.user_tasks_state AS ENUM (
+    'pending',
+    'done',
+    'failed'
+);
+
+
+--
 -- Name: user_tasks_task; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE public.user_tasks_task AS ENUM (
     'download',
-    'delete'
+    'delete',
+    'account_delete'
 );
 
 
@@ -220,7 +232,9 @@ CREATE TABLE public.account_invites (
     code character varying(25) NOT NULL,
     expires_on timestamp with time zone NOT NULL,
     created_on timestamp with time zone NOT NULL,
-    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_sent_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    sent_count integer DEFAULT 1 NOT NULL
 );
 
 
@@ -1320,11 +1334,13 @@ CREATE TABLE public.user_tasks (
     id bigint NOT NULL,
     user_id bigint,
     task public.user_tasks_task NOT NULL,
-    status text NOT NULL,
+    result text CONSTRAINT user_tasks_status_not_null NOT NULL,
     traceid uuid DEFAULT uuidv7() NOT NULL,
     execute_on timestamp with time zone,
     created_on timestamp with time zone NOT NULL,
-    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    account_id bigint,
+    state public.user_tasks_state DEFAULT 'pending'::public.user_tasks_state NOT NULL
 );
 
 
@@ -1398,14 +1414,16 @@ CREATE TABLE public.vendor_zones (
     request_information text,
     device_information text,
     device_count bigint,
-    opensource boolean DEFAULT false NOT NULL,
     opensource_info text,
     rt_ticket integer,
     approved_on timestamp with time zone,
     created_on timestamp with time zone NOT NULL,
     modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     dns_root_id bigint NOT NULL,
-    account_id bigint
+    account_id bigint,
+    opensource_requested boolean DEFAULT false NOT NULL,
+    opensource_approved boolean,
+    rejection_reason text
 );
 
 
@@ -3085,6 +3103,14 @@ ALTER TABLE ONLY public.user_privileges
 
 ALTER TABLE ONLY public.user_sessions
     ADD CONSTRAINT user_sessions_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_tasks user_tasks_account_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_tasks
+    ADD CONSTRAINT user_tasks_account_fk FOREIGN KEY (account_id) REFERENCES public.accounts(id) ON DELETE SET NULL;
 
 
 --
