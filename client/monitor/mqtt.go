@@ -96,9 +96,10 @@ func (mqc *mqclient) Handler(m *paho.Publish) {
 			log.Error("no config available")
 			return
 		}
-		cfg.Samples = 1
+		cfgCopy := *cfg
+		cfgCopy.Samples = 1
 
-		_, resp, err := CheckHost(ctx, &ip, cfg)
+		_, resp, err := CheckHost(ctx, &ip, &cfgCopy)
 		r := &api.NTPResponse{
 			NTP: resp,
 		}

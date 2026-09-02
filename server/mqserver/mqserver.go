@@ -320,13 +320,20 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 		mqs.rr.AddResponseID(ctx, id.String(), rc)
 		defer mqs.rr.CloseResponseID(id.String())
 
+		mqs.cmux.RLock()
 		cl, ok := mqs.clients[clientName]
+		var clientTLSName string
+		if ok {
+			clientTLSName = cl.Name
+		}
+		mqs.cmux.RUnlock()
+
 		if !ok {
 			return c.String(http.StatusNotFound, "Not found")
 		}
 
-		topic := topics.Request(cl.Name, "metrics")
-		responseTopic := topics.DataResponse(cl.Name, id.String())
+		topic := topics.Request(clientTLSName, "metrics")
+		responseTopic := topics.DataResponse(clientTLSName, id.String())
 
 		log.Debug("topics", "topic", topic, "responseTopic", responseTopic)
 
@@ -376,7 +383,7 @@ func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
 					continue
 				}
 
-				if host != cl.Name {
+				if host != clientTLSName {
 					return c.String(http.StatusBadGateway, "unexpected response")
 				}
 
@@ -676,7 +683,8 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 	r.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
 
 	r.Use(otelecho.Middleware("mqserver"))
-	r.Use(slogecho.NewWithConfig(log,
+	r.Use(slogecho.NewWithConfig(
+		log,
 		slogecho.Config{
 			WithTraceID: true,
 			// WithSpanID:  true,

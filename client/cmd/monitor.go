@@ -467,7 +467,8 @@ runLoop:
 			}
 		}
 
-		count, err := backoff.Retry(ctx,
+		count, err := backoff.Retry(
+			ctx,
 			doBatch,
 			backoff.WithBackOff(boff),
 		)
@@ -518,11 +519,12 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 		metrics.RPCRequests.Add(ctx, 1,
 			metric.WithAttributes(
 				attribute.String("type", "config"),
-				attribute.String("status_code", statusCode)))
+				attribute.String("status_code", statusCode),
+			))
 	}
 
 	if err != nil || cfgresp.Msg == nil {
-		if strings.Contains(err.Error(), "tls: expired certificate") {
+		if err != nil && strings.Contains(err.Error(), "tls: expired certificate") {
 			log.ErrorContext(ctx, "TLS certificate error - check server certificate validity", "err", err, "monitor_ip", ipc.IP.String())
 		} else {
 			log.ErrorContext(ctx, "could not get config, http error", "err", err, "monitor_ip", ipc.IP.String())
@@ -535,7 +537,8 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, cfgStore checkconfig.ConfigProvider) (int, error) {
 	log := logger.FromContext(ctx)
 
-	serverresp, err := api.GetServers(ctx,
+	serverresp, err := api.GetServers(
+		ctx,
 		connect.NewRequest(
 			&apiv2.GetServersRequest{
 				MonId: ipc.IP.String(),
@@ -552,7 +555,8 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 		metrics.RPCRequests.Add(ctx, 1,
 			metric.WithAttributes(
 				attribute.String("type", "getServers"),
-				attribute.String("status_code", statusCode)))
+				attribute.String("status_code", statusCode),
+			))
 	}
 
 	if err != nil {
@@ -605,6 +609,8 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 				tr, err := traceroute.New(*s)
 				if err != nil {
 					log.Error("traceroute", "err", err)
+					wg.Done()
+					return
 				}
 				if err := tr.Start(ctx); err != nil {
 					log.Error("traceroute start failed", "err", err)
@@ -664,7 +670,8 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 		metrics.RPCRequests.Add(ctx, 1,
 			metric.WithAttributes(
 				attribute.String("type", "submitResults"),
-				attribute.String("status_code", statusCode)))
+				attribute.String("status_code", statusCode),
+			))
 	}
 
 	if err != nil {

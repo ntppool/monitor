@@ -63,7 +63,7 @@ func scorerRun(ctx context.Context, configFile string, continuous bool, metricsP
 
 	sc, err := scorer.New(log, dbconn, metricssrv.Registry())
 	if err != nil {
-		return nil
+		return err
 	}
 
 	expback := backoff.NewExponentialBackOff()

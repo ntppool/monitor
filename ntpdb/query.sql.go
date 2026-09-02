@@ -720,7 +720,7 @@ INSERT INTO monitors
     VALUES ('score', NULL, NULL,
             $1, '', NULL, NULL,
             $2, NULL, 'active',
-            '', '', NOW())
+            '{}', '', NOW())
 RETURNING id
 `
 

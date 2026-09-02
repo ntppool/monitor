@@ -336,8 +336,8 @@ func (sl *Selector) applyRule1_5ActiveExcessDemotion(
 
 			for i := startIndex; i < len(activeMonitors) && actualDemotions < demotionsNeeded; i++ {
 				em := activeMonitors[i]
-				// Only demote healthy monitors (not ones already marked for demotion)
-				if em.recommendedState != candidateOut {
+				// Only demote healthy monitors (not ones already marked for demotion/blocking)
+				if em.recommendedState != candidateOut && em.recommendedState != candidateBlock {
 					changes = append(changes, statusChange{
 						monitorID:  em.monitor.ID,
 						fromStatus: ntpdb.ServerScoresStatusActive,

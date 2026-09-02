@@ -91,6 +91,10 @@ func (w *Watcher) refresh(ctx context.Context, initial bool) error {
 	var parsed MonitorSettings
 	if len(raw) > 0 {
 		if jerr := json.Unmarshal(raw, &parsed); jerr != nil {
+			if !initial {
+				// Keep last-known-good settings rather than silently reverting to defaults.
+				return fmt.Errorf("could not parse monitor settings: %w", jerr)
+			}
 			w.log.WarnContext(
 				ctx, "could not parse monitor settings; using defaults",
 				slog.String("err", jerr.Error()),

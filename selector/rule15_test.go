@@ -260,6 +260,66 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	}
 }
 
+// TestRule15_SkipsBlockedMonitor is a regression test: Rule 1.5's guard previously only
+// skipped monitors already marked candidateOut, so a monitor marked candidateBlock (globally
+// paused/deleted, scheduled by Rule 1 for immediate active->candidate removal) could also
+// receive an active->testing change from Rule 1.5. Since both changes are applied in order
+// and the later one wins, the blocked monitor ended up stuck in "testing" instead of being
+// removed. Rule 1.5 must also skip candidateBlock monitors.
+func TestRule15_SkipsBlockedMonitor(t *testing.T) {
+	ctx := context.Background()
+	s := &Selector{
+		log: slog.Default(),
+	}
+
+	// 9 active monitors (target 7); monitor 9 has the worst RTT and is globally
+	// paused, so it is marked candidateBlock for immediate removal by Rule 1.
+	activeMonitors := make([]evaluatedMonitor, 9)
+	for i := 0; i < 9; i++ {
+		activeMonitors[i] = evaluatedMonitor{
+			monitor: monitorCandidate{
+				ID:           int64(i + 1),
+				ServerStatus: ntpdb.ServerScoresStatusActive,
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				RTT:          float64(i + 1), // Monitor 9 has the highest RTT (worst performance)
+				IsHealthy:    true,
+			},
+			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
+		}
+	}
+	activeMonitors[8].monitor.GlobalStatus = ntpdb.MonitorsStatusPaused
+	activeMonitors[8].recommendedState = candidateBlock
+
+	server := &serverInfo{ID: 1982}
+	accountLimits := make(map[int64]*accountLimit)
+
+	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
+
+	t.Logf("Total changes: %d", len(changes))
+	for _, change := range changes {
+		t.Logf("Change: monitor %d from %s to %s, reason: %s", change.monitorID, change.fromStatus, change.toStatus, change.reason)
+	}
+
+	for _, change := range changes {
+		if change.monitorID == 9 && change.fromStatus == ntpdb.ServerScoresStatusActive &&
+			change.toStatus == ntpdb.ServerScoresStatusTesting {
+			t.Errorf("monitor 9 is candidateBlock and must not also receive an active->testing change from Rule 1.5, got: %+v", change)
+		}
+	}
+
+	blockedToCandidate := false
+	for _, change := range changes {
+		if change.monitorID == 9 && change.fromStatus == ntpdb.ServerScoresStatusActive &&
+			change.toStatus == ntpdb.ServerScoresStatusCandidate {
+			blockedToCandidate = true
+		}
+	}
+	if !blockedToCandidate {
+		t.Errorf("expected monitor 9 (candidateBlock) to receive the Rule 1 active->candidate change")
+	}
+}
+
 // TestRule5_TestingCapacityLimit tests the Server 1065 scenario
 func TestRule5_TestingCapacityLimit(t *testing.T) {
 	ctx := context.Background()

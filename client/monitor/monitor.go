@@ -58,22 +58,25 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 		metrics.ServersChecked.Add(ctx, 1, metric.WithAttributes(attribute.String("ip_version", ipVersion)))
 	}
 
-	traceAttributes = append(traceAttributes,
+	traceAttributes = append(
+		traceAttributes,
 		attribute.String("ip", ip.String()),
 		attribute.String("ip_version", ipVersion),
 	)
 
-	ctx, span := tracing.Start(ctx,
+	ctx, span := tracing.Start(
+		ctx,
 		"monitor.CheckHost",
 		trace.WithAttributes(traceAttributes...),
 	)
 	defer span.End()
 
-	if cfg.Samples == 0 {
-		cfg.Samples = 3
+	samples := cfg.Samples
+	if samples == 0 {
+		samples = 3
 	}
 
-	span.SetAttributes(attribute.Int("samples", int(cfg.Samples)))
+	span.SetAttributes(attribute.Int("samples", int(samples)))
 
 	var localAddress string
 
@@ -114,7 +117,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 		LocalAddress: localAddress,
 	}
 
-	for i := int32(0); i < cfg.Samples; i++ {
+	for i := int32(0); i < samples; i++ {
 
 		if i > 0 {
 			// minimum headway time is 2 seconds, https://www.eecis.udel.edu/~mills/ntp/html/rate.html
