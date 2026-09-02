@@ -469,7 +469,8 @@ ON CONFLICT (col1) DO UPDATE SET col2 = EXCLUDED.col2;
 Key environment variables:
 
 - `DEPLOYMENT_MODE` - Environment (devel/test/prod)
-- `DATABASE_URL` - PostgreSQL connection string (e.g., `postgres://user:pass@host:5432/dbname?sslmode=disable`)
+- `DATABASE_URI` - PostgreSQL connection string (e.g., `postgres://user:pass@host:5432/dbname?sslmode=disable`); takes priority over `database.yaml`
+- `DATABASE_CONFIG_FILE` - path to the database config file, overriding the default search
 - `JWT_KEY` - JWT signing key for MQTT auth
 - `VAULT_ADDR` - Vault server URL for secrets
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OpenTelemetry collector
@@ -481,9 +482,15 @@ postgres:
   host: localhost
   port: 5432
   user: some-db-user
-  password: password
-  database: ntppool
+  pass: password
+  name: ntppool
+  sslmode: prefer
 ```
+
+The keys are `user`, `pass`, `host`, `port`, `name` and `sslmode` (see
+`database.PostgresConfig` in `go.ntppool.org/common`). `port` defaults to
+5432 and `sslmode` to `prefer`. Unknown keys are ignored silently, so a
+misspelled `name` surfaces as "postgres: database name is required".
 
 ## Incremental Development Methodology
 
