@@ -524,7 +524,12 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 	}
 
 	if err != nil || cfgresp.Msg == nil {
-		if err != nil && strings.Contains(err.Error(), "tls: expired certificate") {
+		if err == nil {
+			// A nil Msg with no error would otherwise be returned as
+			// (nil, nil) and the caller would use it as a valid config.
+			err = fmt.Errorf("empty configuration response")
+		}
+		if strings.Contains(err.Error(), "tls: expired certificate") {
 			log.ErrorContext(ctx, "TLS certificate error - check server certificate validity", "err", err, "monitor_ip", ipc.IP.String())
 		} else {
 			log.ErrorContext(ctx, "could not get config, http error", "err", err, "monitor_ip", ipc.IP.String())
@@ -603,26 +608,30 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 		wg.Add(1)
 
 		go func(s *netip.Addr, trace bool, ticket []byte) {
+			defer wg.Done()
+
 			if trace {
 				// todo: get psuedo lock from channel to manage parallel traceroutes
 
 				tr, err := traceroute.New(*s)
 				if err != nil {
 					log.Error("traceroute", "err", err)
-					wg.Done()
 					return
 				}
 				if err := tr.Start(ctx); err != nil {
 					log.Error("traceroute start failed", "err", err)
+					return
 				}
 				x, err := tr.ReadAll()
 				if err != nil {
-					log.Error("traceroute", "err", err)
+					// ReadAll returns the lines it did get alongside the
+					// error; keep them for debugging the failure.
+					log.Error("traceroute", "err", err, "output", x)
+					return
 				}
 
 				log.Info("traceroute", "output", x)
 
-				wg.Done()
 				return
 			}
 
@@ -646,7 +655,6 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 			mu.Lock()
 			defer mu.Unlock()
 			statuses = append(statuses, status)
-			wg.Done()
 		}(s.IP(), s.Trace, s.Ticket)
 	}
 
