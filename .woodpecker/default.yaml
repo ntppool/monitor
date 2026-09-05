@@ -55,7 +55,10 @@ steps:
           echo "Waiting for database... ($i/30)"
           sleep 2
         done
-      - psql "$TEST_DATABASE_URL" -f schema.sql
+      # schema.sql ends with GRANTs to roles the service container does
+      # not create; without them ON_ERROR_STOP aborts on that ACL block.
+      - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -c "CREATE ROLE ntppool" -c "CREATE ROLE postgres"
+      - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -f schema.sql
       - go test -v ./... -short
       - make test-integration
       - echo OK
