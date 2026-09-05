@@ -628,8 +628,9 @@ func (sl *Selector) applyRule2_5TestingPoolManagement(
 		demoted := 0
 		for i := len(testingMonitors) - 1; i >= 0 && demoted < demotionsNeeded; i-- {
 			em := testingMonitors[i]
-			// Skip if already marked for demotion or has violations
-			if em.recommendedState != candidateOut && (em.currentViolation == nil || em.currentViolation.Type == violationNone) {
+			// Skip if already marked for demotion/blocking or has violations
+			if em.recommendedState != candidateOut && em.recommendedState != candidateBlock &&
+				(em.currentViolation == nil || em.currentViolation.Type == violationNone) {
 				changes = append(changes, statusChange{
 					monitorID:  em.monitor.ID,
 					fromStatus: ntpdb.ServerScoresStatusTesting,
