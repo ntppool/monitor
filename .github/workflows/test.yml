@@ -1,0 +1,86 @@
+name: Test
+
+on:
+  push:
+    branches: [postgres, main]
+  pull_request:
+    branches: [postgres, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      TEST_DATABASE_URL: "postgres://monitor:test123@127.0.0.1:5432/monitor_test?sslmode=disable"
+
+    services:
+      database:
+        # postgres:18 is required: schema.sql defaults a column to
+        # uuidv7(), which is a PostgreSQL 18 builtin. On 16 or 17 the
+        # schema load fails.
+        image: postgres:18
+        env:
+          POSTGRES_DB: monitor_test
+          POSTGRES_USER: monitor
+          POSTGRES_PASSWORD: test123
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install psql if missing
+        # The ubuntu-latest image ships a PostgreSQL client, so this is
+        # normally a no-op; the guard skips a ~20s apt-get update. schema.sql
+        # has no psql meta-commands, so an older client loads it fine.
+        run: |
+          command -v psql >/dev/null || {
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          }
+
+      - name: Build
+        run: go build ./...
+
+      - name: Wait for database
+        # Deliberately not pg_isready or a service health check: those
+        # report the postmaster accepting connections, which can precede
+        # the test user and database being usable (see 8529c2b). Only a
+        # real authenticated query proves readiness.
+        run: |
+          for i in $(seq 1 30); do
+            if psql "$TEST_DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+              echo "Database is ready!"
+              exit 0
+            fi
+            echo "Waiting for database... ($i/30)"
+            sleep 2
+          done
+          echo "Database did not become ready in time"
+          exit 1
+
+      - name: Load database schema
+        # schema.sql ends with GRANTs to the ntppool and postgres roles.
+        # The service container creates neither (POSTGRES_USER is monitor),
+        # so create them first -- otherwise ON_ERROR_STOP aborts on that
+        # trailing ACL block instead of on a real schema error.
+        run: |
+          psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" \
+            -c "CREATE ROLE ntppool" -c "CREATE ROLE postgres"
+          psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -f schema.sql
+
+      - name: Run short tests
+        run: go test -v ./... -short
+
+      - name: Run integration tests
+        run: make test-integration
