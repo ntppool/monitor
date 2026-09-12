@@ -36,17 +36,18 @@ type ScorerSettings struct {
 }
 
 type metrics struct {
-	processed   *prometheus.CounterVec
-	skipped     *prometheus.CounterVec
-	errcount    prometheus.Counter
-	runs        prometheus.Counter
-	batchTime   *prometheus.HistogramVec
-	batchSize   *prometheus.HistogramVec
-	deadlocks   prometheus.Counter
-	retries     *prometheus.CounterVec
-	sqlUpdates  *prometheus.CounterVec
-	lastScoreTs *prometheus.GaugeVec
-	lastBatchTs *prometheus.GaugeVec
+	processed          *prometheus.CounterVec
+	skipped            *prometheus.CounterVec
+	scoreErrorsSkipped *prometheus.CounterVec
+	errcount           prometheus.Counter
+	runs               prometheus.Counter
+	batchTime          *prometheus.HistogramVec
+	batchSize          *prometheus.HistogramVec
+	deadlocks          prometheus.Counter
+	retries            *prometheus.CounterVec
+	sqlUpdates         *prometheus.CounterVec
+	lastScoreTs        *prometheus.GaugeVec
+	lastBatchTs        *prometheus.GaugeVec
 }
 
 type runner struct {
@@ -85,6 +86,10 @@ func New(log *slog.Logger, dbconn *pgxpool.Pool, prom prometheus.Registerer) (*r
 			Name: "scorer_iterations_skipped_total",
 			Help: "Iterations skipped because the score hasn't materially changed since the last compute. Fires only when lagging behind real time.",
 		}, []string{"scorer"}),
+		scoreErrorsSkipped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "scorer_score_errors_skipped_total",
+			Help: "Scorer.Score errors that were logged and skipped instead of failing the batch, by reason",
+		}, []string{"scorer", "reason"}),
 		errcount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "scorer_errors",
 			Help: "scorer errors",
@@ -127,6 +132,7 @@ func New(log *slog.Logger, dbconn *pgxpool.Pool, prom prometheus.Registerer) (*r
 
 	prom.MustRegister(met.processed)
 	prom.MustRegister(met.skipped)
+	prom.MustRegister(met.scoreErrorsSkipped)
 	prom.MustRegister(met.errcount)
 	prom.MustRegister(met.runs)
 	prom.MustRegister(met.batchTime)
@@ -376,12 +382,13 @@ func (r *runner) process(ctx context.Context, name string, sm *ScorerMap, batchS
 		}
 		ns, err := sm.Scorer.Score(ctx, db, ss, ls)
 		if err != nil {
-			if ls.Ts.Time.Before(time.Now().Add(-3 * time.Hour)) {
+			if shouldSkipScoreError(err, ls.Ts.Time, time.Now()) {
 				log.WarnContext(
-					ctx, "could not calculate score, skipping old entry",
+					ctx, "could not calculate score, skipping entry",
 					"server_id", ls.ServerID, "log_score_id", ls.ID,
 					"ls_ts", ls.Ts.Time.String(), "err", err,
 				)
+				r.m.scoreErrorsSkipped.WithLabelValues(name, scoreErrorReason(err)).Inc()
 				continue
 			}
 			return 0, fmt.Errorf("scorer %q: %s", name, err)
@@ -551,6 +558,27 @@ func (r *runner) validateConnection(ctx context.Context) error {
 	defer cancel()
 
 	return r.dbconn.Ping(ctx)
+}
+
+// shouldSkipScoreError reports whether a Scorer.Score error should be logged
+// and skipped rather than failing the whole batch. ErrNoRecentScores is an
+// expected data-availability gap (e.g. a poorly-monitored server) and is
+// always skippable; other errors are only skipped once the log_score is old
+// enough that they're presumed to be unprocessed backlog rather than a live
+// bug worth failing loudly on.
+func shouldSkipScoreError(err error, ts, now time.Time) bool {
+	if errors.Is(err, recentmedian.ErrNoRecentScores) {
+		return true
+	}
+	return ts.Before(now.Add(-3 * time.Hour))
+}
+
+// scoreErrorReason labels a skipped score error for the scorer_score_errors_skipped_total metric.
+func scoreErrorReason(err error) string {
+	if errors.Is(err, recentmedian.ErrNoRecentScores) {
+		return "no_recent_scores"
+	}
+	return "stale_entry"
 }
 
 // isDeadlockError checks if the error is a PostgreSQL deadlock error (SQLSTATE 40P01)
