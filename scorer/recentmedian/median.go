@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"go.ntppool.org/common/logger"
@@ -11,6 +12,15 @@ import (
 	"go.ntppool.org/monitor/scorer/score"
 	"golang.org/x/exp/slices"
 )
+
+// ErrNoRecentScores is the sentinel wrapped by Score's "no recent scores
+// found" error, so callers can distinguish this expected data-availability
+// gap (e.g. a poorly-monitored server) from unexpected scoring failures.
+var ErrNoRecentScores = errors.New("no recent scores found")
+
+func errNoRecentScores(serverID uint32) error {
+	return fmt.Errorf("%w for %d", ErrNoRecentScores, serverID)
+}
 
 type RecentMedian struct {
 	scorerID uint32
@@ -68,7 +78,7 @@ func (s *RecentMedian) Score(ctx context.Context, db ntpdb.Querier, serverScore 
 	}
 
 	if len(recent) == 0 {
-		return score.Score{}, fmt.Errorf("no recent scores found for %d", serverScore.ServerID)
+		return score.Score{}, errNoRecentScores(serverScore.ServerID)
 	}
 
 	var ls ntpdb.LogScore
