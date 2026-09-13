@@ -683,18 +683,14 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 	r.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
 
 	r.Use(otelecho.Middleware("mqserver"))
-	r.Use(slogecho.NewWithConfig(
-		log,
-		slogecho.Config{
-			WithTraceID: true,
-			// WithSpanID:  true,
-			// WithRequestHeader: true,
-
-			Filters: []slogecho.Filter{
-				slogecho.IgnorePath("/monitor/metrics"),
-			},
-		},
-	))
+	logConfig := slogecho.DefaultConfig()
+	logConfig.WithTraceID = true
+	// logConfig.WithSpanID = true
+	// logConfig.WithRequestHeader = true
+	logConfig.Filters = []slogecho.Filter{
+		slogecho.IgnorePath("/monitor/metrics"),
+	}
+	r.Use(slogecho.NewWithConfig(log, logConfig))
 	r.Use(
 		func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
