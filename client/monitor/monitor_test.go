@@ -2,9 +2,11 @@ package monitor
 
 import (
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
+	"github.com/beevik/ntp"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
@@ -263,4 +265,119 @@ func TestResponseSelectionEdgeCases(t *testing.T) {
 			t.Error("Expected best to remain nil for empty responses")
 		}
 	})
+}
+
+// A real round trip is never zero or negative (the ntp library clamps a
+// negative one to zero); a host reporting one is calculating its processing
+// time wrong, so the sample is an error like any other bad response.
+func TestSampleResponseImplausibleRtt(t *testing.T) {
+	ip := netip.MustParseAddr("192.0.2.1")
+
+	tests := []struct {
+		name    string
+		rtt     time.Duration
+		wantErr bool
+	}{
+		{"typical rtt", 25 * time.Millisecond, false},
+		{"zero rtt", 0, true},
+		{"negative rtt", -5 * time.Millisecond, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &ntp.Response{RTT: tt.rtt, ClockOffset: 2 * time.Millisecond, Stratum: 2}
+			got := sampleResponse(ntpResponseToApiStatus(&ip, resp), resp, nil)
+
+			if (got.Error != nil) != tt.wantErr {
+				t.Fatalf("Error = %v, want error: %v", got.Error, tt.wantErr)
+			}
+
+			if !tt.wantErr {
+				if got.Status.Error != "" || got.Status.Offset == nil {
+					t.Errorf("valid sample changed: Error = %q, Offset = %v", got.Status.Error, got.Status.Offset)
+				}
+				return
+			}
+
+			if got.Error.Error() != "implausible rtt" {
+				t.Errorf("Error = %q, want %q", got.Error, "implausible rtt")
+			}
+			if got.Status.Error != got.Error.Error() {
+				t.Errorf("Status.Error = %q, want %q", got.Status.Error, got.Error)
+			}
+			if got.Status.Offset != nil {
+				t.Errorf("Status.Offset = %v, want nil; it is computed from the same bad timestamps", got.Status.Offset)
+			}
+			if got.Status.NoResponse {
+				t.Error("Status.NoResponse = true, want false; the host did respond")
+			}
+		})
+	}
+}
+
+func TestSelectBestImplausibleRtt(t *testing.T) {
+	ip := netip.MustParseAddr("192.0.2.1")
+
+	sample := func(rtt time.Duration) *response {
+		resp := &ntp.Response{RTT: rtt, ClockOffset: time.Millisecond, Stratum: 2}
+		return sampleResponse(ntpResponseToApiStatus(&ip, resp), resp, nil)
+	}
+	timeout := func() *response {
+		return &response{
+			Status: &apiv2.ServerStatus{NoResponse: true},
+			Error:  errors.New("network: i/o timeout"),
+		}
+	}
+
+	tests := []struct {
+		name      string
+		responses []*response
+		wantRtt   time.Duration // when there is no error
+		wantErr   string
+	}{
+		{
+			name:      "good sample beats a zero rtt sample that came first",
+			responses: []*response{sample(0), sample(30 * time.Millisecond)},
+			wantRtt:   30 * time.Millisecond,
+		},
+		{
+			name:      "good sample beats a zero rtt sample that came later",
+			responses: []*response{sample(30 * time.Millisecond), sample(0)},
+			wantRtt:   30 * time.Millisecond,
+		},
+		{
+			name:      "slower good samples still beat a zero rtt sample",
+			responses: []*response{sample(0), sample(200 * time.Millisecond), sample(100 * time.Millisecond)},
+			wantRtt:   100 * time.Millisecond,
+		},
+		{
+			name:      "all samples implausible is an error",
+			responses: []*response{sample(0), sample(0), sample(0)},
+			wantErr:   "implausible rtt",
+		},
+		{
+			name:      "implausible sample is reported over a timeout",
+			responses: []*response{timeout(), sample(0)},
+			wantErr:   "implausible rtt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			best := selectBest(tt.responses)
+
+			gotErr := ""
+			if best.Error != nil {
+				gotErr = best.Error.Error()
+			}
+			if gotErr != tt.wantErr {
+				t.Fatalf("Error = %q, want %q", gotErr, tt.wantErr)
+			}
+			if tt.wantErr == "" {
+				if got := best.Status.Rtt.AsDuration(); got != tt.wantRtt {
+					t.Errorf("Rtt = %v, want %v", got, tt.wantRtt)
+				}
+			}
+		})
+	}
 }

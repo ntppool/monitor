@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -210,16 +211,49 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 
 		ntpCaptureBuffer.Clear()
 
-		responses = append(responses, &response{
-			Status:   status,
-			Response: resp,
-			Packet:   packet,
-		})
+		responses = append(responses, sampleResponse(status, resp, packet))
 	}
 
-	var best *response
-
 	// log.Debug("collection done, now find the best result", "ip", ip.String(), "count", len(responses))
+
+	best := selectBest(responses)
+
+	// errLog := ""
+	// if len(best.Error) > 0 {
+	// 	errLog = fmt.Sprintf(" err: %q", best.Error)
+	// }
+	// log.Printf("best result for %s - offset: %s rtt: %s%s",
+	// 	ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
+
+	return best.Status, best.Response, best.Error
+}
+
+// sampleResponse wraps the result of one successful NTP query.
+//
+// A real round trip is never zero or negative (the ntp library clamps a
+// negative one to zero). A host reporting one is calculating its processing
+// time wrong, and the offset comes from the same bad timestamps, so the
+// sample is an error like any other bad response. That also keeps it from
+// winning the lowest-RTT comparison in selectBest.
+func sampleResponse(status *apiv2.ServerStatus, resp *ntp.Response, packet *apiv2.NTPPacket) *response {
+	r := &response{
+		Status:   status,
+		Response: resp,
+		Packet:   packet,
+	}
+
+	if resp.RTT <= 0 {
+		r.Error = errors.New("implausible rtt")
+		r.Status.Offset = nil
+		r.Status.Error = r.Error.Error()
+	}
+
+	return r
+}
+
+// selectBest picks the response to report from the samples of one host.
+func selectBest(responses []*response) *response {
+	var best *response
 
 	// todo: if there are more than 2 (3?) samples with an offset, throw
 	// away the offset outlier(s)
@@ -264,14 +298,7 @@ func CheckHost(ctx context.Context, ip *netip.Addr, cfg *checkconfig.Config, tra
 		}
 	}
 
-	// errLog := ""
-	// if len(best.Error) > 0 {
-	// 	errLog = fmt.Sprintf(" err: %q", best.Error)
-	// }
-	// log.Printf("best result for %s - offset: %s rtt: %s%s",
-	// 	ip.String(), best.Offset.AsDuration(), best.RTT.AsDuration(), errLog)
-
-	return best.Status, best.Response, best.Error
+	return best
 }
 
 func ntpResponseToApiStatus(ip *netip.Addr, resp *ntp.Response) *apiv2.ServerStatus {
