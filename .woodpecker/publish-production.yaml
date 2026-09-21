@@ -32,6 +32,14 @@ steps:
       strip_prefix: dist/
       endpoint: https://c3.hkga.ntp.dev/
       path_style: true
+      # Go's mime table has no .md, .deb or .rpm, and maps .apk to Android
+      # packages; these are Alpine packages. Serve the changelog as plain
+      # text so browsers show it instead of downloading it.
+      content_type:
+        '\.md$': 'text/plain; charset=utf-8'
+        '\.deb$': application/vnd.debian.binary-package
+        '\.rpm$': application/x-rpm
+        '\.apk$': application/octet-stream
     backend_options:
       kubernetes:
         resources:
