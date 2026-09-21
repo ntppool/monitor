@@ -16,22 +16,47 @@ import (
 func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	tdb := testutil.NewTestDB(t)
 	defer tdb.Close()
-	defer tdb.CleanupTestData(t)
 
 	factory := testutil.NewDataFactory(tdb)
 
+	// The packages' integration tests share one database and run in
+	// parallel. testutil.CleanupTestData deletes every row with an id in
+	// 1000-9999, so use ids outside that range and delete only our own
+	// rows, or this test removes rows other packages are using (and their
+	// cleanup removes ours).
 	const (
-		serverID          = 4001
-		timeoutMonitorID  = 4002
-		respondingMonitor = 4003
+		accountID         = 90000
+		serverID          = 90001
+		timeoutMonitorID  = 90002
+		respondingMonitor = 90003
 	)
+
+	cleanup := func() {
+		stmts := []struct {
+			sql string
+			id  int64
+		}{
+			{"DELETE FROM log_scores WHERE server_id = $1", serverID},
+			{"DELETE FROM server_scores WHERE server_id = $1", serverID},
+			{"DELETE FROM servers WHERE id = $1", serverID},
+			{"DELETE FROM monitors WHERE account_id = $1", accountID},
+			{"DELETE FROM accounts WHERE id = $1", accountID},
+		}
+		for _, s := range stmts {
+			if _, err := tdb.Exec(tdb.Context(), s.sql, s.id); err != nil {
+				t.Logf("cleanup %q: %v", s.sql, err)
+			}
+		}
+	}
+	cleanup()
+	defer cleanup()
 
 	now := time.Now()
 
-	factory.CreateTestAccount(t, 4000, "test@example.com")
+	factory.CreateTestAccount(t, accountID, "test@example.com")
 	factory.CreateTestServer(t, serverID, "192.0.2.20", "v4", nil)
-	factory.CreateTestMonitor(t, timeoutMonitorID, "timeouts.test", 4000, "192.0.2.21", "active")
-	factory.CreateTestMonitor(t, respondingMonitor, "responds.test", 4000, "192.0.2.22", "active")
+	factory.CreateTestMonitor(t, timeoutMonitorID, "timeouts.test", accountID, "192.0.2.21", "active")
+	factory.CreateTestMonitor(t, respondingMonitor, "responds.test", accountID, "192.0.2.22", "active")
 	factory.CreateTestServerScore(t, serverID, timeoutMonitorID, "active", -50)
 	factory.CreateTestServerScore(t, serverID, respondingMonitor, "active", 20)
 
