@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -132,8 +133,10 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 	if status.Leap > 0 || len(status.Error) > 0 {
 		log.Debug("Got attributes", "status", status)
 		attributes := ntpdb.LogScoreAttributes{
-			Leap:  int8(status.Leap),
-			Error: status.Error,
+			Leap: int8(status.Leap),
+			// jsonb rejects \u0000; the client sends a zero
+			// reference ID as NUL bytes in the error.
+			Error: strings.ReplaceAll(status.Error, "\x00", ""),
 		}
 		b, err := json.Marshal(attributes)
 		if err != nil {

@@ -388,3 +388,34 @@ func abs(x float64) float64 {
 	}
 	return x
 }
+
+func TestAttributesWithoutNUL(t *testing.T) {
+	// The client reports a stratum 0 response with a zero reference ID
+	// with the ID as four NUL bytes. PostgreSQL rejects \u0000 in jsonb,
+	// which would fail the insert and the whole batch with it.
+	status := &apiv2.ServerStatus{
+		Ts:      timestamppb.New(time.Now()),
+		Rtt:     durationpb.New(10 * time.Millisecond),
+		Error:   "bad stratum 0 (referenceID: 0x0, \x00\x00\x00\x00)",
+		Stratum: 0,
+	}
+
+	got, err := NewScorer().Score(context.Background(), &ntpdb.Server{ID: 1}, status)
+	if err != nil {
+		t.Fatalf("Score() error = %v", err)
+	}
+	if got.Attributes == nil {
+		t.Fatal("Attributes = nil, want the error")
+	}
+	if bytes.Contains(*got.Attributes, []byte(`\u0000`)) {
+		t.Errorf("attributes contain NUL: %s", *got.Attributes)
+	}
+
+	var attrs ntpdb.LogScoreAttributes
+	if err := json.Unmarshal(*got.Attributes, &attrs); err != nil {
+		t.Fatalf("attributes %q: %v", *got.Attributes, err)
+	}
+	if want := "bad stratum 0 (referenceID: 0x0, )"; attrs.Error != want {
+		t.Errorf("attributes error = %q, want %q", attrs.Error, want)
+	}
+}
