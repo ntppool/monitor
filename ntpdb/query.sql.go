@@ -61,8 +61,10 @@ func (q *Queries) GetMinLogScoreID(ctx context.Context) (int64, error) {
 
 const getMonitorPriority = `-- name: GetMonitorPriority :many
 SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
-    (avg(ls.rtt) / 1000)::integer as avg_rtt,
-    round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step)))))::integer as monitor_priority,
+    -- rtt is NULL for timeouts and implausible values, so the average is
+    -- NULL when a monitor has no rtt samples at all for the server
+    coalesce(avg(ls.rtt) / 1000, 0)::integer as avg_rtt,
+    coalesce(round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step))))), 0)::integer as monitor_priority,
     avg(ls.step)::float8 as avg_step,
     CASE WHEN avg(ls.step) < 0 THEN false ELSE true END as healthy,
     m.status as monitor_status, ss.status as status,
