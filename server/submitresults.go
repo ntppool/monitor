@@ -110,6 +110,9 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
 	log = log.With("batchID", batchID.String())
 
+	// so the scorer's logs carry the monitor and batch too
+	ctx = logger.NewContext(ctx, log)
+
 	batchTime := ulid.Time(batchID.Time())
 
 	lastSubmit := monitor.LastSubmit

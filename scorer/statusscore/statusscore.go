@@ -3,6 +3,8 @@ package statusscore
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -25,6 +27,35 @@ func (s *StatusScorer) Score(ctx context.Context, server *ntpdb.Server, status *
 	return score, err
 }
 
+// rttColumn converts the submitted RTT to microseconds for log_scores.rtt.
+//
+// Monitor clients aren't trusted, and a real NTP round trip is never zero or
+// negative, nor does it need more than an int32 of microseconds. The NTP
+// library clamps a negative RTT to zero, so zero on a response is that same
+// bad measurement: the server claims to have spent longer processing the
+// request than the whole round trip took. Those store NULL and are logged,
+// and are reported as implausible so the caller can treat the sample as a
+// bad host. A timeout has no RTT either, and stores NULL quietly.
+func rttColumn(ctx context.Context, log *slog.Logger, server *ntpdb.Server, status *apiv2.ServerStatus) (col pgtype.Int4, implausible bool) {
+	if status.NoResponse {
+		return pgtype.Int4{}, false
+	}
+
+	if status.Rtt == nil {
+		log.WarnContext(ctx, "response status has no rtt", "server_id", server.ID)
+		return pgtype.Int4{}, false
+	}
+
+	rtt := status.Rtt.AsDuration()
+	us := rtt.Microseconds()
+	if us <= 0 || us > math.MaxInt32 {
+		log.WarnContext(ctx, "discarding implausible rtt", "server_id", server.ID, "rtt", rtt)
+		return pgtype.Int4{}, true
+	}
+
+	return pgtype.Int4{Int32: int32(us), Valid: true}, false
+}
+
 func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
 	log := logger.FromContext(ctx)
 
@@ -32,12 +63,22 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 
 	sc.ServerID = server.ID
 	sc.Ts = pgtype.Timestamptz{Time: status.Ts.AsTime(), Valid: true}
+
+	var implausibleRtt bool
+	sc.Rtt, implausibleRtt = rttColumn(ctx, log, server, status)
+	if implausibleRtt && status.Stratum != 0 && status.Error == "" {
+		// The timestamps are inconsistent with the round trip, so the offset
+		// computed from them can't be trusted either. Same as a client
+		// reporting the error itself. Stratum 0 keeps its kiss code handling.
+		status.Error = "implausible rtt"
+		status.Offset = nil
+	}
+
 	if status.Offset != nil {
 		sc.Offset = pgtype.Float8{Float64: status.Offset.AsDuration().Seconds(), Valid: true}
 	} else {
 		sc.Offset = pgtype.Float8{Valid: false}
 	}
-	sc.Rtt = pgtype.Int4{Int32: int32(status.Rtt.AsDuration().Microseconds()), Valid: true}
 
 	sc.HasMaxScore = false
 
