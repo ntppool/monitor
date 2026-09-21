@@ -76,7 +76,7 @@ func (cmd *monitorCmd) Run(ctx context.Context, cli *ClientCmd) error {
 	log := logger.FromContext(ctx).With("env", cli.DeployEnv.String())
 	ctx = logger.NewContext(ctx, log)
 
-	log.InfoContext(ctx, "starting ntppool-agent", "version", version.Version())
+	log.WarnContext(ctx, "starting ntppool-agent", "version", version.Version())
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -435,7 +435,7 @@ runLoop:
 
 			if !localOK.Check(ctx) {
 				wait := localOK.NextCheckIn()
-				log.InfoContext(ctx, "local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
+				log.WarnContext(ctx, "local clock might not be okay", "waiting", wait.Round(1*time.Second).String())
 				select {
 				case <-ctx.Done():
 					log.DebugContext(ctx, "localOK context done")
