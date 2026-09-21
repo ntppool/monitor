@@ -25,8 +25,20 @@
 
 ## v4.1.6
 
+### Server
+- **Selector sample-count thresholds**: The minimum sample counts for testing → active and candidate → testing promotions are derived from `interval_testing`. With `interval_testing` above about 45 minutes the fixed threshold couldn't be reached, which silently blocked every testing → active promotion. The default `interval_testing` is now 30 minutes (was 45).
+- **Scorer catch-up**: While the scorer is behind, it skips redundant per-entry computation
+- **Scorer metrics and tracing**: New `scorer_last_score_timestamp_seconds` and `scorer_last_batch_timestamp_seconds` gauges show how far behind the scorer is and whether monitors are submitting results; scorer SQL queries are traced with OpenTelemetry; the scorer metrics are documented in `scorer/README.md`
+- Fix: The scorer no longer crashes and replays the same entry forever when a server has no recent monitor data, for example a server where every probe times out. Those entries are skipped and counted in `scorer_score_errors_skipped_total`.
+- Fix: `SubmitResults` is back to one transaction per status; the single transaction added in v4.1.5 caused transaction deadlocks
+- Fix: The scorer no longer holds row locks on `servers` for a whole batch, which made monitors' result submissions queue behind it. Servers are updated after the batch commits.
+- Fix: Successful scorer batches no longer record an error span from a rollback after the commit
+
 ### Packaging
 - **Postinstall systemd detection**: Skip `systemctl` calls when systemd isn't PID 1. The v4.1.2 check used `systemctl --version`, which succeeds in any container with `systemctl` installed; now check for `/run/systemd/system` instead.
+
+### Build
+- Update Go dependencies
 
 ## v4.1.5
 
