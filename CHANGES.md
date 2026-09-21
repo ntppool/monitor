@@ -1,6 +1,29 @@
 # NTP Pool Monitor Changes
 
-## Next
+## v4.2.0
+
+### Upgrade notes
+- **PostgreSQL replaces MySQL**: `monitor-api`, `monitor-scorer` and the selector talk to PostgreSQL; MySQL is no longer supported. Database settings come from `DATABASE_URI` or a `database.yaml` with a `postgres:` section, see the README. The agent doesn't care which database the server uses, so this agent release works with both server versions.
+- **`log_scores.rtt` can be NULL**: Timeouts and implausible round trip times are stored as NULL instead of 0. Anything reading `rtt` has to treat NULL as "no measurement".
+
+### Server
+- **Bad timestamps count against the server**: A response with a zero or negative round trip time means the server reported spending longer on the request than the whole exchange took. It is now scored as an error ("implausible rtt": step -4, no offset) and the rtt is dropped; before, it was scored on its offset. The API server logs a warning with the server and the rtt.
+- **Monitor ranking ignores timeouts**: Timeouts no longer count as a 0 ms round trip in the average used to rank monitors for a server, so monitors that see timeouts rank slightly lower than before.
+- Fix: The selector no longer takes a second demotion slot for a paused or deleted monitor when trimming the testing pool, which could leave a healthy excess testing monitor in place
+- Fix: `monitorsettings` keeps the last good settings when a refresh fails to parse, instead of going back to the defaults
+- Fix: `monitor-scorer` returns the error when its setup fails instead of returning nil
+- Fix: Data race on the MQTT client list in the metrics endpoint
+
+### Client
+- Fix: A sample with a zero or negative round trip time is reported as an error ("implausible rtt") instead of as a fast, healthy response. The other samples for the same server are preferred, and a server whose samples are all bad is reported as an error. On the local clock check, a reference server that fails this way counts as a failure.
+- Fix: A traceroute that fails to start no longer stalls the rest of the batch, and its partial output is logged
+- Fix: An empty configuration response from the API is reported as an error instead of causing a nil pointer dereference
+- Fix: An ad-hoc NTP check from the web interface no longer changes the sample count of the agent's regular checks
+
+### Build
+- Update Go dependencies, including `go.ntppool.org/common` v0.10.3, and the Docker base image to Alpine 3.24.1
+
+## v4.1.6
 
 ### Packaging
 - **Postinstall systemd detection**: Skip `systemctl` calls when systemd isn't PID 1. The v4.1.2 check used `systemctl --version`, which succeeds in any container with `systemctl` installed; now check for `/run/systemd/system` instead.
