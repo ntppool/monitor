@@ -42,6 +42,27 @@ steps:
             cpu: 250m
             memory: 256Mi
 
+  - name: index
+    image: alpine:3
+    depends_on: [upload]
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: s3_access_key
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: s3_secret_key
+    commands:
+      - apk add --no-cache aws-cli jq
+      - ./scripts/publish-build-index ntppool-agent release
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 250m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+
   - name: fury-publish
     image: golang:1.26
     pull: true

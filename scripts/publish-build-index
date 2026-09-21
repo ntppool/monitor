@@ -1,0 +1,145 @@
+#!/bin/sh
+#
+# Write HTML index pages for the builds in the ntp-releases bucket so they can
+# be browsed on builds.ntppool.dev (which serves <dir>/index.html for <dir>/).
+#
+# Usage: publish-build-index NAME CHANNEL
+#   e.g. publish-build-index ntppool-agent release
+#
+# For the KEEP most recently uploaded builds under NAME/builds/CHANNEL/ it writes:
+#   NAME/builds/CHANNEL/<build>/index.html  links to each file in the build,
+#                                           except goreleaser's config.yaml
+#   NAME/builds/CHANNEL/index.html          lists those builds with versions
+# and NAME/builds/index.html linking to the channels.
+#
+# Needs aws (CLI v2) and jq, with AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY set.
+# Set OUTDIR to write the pages to a local directory instead of uploading.
+
+set -eu
+
+NAME=${1:-}
+CHANNEL=${2:-}
+
+if [ -z "$NAME" ] || [ -z "$CHANNEL" ]; then
+  echo "run with $0 NAME CHANNEL" >&2
+  exit 2
+fi
+
+BUCKET=${BUCKET:-ntp-releases}
+S3_ENDPOINT=${S3_ENDPOINT:-https://c3.hkga.ntp.dev}
+KEEP=${KEEP:-10}
+CHANNELS="release test"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+
+PREFIX="$NAME/builds/$CHANNEL"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+s3api() {
+  aws --endpoint-url "$S3_ENDPOINT" s3api "$@"
+}
+
+# put KEY FILE
+put() {
+  if [ -n "${OUTDIR:-}" ]; then
+    mkdir -p "$OUTDIR/$(dirname "$1")"
+    cp "$2" "$OUTDIR/$1"
+    echo "wrote $OUTDIR/$1"
+    return
+  fi
+  s3api put-object --bucket "$BUCKET" --key "$1" --body "$2" \
+    --content-type "text/html; charset=utf-8" \
+    --cache-control "public, max-age=300" >/dev/null
+  echo "uploaded $1"
+}
+
+# page TITLE BODY-FILE OUTPUT-FILE
+page() {
+  jq -rn --arg title "$1" --rawfile body "$2" '
+    "<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"utf-8\">
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+<title>\($title | @html)</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2em; }
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 0.2em 1em 0.2em 0; }
+td.size { text-align: right; }
+</style>
+</head>
+<body>
+<h1>\($title | @html)</h1>
+\($body)</body>
+</html>"' >"$3"
+}
+
+s3api list-objects-v2 --bucket "$BUCKET" --prefix "$PREFIX/" \
+  --output json >"$TMP/objects.json"
+
+# Build directories are CI pipeline numbers, but the numbers restarted when CI
+# moved from Drone to Woodpecker, so order builds by when their checksums.txt
+# was uploaded. Other files can be rewritten later (for example to fix their
+# content type), which moves their LastModified. Only directories with a
+# checksums.txt are builds (see scripts/download-release).
+BUILDS=$(jq -r --arg prefix "$PREFIX/" '
+  .Contents // []
+  | map(select(.Key | ltrimstr($prefix) | test("^[0-9]+/checksums\\.txt$")))
+  | sort_by(.LastModified) | reverse
+  | .[].Key | ltrimstr($prefix) | split("/")[0]' "$TMP/objects.json" |
+  head -n "$KEEP")
+
+if [ -z "$BUILDS" ]; then
+  echo "no builds found under $PREFIX/" >&2
+  exit 1
+fi
+
+echo '[]' >"$TMP/summary.json"
+
+for build in $BUILDS; do
+  # Builds without a metadata.json are listed without a version.
+  if jq -e --arg key "$PREFIX/$build/metadata.json" \
+    'any(.Contents[]; .Key == $key)' "$TMP/objects.json" >/dev/null; then
+    s3api get-object --bucket "$BUCKET" --key "$PREFIX/$build/metadata.json" \
+      "$TMP/metadata.json" >/dev/null
+  else
+    echo '{}' >"$TMP/metadata.json"
+  fi
+
+  jq -j --arg prefix "$PREFIX/$build/" '
+    "<p><a href=\"../\">All \($prefix | split("/")[2]) builds</a></p>\n<table>\n<tr><th>File</th><th>Size</th><th>Modified</th></tr>\n",
+    (.Contents // [] | map(select((.Key | startswith($prefix)) and (.Key | ltrimstr($prefix) | IN("index.html", "config.yaml") | not))) | sort_by(.Key)[] |
+      (.Key | ltrimstr($prefix)) as $f |
+      "<tr><td><a href=\"\($f | @uri)\">\($f | @html)</a></td>" +
+      "<td class=\"size\">\(if .Size >= 1048576 then "\(.Size / 1048576 * 10 | round / 10) MB" else "\(.Size / 1024 * 10 | round / 10) KB" end)</td>" +
+      "<td>\(.LastModified[0:16] | sub("T"; " ") | @html)</td></tr>\n"),
+    "</table>\n"' "$TMP/objects.json" >"$TMP/body.html"
+
+  version=$(jq -r '.version // ""' "$TMP/metadata.json")
+  title="$NAME $CHANNEL build $build${version:+ ($version)}"
+  page "$title" "$TMP/body.html" "$TMP/page.html"
+  put "$PREFIX/$build/index.html" "$TMP/page.html"
+
+  jq --arg build "$build" --slurpfile meta "$TMP/metadata.json" \
+    '. + [{build: $build, version: ($meta[0].version // ""), date: ($meta[0].date // "")}]' \
+    "$TMP/summary.json" >"$TMP/summary.new"
+  mv "$TMP/summary.new" "$TMP/summary.json"
+done
+
+jq -j '
+  "<p><a href=\"../\">All channels</a></p>\n<table>\n<tr><th>Build</th><th>Version</th><th>Date</th></tr>\n",
+  (.[] | "<tr><td><a href=\"\(.build)/\">\(.build)</a></td><td>\(.version | @html)</td><td>\(.date[0:16] | sub("T"; " ") | @html)</td></tr>\n"),
+  "</table>\n"' "$TMP/summary.json" >"$TMP/body.html"
+page "$NAME $CHANNEL builds" "$TMP/body.html" "$TMP/page.html"
+put "$PREFIX/index.html" "$TMP/page.html"
+
+{
+  echo "<ul>"
+  for c in $CHANNELS; do
+    echo "<li><a href=\"$c/\">$c</a></li>"
+  done
+  echo "</ul>"
+} >"$TMP/body.html"
+page "$NAME builds" "$TMP/body.html" "$TMP/page.html"
+put "$NAME/builds/index.html" "$TMP/page.html"
