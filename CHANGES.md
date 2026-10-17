@@ -1,5 +1,26 @@
 # NTP Pool Monitor Changes
 
+## v4.2.1
+
+### Upgrade notes
+- **Selector metrics changed**: No selector metric has a `server_id` label anymore; it made the selector export over 120k series. `selector_status_changes_total` and `selector_constraint_violations_total` keep their monitor labels. `selector_monitor_pool_size` is replaced by the `selector_server_monitors{status}` histogram. `selector_globally_active_monitors` and `selector_constraint_blocked_monitors` are removed. Dashboards and alerts using these need updating.
+
+### Server
+- **Per-monitor server counts**: New `selector_monitor_servers{monitor_id_token, monitor_tls_name, status}` gauge with the number of servers for each monitor and status, refreshed every minute
+- **Runtime metrics**: `monitor-api`, `monitor-scorer` and the selector export the standard `process_*` and `go_*` metrics
+- Fix: A stratum 0 response with a zero reference ID no longer makes the whole `SubmitResults` batch fail on PostgreSQL. NUL bytes in the error text are stripped before it's stored.
+- Fix: Constraint violations are counted once per monitor per server review; before, they were counted several times, including for promotions that were only being considered
+
+### Client
+- Fix: The i386 agent runs on CPUs without SSE2 (Pentium III and older) instead of crashing with SIGILL
+- The version at startup and the "clock might not be ok, monitoring paused" message are logged at a higher level, so they still show when Info messages are filtered out (thanks Joachim Kroß)
+
+### Packaging
+- builds.ntppool.dev has index pages listing the recent agent builds, and `CHANGELOG.md` shows in the browser instead of downloading
+
+### Build
+- Go 1.27.2, Alpine 3.24.2, `go.ntppool.org/common` v0.10.5 and other dependency updates
+
 ## v4.2.0
 
 ### Upgrade notes
