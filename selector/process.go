@@ -635,7 +635,7 @@ func (sl *Selector) applyRule2_5TestingPoolManagement(
 					monitorID:  em.monitor.ID,
 					fromStatus: ntpdb.ServerScoresStatusTesting,
 					toStatus:   ntpdb.ServerScoresStatusCandidate,
-					reason:     fmt.Sprintf("excess testing monitors (%d > target %d)", workingTestingCount, dynamicTestingTarget),
+					reason:     "excess testing monitors",
 				})
 				demoted++
 				workingTestingCount--
@@ -1125,7 +1125,7 @@ func (sl *Selector) applyStatusChange(
 
 	// Track successful status change in metrics
 	if sl.metrics != nil {
-		sl.metrics.TrackStatusChange(monitor, change.fromStatus, change.toStatus, serverID, change.reason)
+		sl.metrics.TrackStatusChange(monitor, change.fromStatus, change.toStatus, change.reason)
 	}
 
 	return nil

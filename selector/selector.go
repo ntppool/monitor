@@ -143,6 +143,10 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 		return err
 	}
 
+	if continuous {
+		go sl.trackMonitorServerCounts(ctx, time.Minute)
+	}
+
 	expback := backoff.NewExponentialBackOff()
 	expback.InitialInterval = time.Second * 3
 	expback.MaxInterval = time.Second * 60
@@ -264,6 +268,36 @@ func (sl *Selector) minCountForTesting() int64 {
 	return monitorsettings.RequiredCountForTesting()
 }
 
+// trackMonitorServerCounts refreshes the selector_monitor_servers metric
+// every interval until ctx is done.
+func (sl *Selector) trackMonitorServerCounts(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		if err := sl.updateMonitorServerCounts(ctx); err != nil {
+			sl.log.ErrorContext(ctx, "could not update monitor server counts", "err", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// updateMonitorServerCounts loads the per-monitor server counts from
+// server_scores into the metrics snapshot.
+func (sl *Selector) updateMonitorServerCounts(ctx context.Context) error {
+	rows, err := ntpdb.New(sl.dbconn).GetMonitorServerStatusCounts(ctx)
+	if err != nil {
+		return fmt.Errorf("get monitor server status counts: %w", err)
+	}
+	sl.metrics.MonitorServers.Update(rows)
+	return nil
+}
+
 // Run processes all servers that need monitor review
 func (sl *Selector) Run() (int, error) {
 	ctx, cancel := context.WithCancel(sl.ctx)
@@ -365,7 +399,7 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		}
 
 		if currentViolation.Type != violationNone && sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(&monitor, currentViolation.Type, serverID, false)
+			sl.metrics.TrackConstraintViolation(&monitor, currentViolation.Type)
 		}
 
 		// Compute legacy recommendedState for backward compatibility
@@ -436,14 +470,6 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 	if sl.metrics != nil {
 		duration := time.Since(start).Seconds()
 
-		// Count globally active monitors
-		globallyActiveCount := 0
-		for _, em := range evaluatedMonitors {
-			if em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive {
-				globallyActiveCount++
-			}
-		}
-
 		// Track monitor pool sizes
 		activeCount := 0
 		testingCount := 0
@@ -463,19 +489,17 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		}
 
 		sl.metrics.RecordProcessingMetrics(
-			serverID,
 			duration,
 			len(evaluatedMonitors),
 			changeCount,
 			failedChanges,
-			globallyActiveCount,
 		)
 
-		sl.metrics.TrackMonitorPoolSizes(
-			serverID,
+		sl.metrics.TrackServerMonitorCounts(
 			activeCount,
 			testingCount,
 			candidateCount,
+			pausedCount,
 		)
 	}
 

@@ -206,6 +206,34 @@ func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID 
 	return _d.QuerierTx.GetMonitorPriority(ctx, serverID)
 }
 
+// GetMonitorServerStatusCounts implements QuerierTx
+func (_d QuerierTxWithTracing) GetMonitorServerStatusCounts(ctx context.Context) (ga1 []GetMonitorServerStatusCountsRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorServerStatusCounts")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetMonitorServerStatusCounts(ctx)
+}
+
 // GetMonitorTLSNameIP implements QuerierTx
 func (_d QuerierTxWithTracing) GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (g1 GetMonitorTLSNameIPRow, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorTLSNameIP")

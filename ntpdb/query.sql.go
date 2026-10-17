@@ -144,6 +144,46 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, serverID int64) ([]Get
 	return items, nil
 }
 
+const getMonitorServerStatusCounts = `-- name: GetMonitorServerStatusCounts :many
+SELECT m.id_token, m.tls_name, ss.status, count(*) AS servers
+  FROM server_scores ss
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  WHERE m.type = 'monitor'
+  GROUP BY m.id, m.id_token, m.tls_name, ss.status
+`
+
+type GetMonitorServerStatusCountsRow struct {
+	IDToken pgtype.Text        `json:"id_token"`
+	TlsName pgtype.Text        `json:"tls_name"`
+	Status  ServerScoresStatus `json:"status"`
+	Servers int64              `json:"servers"`
+}
+
+func (q *Queries) GetMonitorServerStatusCounts(ctx context.Context) ([]GetMonitorServerStatusCountsRow, error) {
+	rows, err := q.db.Query(ctx, getMonitorServerStatusCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMonitorServerStatusCountsRow
+	for rows.Next() {
+		var i GetMonitorServerStatusCountsRow
+		if err := rows.Scan(
+			&i.IDToken,
+			&i.TlsName,
+			&i.Status,
+			&i.Servers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMonitorTLSNameIP = `-- name: GetMonitorTLSNameIP :one
 SELECT
   monitors.id, monitors.id_token, monitors.type, monitors.user_id, monitors.account_id, monitors.hostname, monitors.location, monitors.ip, monitors.ip_version, monitors.tls_name, monitors.api_key, monitors.status, monitors.config, monitors.client_version, monitors.last_seen, monitors.last_submit, monitors.created_on, monitors.deleted_on, monitors.is_current,

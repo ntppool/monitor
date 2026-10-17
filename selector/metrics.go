@@ -1,13 +1,17 @@
 package selector
 
 import (
-	"strconv"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
-// Metrics contains all prometheus metrics for the selector system
+// Metrics contains all prometheus metrics for the selector system.
+//
+// Metrics are labeled per monitor where useful, never per server: with
+// thousands of servers a server_id label made the selector export
+// well over 100k series.
 type Metrics struct {
 	// Status change tracking
 	StatusChanges *prometheus.CounterVec
@@ -16,99 +20,76 @@ type Metrics struct {
 	ConstraintViolations *prometheus.CounterVec
 
 	// Selection algorithm performance
-	ProcessDuration   *prometheus.HistogramVec
-	MonitorsEvaluated *prometheus.CounterVec
-	ChangesApplied    *prometheus.CounterVec
-	ChangesFailed     *prometheus.CounterVec
+	ProcessDuration   prometheus.Histogram
+	MonitorsEvaluated prometheus.Counter
+	ChangesApplied    prometheus.Counter
+	ChangesFailed     prometheus.Counter
 
 	// Monitor pool health
-	MonitorPoolSize           *prometheus.GaugeVec
-	GloballyActiveMonitors    *prometheus.GaugeVec
-	ConstraintBlockedMonitors *prometheus.GaugeVec
+	ServerMonitors *prometheus.HistogramVec
+	MonitorServers *monitorServersCollector
 }
 
 // NewMetrics creates and registers all selector metrics
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	m := &Metrics{
-		// Track status changes with dual monitor identification
 		StatusChanges: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "selector_status_changes_total",
 				Help: "Total number of monitor status changes by the selector",
 			},
-			[]string{"monitor_id_token", "monitor_tls_name", "from_status", "to_status", "server_id", "reason"},
+			[]string{"monitor_id_token", "monitor_tls_name", "from_status", "to_status", "reason"},
 		),
 
-		// Track constraint violations
 		ConstraintViolations: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "selector_constraint_violations_total",
-				Help: "Total number of constraint violations detected",
+				Help: "Total number of server reviews where a monitor was in constraint violation",
 			},
-			[]string{"monitor_id_token", "monitor_tls_name", "constraint_type", "server_id"},
+			[]string{"monitor_id_token", "monitor_tls_name", "constraint_type"},
 		),
 
-		// Track processing performance
-		ProcessDuration: prometheus.NewHistogramVec(
+		ProcessDuration: prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Name:    "selector_process_duration_seconds",
 				Help:    "Time spent processing servers in seconds",
 				Buckets: prometheus.DefBuckets,
 			},
-			[]string{},
 		),
 
-		MonitorsEvaluated: prometheus.NewCounterVec(
+		MonitorsEvaluated: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "selector_monitors_evaluated_total",
-				Help: "Total number of monitors evaluated per server",
+				Help: "Total number of monitors evaluated",
 			},
-			[]string{"server_id"},
 		),
 
-		ChangesApplied: prometheus.NewCounterVec(
+		ChangesApplied: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "selector_changes_applied_total",
 				Help: "Total number of status changes successfully applied",
 			},
-			[]string{"server_id"},
 		),
 
-		ChangesFailed: prometheus.NewCounterVec(
+		ChangesFailed: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "selector_changes_failed_total",
 				Help: "Total number of status changes that failed to apply",
 			},
-			[]string{"server_id"},
 		),
 
-		// Track monitor pool health
-		MonitorPoolSize: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "selector_monitor_pool_size",
-				Help: "Number of monitors in each status per server",
+		ServerMonitors: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "selector_server_monitors",
+				Help:    "Number of monitors per server in each status, observed when the server is reviewed",
+				Buckets: []float64{0, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 50, 100, 200},
 			},
-			[]string{"status", "server_id"},
+			[]string{"status"},
 		),
 
-		GloballyActiveMonitors: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "selector_globally_active_monitors",
-				Help: "Number of globally active monitors in testing pool per server",
-			},
-			[]string{"server_id"},
-		),
-
-		ConstraintBlockedMonitors: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "selector_constraint_blocked_monitors",
-				Help: "Number of monitors blocked by constraints per server",
-			},
-			[]string{"constraint_type", "server_id"},
-		),
+		MonitorServers: newMonitorServersCollector(),
 	}
 
-	// Register all metrics
 	reg.MustRegister(
 		m.StatusChanges,
 		m.ConstraintViolations,
@@ -116,9 +97,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.MonitorsEvaluated,
 		m.ChangesApplied,
 		m.ChangesFailed,
-		m.MonitorPoolSize,
-		m.GloballyActiveMonitors,
-		m.ConstraintBlockedMonitors,
+		m.ServerMonitors,
+		m.MonitorServers,
 	)
 
 	return m
@@ -126,20 +106,21 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 
 // Helper functions for extracting monitor labels
 
-// getMonitorLabels extracts both id_token and tls_name from a monitor candidate
-// Returns safe fallback values if either field is empty
-func getMonitorLabels(monitor *monitorCandidate) (string, string) {
-	idToken := "unknown"
-	tlsName := "unknown"
-
-	if monitor.IDToken != "" {
-		idToken = monitor.IDToken
+// monitorLabels returns the id_token and tls_name label values,
+// using "unknown" for empty fields.
+func monitorLabels(idToken, tlsName string) (string, string) {
+	if idToken == "" {
+		idToken = "unknown"
 	}
-	if monitor.TLSName != "" {
-		tlsName = monitor.TLSName
+	if tlsName == "" {
+		tlsName = "unknown"
 	}
-
 	return idToken, tlsName
+}
+
+// getMonitorLabels extracts both id_token and tls_name from a monitor candidate
+func getMonitorLabels(monitor *monitorCandidate) (string, string) {
+	return monitorLabels(monitor.IDToken, monitor.TLSName)
 }
 
 // Metric tracking helper methods
@@ -148,7 +129,6 @@ func getMonitorLabels(monitor *monitorCandidate) (string, string) {
 func (m *Metrics) TrackStatusChange(
 	monitor *monitorCandidate,
 	fromStatus, toStatus ntpdb.ServerScoresStatus,
-	serverID int64,
 	reason string,
 ) {
 	idToken, tlsName := getMonitorLabels(monitor)
@@ -157,65 +137,103 @@ func (m *Metrics) TrackStatusChange(
 		tlsName,
 		string(fromStatus),
 		string(toStatus),
-		strconv.FormatUint(uint64(serverID), 10),
 		reason,
 	).Inc()
 }
 
-// TrackConstraintViolation records a constraint violation
+// TrackConstraintViolation records a monitor found in constraint
+// violation during a server review
 func (m *Metrics) TrackConstraintViolation(
 	monitor *monitorCandidate,
 	constraintType constraintViolationType,
-	serverID int64,
-	isGrandfathered bool,
 ) {
 	idToken, tlsName := getMonitorLabels(monitor)
 	m.ConstraintViolations.WithLabelValues(
 		idToken,
 		tlsName,
 		string(constraintType),
-		strconv.FormatUint(uint64(serverID), 10),
 	).Inc()
 }
 
-// TrackMonitorPoolSizes updates monitor pool size metrics
-func (m *Metrics) TrackMonitorPoolSizes(
-	serverID int64,
-	activeCount, testingCount, candidateCount int,
-) {
-	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
-
-	m.MonitorPoolSize.WithLabelValues("active", serverIDStr).Set(float64(activeCount))
-	m.MonitorPoolSize.WithLabelValues("testing", serverIDStr).Set(float64(testingCount))
-	m.MonitorPoolSize.WithLabelValues("candidate", serverIDStr).Set(float64(candidateCount))
-}
-
-// TrackConstraintBlockedCount updates constraint blocked monitor counts
-func (m *Metrics) TrackConstraintBlockedCount(
-	serverID int64,
-	constraintCounts map[constraintViolationType]int,
-) {
-	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
-
-	for constraintType, count := range constraintCounts {
-		m.ConstraintBlockedMonitors.WithLabelValues(
-			string(constraintType),
-			serverIDStr,
-		).Set(float64(count))
-	}
+// TrackServerMonitorCounts records the number of monitors in each status
+// for a reviewed server
+func (m *Metrics) TrackServerMonitorCounts(activeCount, testingCount, candidateCount, pausedCount int) {
+	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusActive)).Observe(float64(activeCount))
+	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusTesting)).Observe(float64(testingCount))
+	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusCandidate)).Observe(float64(candidateCount))
+	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusPaused)).Observe(float64(pausedCount))
 }
 
 // RecordProcessingMetrics records various processing metrics for a server
 func (m *Metrics) RecordProcessingMetrics(
-	serverID int64,
 	duration float64,
-	evaluatedCount, appliedChanges, failedChanges, globallyActiveCount int,
+	evaluatedCount, appliedChanges, failedChanges int,
 ) {
-	serverIDStr := strconv.FormatUint(uint64(serverID), 10)
+	m.ProcessDuration.Observe(duration)
+	m.MonitorsEvaluated.Add(float64(evaluatedCount))
+	m.ChangesApplied.Add(float64(appliedChanges))
+	m.ChangesFailed.Add(float64(failedChanges))
+}
 
-	m.ProcessDuration.WithLabelValues().Observe(duration)
-	m.MonitorsEvaluated.WithLabelValues(serverIDStr).Add(float64(evaluatedCount))
-	m.ChangesApplied.WithLabelValues(serverIDStr).Add(float64(appliedChanges))
-	m.ChangesFailed.WithLabelValues(serverIDStr).Add(float64(failedChanges))
-	m.GloballyActiveMonitors.WithLabelValues(serverIDStr).Set(float64(globallyActiveCount))
+// monitorServersCollector exports selector_monitor_servers, the number of
+// servers each monitor is assigned to per status. The values are a
+// snapshot replaced on each Update, so monitors without server_scores
+// rows drop out instead of leaving stale series.
+type monitorServersCollector struct {
+	desc *prometheus.Desc
+
+	mu     sync.Mutex
+	counts map[monitorServersKey]int64
+}
+
+type monitorServersKey struct {
+	idToken, tlsName, status string
+}
+
+func newMonitorServersCollector() *monitorServersCollector {
+	return &monitorServersCollector{
+		desc: prometheus.NewDesc(
+			"selector_monitor_servers",
+			"Number of servers each monitor is assigned to, by server_scores status",
+			[]string{"monitor_id_token", "monitor_tls_name", "status"},
+			nil,
+		),
+		counts: map[monitorServersKey]int64{},
+	}
+}
+
+// Update replaces the snapshot with the given rows.
+func (c *monitorServersCollector) Update(rows []ntpdb.GetMonitorServerStatusCountsRow) {
+	counts := make(map[monitorServersKey]int64, len(rows))
+	for _, row := range rows {
+		idToken, tlsName := monitorLabels(row.IDToken.String, row.TlsName.String)
+		// sum, so monitors with missing labels can't produce duplicate series
+		counts[monitorServersKey{idToken, tlsName, string(row.Status)}] += row.Servers
+	}
+
+	c.mu.Lock()
+	c.counts = counts
+	c.mu.Unlock()
+}
+
+// Describe implements prometheus.Collector.
+func (c *monitorServersCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.desc
+}
+
+// Collect implements prometheus.Collector.
+func (c *monitorServersCollector) Collect(ch chan<- prometheus.Metric) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for k, v := range c.counts {
+		m, err := prometheus.NewConstMetric(
+			c.desc, prometheus.GaugeValue, float64(v),
+			k.idToken, k.tlsName, k.status,
+		)
+		if err != nil {
+			m = prometheus.NewInvalidMetric(c.desc, err)
+		}
+		ch <- m
+	}
 }

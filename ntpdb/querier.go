@@ -17,6 +17,7 @@ type Querier interface {
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (int64, error)
 	GetMonitorPriority(ctx context.Context, serverID int64) ([]GetMonitorPriorityRow, error)
+	GetMonitorServerStatusCounts(ctx context.Context) ([]GetMonitorServerStatusCountsRow, error)
 	GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error)
 	GetMonitorsTLSName(ctx context.Context, tlsName pgtype.Text) ([]Monitor, error)
 	GetScorerLogScores(ctx context.Context, arg GetScorerLogScoresParams) ([]LogScore, error)

@@ -246,6 +246,13 @@ UPDATE servers_monitor_review
   SET last_review = NOW(), last_change = NOW(), next_review = $1
   WHERE server_id = $2;
 
+-- name: GetMonitorServerStatusCounts :many
+SELECT m.id_token, m.tls_name, ss.status, count(*) AS servers
+  FROM server_scores ss
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  WHERE m.type = 'monitor'
+  GROUP BY m.id, m.id_token, m.tls_name, ss.status;
+
 -- name: GetSystemSetting :one
 SELECT value FROM system_settings WHERE "key" = $1;
 

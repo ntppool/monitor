@@ -44,7 +44,7 @@ type pauseReason string
 
 const (
 	pauseConstraintViolation pauseReason = "constraint" // Network/account constraints
-	pauseExcess             pauseReason = "excess"      // Too many candidates (future use)
+	pauseExcess              pauseReason = "excess"     // Too many candidates (future use)
 )
 
 // isUnchangeableConstraint determines if a constraint violation type represents
@@ -284,11 +284,6 @@ func (sl *Selector) checkConstraints(
 			violation.Since = time.Now()
 		}
 
-		// Track constraint violation in metrics
-		if sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
-		}
-
 		return violation
 	}
 
@@ -316,11 +311,6 @@ func (sl *Selector) checkConstraints(
 			violation.Since = time.Now()
 		}
 
-		// Track constraint violation in metrics
-		if sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
-		}
-
 		return violation
 	}
 
@@ -337,11 +327,6 @@ func (sl *Selector) checkConstraints(
 			violation.Since = *monitor.ConstraintViolationSince
 		} else {
 			violation.Since = time.Now()
-		}
-
-		// Track constraint violation in metrics
-		if sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
 		}
 
 		return violation
@@ -539,11 +524,6 @@ func (sl *Selector) checkNonAccountConstraints(
 			violation.Since = time.Now()
 		}
 
-		// Track constraint violation in metrics
-		if sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
-		}
-
 		return violation
 	}
 
@@ -563,11 +543,6 @@ func (sl *Selector) checkNonAccountConstraints(
 				violation.Since = time.Now()
 			}
 
-			// Track constraint violation in metrics
-			if sl.metrics != nil {
-				sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
-			}
-
 			return violation
 		}
 	}
@@ -585,11 +560,6 @@ func (sl *Selector) checkNonAccountConstraints(
 			violation.Since = *monitor.ConstraintViolationSince
 		} else {
 			violation.Since = time.Now()
-		}
-
-		// Track constraint violation in metrics
-		if sl.metrics != nil {
-			sl.metrics.TrackConstraintViolation(monitor, violation.Type, server.ID, false)
 		}
 
 		return violation
