@@ -38,12 +38,11 @@ func CAPool() (*x509.CertPool, error) {
 // GetCertman sets up certman for the specified cert / key pair. It is
 // used in the monitor-api and (for now) in the client
 func GetCertman(certFile, keyFile string) (*certman.CertMan, error) {
-	cm, err := certman.New(certFile, keyFile)
+	log := logger.Setup().With("component", "certman")
+	cm, err := certman.New(certFile, keyFile, certman.WithLogger(log))
 	if err != nil {
 		return nil, err
 	}
-	log := logger.NewStdLog("cm", false, nil)
-	cm.Logger(log)
 	err = cm.Watch()
 	if err != nil {
 		return nil, err

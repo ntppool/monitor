@@ -149,7 +149,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
-	metricssrv := metricsserver.New()
+	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
 	version.RegisterMetric("monitorapi", metricssrv.Registry())
 	go func() {
 		if err := metricssrv.ListenAndServe(ctx, cfg.MetricsPort); err != nil {

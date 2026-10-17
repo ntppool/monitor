@@ -47,7 +47,7 @@ func scorerRun(ctx context.Context, configFile string, continuous bool, metricsP
 		}
 	}()
 
-	metricssrv := metricsserver.New()
+	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
 	version.RegisterMetric("scorer", metricssrv.Registry())
 	go func() {
 		err := metricssrv.ListenAndServe(ctx, metricsPort)

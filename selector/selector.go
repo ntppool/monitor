@@ -127,7 +127,7 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 	defer dbconn.Close()
 
 	// Create and start metrics server
-	metricssrv := metricsserver.New()
+	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
 	version.RegisterMetric("selector", metricssrv.Registry())
 	go func() {
 		if err := metricssrv.ListenAndServe(ctx, metricsPort); err != nil {
