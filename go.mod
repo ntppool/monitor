@@ -1,6 +1,6 @@
 module go.ntppool.org/monitor
 
-go 1.26.0
+go 1.27.2
 
 // replace github.com/eclipse/paho.golang => /Users/ask/src/paho.golang/
 // replace go.ntppool.org/common => /Users/ask/src/go/ntp/common/
@@ -15,13 +15,13 @@ tool (
 )
 
 require (
-	connectrpc.com/connect v1.20.0
-	connectrpc.com/otelconnect v0.9.0
+	connectrpc.com/connect v1.21.1
+	connectrpc.com/otelconnect v0.12.0
 	github.com/MakeNowJust/heredoc v1.0.0
-	github.com/MicahParks/keyfunc/v3 v3.8.1
+	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/abh/certman v0.5.0
 	github.com/alecthomas/kong v1.16.1
-	github.com/beevik/ntp v1.5.0
+	github.com/beevik/ntp v1.6.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/evanphx/json-patch v0.5.2
@@ -67,6 +67,7 @@ require (
 	buf.build/go/spdx v0.2.0 // indirect
 	buf.build/go/standard v0.1.1-0.20260325175353-2b287e071df5 // indirect
 	cel.dev/expr v0.25.2 // indirect
+	connectrpc.com/connect/v2 v2.0.1 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
@@ -95,7 +96,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.10.1 // indirect

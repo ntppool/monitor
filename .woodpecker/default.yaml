@@ -24,7 +24,7 @@ services:
 
 steps:
   - name: generate-tags
-    image: ghcr.io/abh/woodpecker-docker-tags-plugin:0.2.1-abh
+    image: ghcr.io/abh/woodpecker-docker-tags-plugin:0.2.1-abh.1
     depends_on: []
     settings:
       tags: |
@@ -35,7 +35,7 @@ steps:
         semver --auto
 
   - name: test
-    image: golang:1.26
+    image: golang:1.27
     pull: true
     depends_on: []
     environment:
@@ -73,7 +73,7 @@ steps:
             memory: 2Gi
 
   - name: goreleaser
-    image: golang:1.26
+    image: golang:1.27
     pull: true
     depends_on: [test]
     environment:
@@ -170,7 +170,7 @@ steps:
             memory: 256Mi
 
   - name: fury-publish
-    image: golang:1.26
+    image: golang:1.27
     pull: true
     depends_on: [goreleaser]
     environment:
