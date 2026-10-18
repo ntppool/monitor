@@ -104,7 +104,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 
 	batchID := ulid.ULID{}
 	if err := batchID.UnmarshalText(in.BatchId); err != nil {
-		return false, fmt.Errorf("invalid batch ID: %w", err)
+		return false, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, "invalid batch ID"), err)
 	}
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
@@ -133,7 +133,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 
 		span.AddEvent("Out of order batch", otrace.WithAttributes(attribute.String("previous", lastSubmit.Time.String())))
 
-		return false, fmt.Errorf("invalid batch submission")
+		return false, twirp.NewError(twirp.InvalidArgument, "invalid batch submission: older than the previous batch")
 	}
 
 	if err := srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{

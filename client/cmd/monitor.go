@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/cenkalti/backoff/v5"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
@@ -506,9 +505,7 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 	}
 
 	cfgresp, err := api.GetConfig(cfgctx,
-		connect.NewRequest(
-			&apiv2.GetConfigRequest{MonId: ipc.IP.String()},
-		))
+		&apiv2.GetConfigRequest{MonId: ipc.IP.String()})
 
 	// Record RPC request metric
 	if metrics.RPCRequests != nil {
@@ -523,9 +520,9 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 			))
 	}
 
-	if err != nil || cfgresp.Msg == nil {
+	if err != nil || cfgresp == nil {
 		if err == nil {
-			// A nil Msg with no error would otherwise be returned as
+			// A nil response with no error would otherwise be returned as
 			// (nil, nil) and the caller would use it as a valid config.
 			err = fmt.Errorf("empty configuration response")
 		}
@@ -536,19 +533,17 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 		}
 		return nil, err
 	}
-	return cfgresp.Msg, nil
+	return cfgresp, nil
 }
 
 func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, api apiv2connect.MonitorServiceClient, cfgStore checkconfig.ConfigProvider) (int, error) {
 	log := logger.FromContext(ctx)
 
-	serverresp, err := api.GetServers(
+	serverlist, err := api.GetServers(
 		ctx,
-		connect.NewRequest(
-			&apiv2.GetServersRequest{
-				MonId: ipc.IP.String(),
-			},
-		),
+		&apiv2.GetServersRequest{
+			MonId: ipc.IP.String(),
+		},
 	)
 
 	// Record RPC request metric
@@ -567,8 +562,6 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	if err != nil {
 		return 0, fmt.Errorf("getting server list: %s", err)
 	}
-
-	serverlist := serverresp.Msg
 
 	if serverlist.Config != nil {
 		cfgStore.SetConfigFromApi(serverlist.Config)
@@ -667,12 +660,12 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 		BatchId: serverlist.BatchId,
 	}
 
-	r, err := api.SubmitResults(ctx, connect.NewRequest(list))
+	r, err := api.SubmitResults(ctx, list)
 
 	// Record RPC request metric
 	if metrics.RPCRequests != nil {
 		statusCode := "success"
-		if err != nil || (r != nil && !r.Msg.Ok) {
+		if err != nil || (r != nil && !r.Ok) {
 			statusCode = "error"
 		}
 		metrics.RPCRequests.Add(ctx, 1,
@@ -685,7 +678,7 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	if err != nil {
 		return 0, fmt.Errorf("SubmitResults: %s", err)
 	}
-	if !r.Msg.Ok {
+	if !r.Ok {
 		return 0, fmt.Errorf("SubmitResults not okay")
 	}
 

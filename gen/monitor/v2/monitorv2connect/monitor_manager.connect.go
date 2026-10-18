@@ -5,167 +5,170 @@
 package monitorv2connect
 
 import (
-	connect "connectrpc.com/connect"
+	connect "connectrpc.com/connect/v2"
 	context "context"
-	errors "errors"
 	v2 "go.ntppool.org/monitor/gen/monitor/v2"
-	http "net/http"
-	strings "strings"
+	sync "sync"
 )
-
-// This is a compile-time assertion to ensure that this generated file and the connect package are
-// compatible. If you get a compiler error that this constant is not defined, this code was
-// generated with a version of connect newer than the one compiled into your binary. You can fix the
-// problem by either regenerating this code with an older version of connect or updating the connect
-// version compiled into your binary.
-const _ = connect.IsAtLeastVersion1_13_0
 
 const (
 	// MonitorServiceName is the fully-qualified name of the MonitorService service.
 	MonitorServiceName = "monitor.v2.MonitorService"
 )
 
-// These constants are the fully-qualified names of the RPCs defined in this package. They're
-// exposed at runtime as Spec.Procedure and as the final two segments of the HTTP route.
+// These constants are the procedure names of the RPCs defined in this package. They're exposed at
+// runtime as Spec.Procedure and as the final two segments of the HTTP route.
 //
 // Note that these are different from the fully-qualified method names used by
 // google.golang.org/protobuf/reflect/protoreflect. To convert from these constants to
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// MonitorServiceGetConfigProcedure is the fully-qualified name of the MonitorService's GetConfig
-	// RPC.
+	// MonitorServiceGetConfigProcedure is the procedure name of the MonitorService's GetConfig RPC.
 	MonitorServiceGetConfigProcedure = "/monitor.v2.MonitorService/GetConfig"
-	// MonitorServiceGetServersProcedure is the fully-qualified name of the MonitorService's GetServers
-	// RPC.
+	// MonitorServiceGetServersProcedure is the procedure name of the MonitorService's GetServers RPC.
 	MonitorServiceGetServersProcedure = "/monitor.v2.MonitorService/GetServers"
-	// MonitorServiceSubmitResultsProcedure is the fully-qualified name of the MonitorService's
-	// SubmitResults RPC.
+	// MonitorServiceSubmitResultsProcedure is the procedure name of the MonitorService's SubmitResults
+	// RPC.
 	MonitorServiceSubmitResultsProcedure = "/monitor.v2.MonitorService/SubmitResults"
+)
+
+var (
+	monitorServiceGetConfigSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods().ByName("GetConfig"),
+			Procedure:  MonitorServiceGetConfigProcedure,
+		}
+	})
+	monitorServiceGetServersSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods().ByName("GetServers"),
+			Procedure:  MonitorServiceGetServersProcedure,
+		}
+	})
+	monitorServiceSubmitResultsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods().ByName("SubmitResults"),
+			Procedure:  MonitorServiceSubmitResultsProcedure,
+		}
+	})
 )
 
 // MonitorServiceClient is a client for the monitor.v2.MonitorService service.
 type MonitorServiceClient interface {
-	GetConfig(context.Context, *connect.Request[v2.GetConfigRequest]) (*connect.Response[v2.GetConfigResponse], error)
+	GetConfig(context.Context, *v2.GetConfigRequest) (*v2.GetConfigResponse, error)
 	// GetServers fetches list of NTP servers to check
-	GetServers(context.Context, *connect.Request[v2.GetServersRequest]) (*connect.Response[v2.GetServersResponse], error)
+	GetServers(context.Context, *v2.GetServersRequest) (*v2.GetServersResponse, error)
 	// SubmitResults returns the specified list ServerStatus to the monitoring server
-	SubmitResults(context.Context, *connect.Request[v2.SubmitResultsRequest]) (*connect.Response[v2.SubmitResultsResponse], error)
+	SubmitResults(context.Context, *v2.SubmitResultsRequest) (*v2.SubmitResultsResponse, error)
 }
 
-// NewMonitorServiceClient constructs a client for the monitor.v2.MonitorService service. By
-// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
-// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
-// connect.WithGRPC() or connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewMonitorServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) MonitorServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	monitorServiceMethods := v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods()
-	return &monitorServiceClient{
-		getConfig: connect.NewClient[v2.GetConfigRequest, v2.GetConfigResponse](
-			httpClient,
-			baseURL+MonitorServiceGetConfigProcedure,
-			connect.WithSchema(monitorServiceMethods.ByName("GetConfig")),
-			connect.WithClientOptions(opts...),
-		),
-		getServers: connect.NewClient[v2.GetServersRequest, v2.GetServersResponse](
-			httpClient,
-			baseURL+MonitorServiceGetServersProcedure,
-			connect.WithSchema(monitorServiceMethods.ByName("GetServers")),
-			connect.WithClientOptions(opts...),
-		),
-		submitResults: connect.NewClient[v2.SubmitResultsRequest, v2.SubmitResultsResponse](
-			httpClient,
-			baseURL+MonitorServiceSubmitResultsProcedure,
-			connect.WithSchema(monitorServiceMethods.ByName("SubmitResults")),
-			connect.WithClientOptions(opts...),
-		),
-	}
-}
-
-// monitorServiceClient implements MonitorServiceClient.
-type monitorServiceClient struct {
-	getConfig     *connect.Client[v2.GetConfigRequest, v2.GetConfigResponse]
-	getServers    *connect.Client[v2.GetServersRequest, v2.GetServersResponse]
-	submitResults *connect.Client[v2.SubmitResultsRequest, v2.SubmitResultsResponse]
-}
-
-// GetConfig calls monitor.v2.MonitorService.GetConfig.
-func (c *monitorServiceClient) GetConfig(ctx context.Context, req *connect.Request[v2.GetConfigRequest]) (*connect.Response[v2.GetConfigResponse], error) {
-	return c.getConfig.CallUnary(ctx, req)
-}
-
-// GetServers calls monitor.v2.MonitorService.GetServers.
-func (c *monitorServiceClient) GetServers(ctx context.Context, req *connect.Request[v2.GetServersRequest]) (*connect.Response[v2.GetServersResponse], error) {
-	return c.getServers.CallUnary(ctx, req)
-}
-
-// SubmitResults calls monitor.v2.MonitorService.SubmitResults.
-func (c *monitorServiceClient) SubmitResults(ctx context.Context, req *connect.Request[v2.SubmitResultsRequest]) (*connect.Response[v2.SubmitResultsResponse], error) {
-	return c.submitResults.CallUnary(ctx, req)
+// NewMonitorServiceClient constructs a client for the monitor.v2.MonitorService service. Multiple
+// service clients may share a single connect.Client.
+func NewMonitorServiceClient(client *connect.Client) MonitorServiceClient {
+	return &monitorServiceClient{client: client}
 }
 
 // MonitorServiceHandler is an implementation of the monitor.v2.MonitorService service.
 type MonitorServiceHandler interface {
-	GetConfig(context.Context, *connect.Request[v2.GetConfigRequest]) (*connect.Response[v2.GetConfigResponse], error)
+	GetConfig(context.Context, *v2.GetConfigRequest) (*v2.GetConfigResponse, error)
 	// GetServers fetches list of NTP servers to check
-	GetServers(context.Context, *connect.Request[v2.GetServersRequest]) (*connect.Response[v2.GetServersResponse], error)
+	GetServers(context.Context, *v2.GetServersRequest) (*v2.GetServersResponse, error)
 	// SubmitResults returns the specified list ServerStatus to the monitoring server
-	SubmitResults(context.Context, *connect.Request[v2.SubmitResultsRequest]) (*connect.Response[v2.SubmitResultsResponse], error)
+	SubmitResults(context.Context, *v2.SubmitResultsRequest) (*v2.SubmitResultsResponse, error)
 }
 
-// NewMonitorServiceHandler builds an HTTP handler from the service implementation. It returns the
-// path on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewMonitorServiceHandler(svc MonitorServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	monitorServiceMethods := v2.File_monitor_v2_monitor_manager_proto.Services().ByName("MonitorService").Methods()
-	monitorServiceGetConfigHandler := connect.NewUnaryHandler(
-		MonitorServiceGetConfigProcedure,
-		svc.GetConfig,
-		connect.WithSchema(monitorServiceMethods.ByName("GetConfig")),
-		connect.WithHandlerOptions(opts...),
+// RegisterMonitorServiceHandler registers svc as the monitor.v2.MonitorService implementation on
+// server.
+func RegisterMonitorServiceHandler(server *connect.Server, svc MonitorServiceHandler) {
+	adapter := monitorServiceHandler{svc: svc}
+	server.Register(
+		connect.Method{Spec: monitorServiceGetConfigSpec(), Handler: adapter.getConfig},
+		connect.Method{Spec: monitorServiceGetServersSpec(), Handler: adapter.getServers},
+		connect.Method{Spec: monitorServiceSubmitResultsSpec(), Handler: adapter.submitResults},
 	)
-	monitorServiceGetServersHandler := connect.NewUnaryHandler(
-		MonitorServiceGetServersProcedure,
-		svc.GetServers,
-		connect.WithSchema(monitorServiceMethods.ByName("GetServers")),
-		connect.WithHandlerOptions(opts...),
-	)
-	monitorServiceSubmitResultsHandler := connect.NewUnaryHandler(
-		MonitorServiceSubmitResultsProcedure,
-		svc.SubmitResults,
-		connect.WithSchema(monitorServiceMethods.ByName("SubmitResults")),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/monitor.v2.MonitorService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case MonitorServiceGetConfigProcedure:
-			monitorServiceGetConfigHandler.ServeHTTP(w, r)
-		case MonitorServiceGetServersProcedure:
-			monitorServiceGetServersHandler.ServeHTTP(w, r)
-		case MonitorServiceSubmitResultsProcedure:
-			monitorServiceSubmitResultsHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
 }
 
 // UnimplementedMonitorServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedMonitorServiceHandler struct{}
 
-func (UnimplementedMonitorServiceHandler) GetConfig(context.Context, *connect.Request[v2.GetConfigRequest]) (*connect.Response[v2.GetConfigResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("monitor.v2.MonitorService.GetConfig is not implemented"))
+func (UnimplementedMonitorServiceHandler) GetConfig(context.Context, *v2.GetConfigRequest) (*v2.GetConfigResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "monitor.v2.MonitorService.GetConfig is not implemented")
 }
 
-func (UnimplementedMonitorServiceHandler) GetServers(context.Context, *connect.Request[v2.GetServersRequest]) (*connect.Response[v2.GetServersResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("monitor.v2.MonitorService.GetServers is not implemented"))
+func (UnimplementedMonitorServiceHandler) GetServers(context.Context, *v2.GetServersRequest) (*v2.GetServersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "monitor.v2.MonitorService.GetServers is not implemented")
 }
 
-func (UnimplementedMonitorServiceHandler) SubmitResults(context.Context, *connect.Request[v2.SubmitResultsRequest]) (*connect.Response[v2.SubmitResultsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("monitor.v2.MonitorService.SubmitResults is not implemented"))
+func (UnimplementedMonitorServiceHandler) SubmitResults(context.Context, *v2.SubmitResultsRequest) (*v2.SubmitResultsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "monitor.v2.MonitorService.SubmitResults is not implemented")
+}
+
+type monitorServiceClient struct {
+	client *connect.Client
+}
+
+func (c *monitorServiceClient) GetConfig(ctx context.Context, req *v2.GetConfigRequest) (*v2.GetConfigResponse, error) {
+	var res v2.GetConfigResponse
+	if err := c.client.CallUnary(ctx, monitorServiceGetConfigSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *monitorServiceClient) GetServers(ctx context.Context, req *v2.GetServersRequest) (*v2.GetServersResponse, error) {
+	var res v2.GetServersResponse
+	if err := c.client.CallUnary(ctx, monitorServiceGetServersSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *monitorServiceClient) SubmitResults(ctx context.Context, req *v2.SubmitResultsRequest) (*v2.SubmitResultsResponse, error) {
+	var res v2.SubmitResultsResponse
+	if err := c.client.CallUnary(ctx, monitorServiceSubmitResultsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+type monitorServiceHandler struct{ svc MonitorServiceHandler }
+
+func (h monitorServiceHandler) getConfig(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v2.GetConfigRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetConfig(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h monitorServiceHandler) getServers(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v2.GetServersRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetServers(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h monitorServiceHandler) submitResults(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v2.SubmitResultsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.SubmitResults(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
 }

@@ -7,7 +7,8 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/otelconnect"
 
 	"go.ntppool.org/common/config/depenv"
@@ -78,27 +79,26 @@ func getServerName(clientName string) (string, error) {
 	return depEnv.MonitorAPIHost(), nil
 }
 
-func NewHeaderInterceptor(ap apitls.AuthProvider) connect.UnaryInterceptorFunc {
-	interceptor := func(next connect.UnaryFunc) connect.UnaryFunc {
-		return connect.UnaryFunc(func(
-			ctx context.Context,
-			req connect.AnyRequest,
-		) (connect.AnyResponse, error) {
-			if req.Spec().IsClient {
-				req.Header().Set("User-Agent", "ntppool-agent/"+version.Version())
-
-				// Prefer JWT token over API key for authentication
-				if jwtToken, err := ap.GetJWTToken(ctx); err == nil && jwtToken != "" {
-					req.Header().Set("Authorization", "Bearer "+jwtToken)
-				} else if apiKey := ap.GetAPIKey(); apiKey != "" {
-					// Fallback to API key during migration period
-					req.Header().Set("Authorization", "Bearer "+apiKey)
-				}
+func NewHeaderInterceptor(ap apitls.AuthProvider) connect.ClientInterceptor {
+	return func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			// connect.Client attaches a CallInfo before running interceptors.
+			info, ok := connect.CallInfoForClientContext(ctx)
+			if !ok {
+				return nil, connect.NewError(connect.CodeInternal, "missing client call info")
 			}
-			return next(ctx, req)
-		})
+			info.RequestHeader().Set("User-Agent", "ntppool-agent/"+version.Version())
+
+			// Prefer JWT token over API key for authentication
+			if jwtToken, err := ap.GetJWTToken(ctx); err == nil && jwtToken != "" {
+				info.RequestHeader().Set("Authorization", "Bearer "+jwtToken)
+			} else if apiKey := ap.GetAPIKey(); apiKey != "" {
+				// Fallback to API key during migration period
+				info.RequestHeader().Set("Authorization", "Bearer "+apiKey)
+			}
+			return next(ctx, spec)
+		}
 	}
-	return connect.UnaryInterceptorFunc(interceptor)
 }
 
 func Client(ctx context.Context, clientName string, cp apitls.AuthProvider) (context.Context, apiv2connect.MonitorServiceClient, error) {
@@ -116,17 +116,16 @@ func Client(ctx context.Context, clientName string, cp apitls.AuthProvider) (con
 		return ctx, nil, err
 	}
 
-	otelinter, err := otelconnect.NewInterceptor()
+	otelinter, err := otelconnect.NewClientInterceptor()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	client := apiv2connect.NewMonitorServiceClient(
-		httpClient,
-		serverName,
-		connect.WithInterceptors(otelinter),
-		connect.WithInterceptors(NewHeaderInterceptor(cp)),
-	)
+	client := apiv2connect.NewMonitorServiceClient(connect.NewClient(
+		connecthttp.NewTransport(httpClient, serverName),
+		otelinter,
+		NewHeaderInterceptor(cp),
+	))
 
 	return ctx, client, nil
 }

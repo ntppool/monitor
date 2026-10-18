@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/eclipse/paho.golang/paho"
 
 	"go.ntppool.org/common/logger"
@@ -167,9 +167,9 @@ func testGRPCAPI(ctx context.Context, cli *ClientCmd, log *slog.Logger) error {
 	}
 
 	// Try to get config via gRPC
-	cfgresp, err := apiC.GetConfig(ctx, connect.NewRequest(&apiv2.GetConfigRequest{}))
+	cfg, err := apiC.GetConfig(ctx, &apiv2.GetConfigRequest{})
 	if err != nil {
-		if conerr, ok := err.(*connect.Error); ok {
+		if conerr, ok := errors.AsType[*connect.Error](err); ok {
 			switch conerr.Code() {
 			case connect.CodePermissionDenied:
 				return fmt.Errorf("permission denied: %w", err)
@@ -182,11 +182,9 @@ func testGRPCAPI(ctx context.Context, cli *ClientCmd, log *slog.Logger) error {
 		return fmt.Errorf("could not get config: %w", err)
 	}
 
-	if cfgresp == nil || cfgresp.Msg == nil {
+	if cfg == nil {
 		return fmt.Errorf("received empty configuration response")
 	}
-
-	cfg := cfgresp.Msg
 
 	// Log some basic config info
 	if cfg.Samples > 0 {

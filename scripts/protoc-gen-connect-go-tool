@@ -1,2 +1,2 @@
 #!/bin/bash
-exec go tool connectrpc.com/connect/cmd/protoc-gen-connect-go "$@"
+exec go tool connectrpc.com/connect/v2/cmd/protoc-gen-connect-go "$@"

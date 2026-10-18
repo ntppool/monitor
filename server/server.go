@@ -10,7 +10,8 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/otelconnect"
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -218,16 +219,20 @@ func (srv *Server) Run() error {
 
 	conSrv := NewConnectServer(srv)
 
-	otelinter, err := otelconnect.NewInterceptor(
+	otelinter, err := otelconnect.NewServerInterceptor(
 		otelconnect.WithTrustRemote(), // trust trace ids from the monitors
 	)
 	if err != nil {
-		log.ErrorContext(ctx, "could not setup otelconnect interceptor", "err", err)
+		return fmt.Errorf("could not setup otelconnect interceptor: %w", err)
 	}
-	urlpath, apiHandler := apiv2connect.NewMonitorServiceHandler(
-		conSrv,
-		connect.WithInterceptors(otelinter),
-	)
+	connectServer := connect.NewServer(otelinter)
+	apiv2connect.RegisterMonitorServiceHandler(connectServer, conSrv)
+
+	// Mount registers one route per method, so it goes on its own mux to
+	// keep the middleware below in front of every connect route.
+	apiHandler := http.NewServeMux()
+	connecthttp.Mount(apiHandler, connectServer)
+	urlpath := "/" + apiv2connect.MonitorServiceName + "/"
 
 	log.Info("setting up connectrpc", "path", urlpath)
 	mux.Handle(

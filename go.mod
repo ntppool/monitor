@@ -6,7 +6,7 @@ go 1.27.2
 // replace go.ntppool.org/common => /Users/ask/src/go/ntp/common/
 
 tool (
-	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	connectrpc.com/connect/v2/cmd/protoc-gen-connect-go
 	github.com/bufbuild/buf/cmd/buf
 	github.com/dmarkham/enumer
 	github.com/hexdigest/gowrap/cmd/gowrap
@@ -15,7 +15,7 @@ tool (
 )
 
 require (
-	connectrpc.com/connect v1.21.1
+	connectrpc.com/connect/v2 v2.0.1
 	connectrpc.com/otelconnect v0.12.0
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/MicahParks/keyfunc/v3 v3.8.2
@@ -67,7 +67,7 @@ require (
 	buf.build/go/spdx v0.2.0 // indirect
 	buf.build/go/standard v0.1.1-0.20260325175353-2b287e071df5 // indirect
 	cel.dev/expr v0.25.2 // indirect
-	connectrpc.com/connect/v2 v2.0.1 // indirect
+	connectrpc.com/connect v1.21.1 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
