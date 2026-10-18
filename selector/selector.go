@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go.ntppool.org/common/database"
+	"go.ntppool.org/common/database/pgdb"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/version"
@@ -129,6 +130,9 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 	// Create and start metrics server
 	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
 	version.RegisterMetric("selector", metricssrv.Registry())
+	if err := metricssrv.Registry().Register(pgdb.NewPoolCollector(dbconn)); err != nil {
+		return fmt.Errorf("register database pool metrics: %w", err)
+	}
 	go func() {
 		if err := metricssrv.ListenAndServe(ctx, metricsPort); err != nil {
 			log.Error("metrics server error", "err", err)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/abh/certman"
 	"go.ntppool.org/common/config/depenv"
+	"go.ntppool.org/common/database/pgdb"
 	"go.ntppool.org/common/health"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
@@ -103,6 +104,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		log.Error("database error", "err", err.Error())
 		os.Exit(2)
 	}
+	defer dbconn.Close()
 
 	depEnv := depenv.DeploymentEnvironmentFromString(deploymentMode)
 	if depEnv == depenv.DeployUndefined {
@@ -151,6 +153,9 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 
 	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
 	version.RegisterMetric("monitorapi", metricssrv.Registry())
+	if err := metricssrv.Registry().Register(pgdb.NewPoolCollector(dbconn)); err != nil {
+		return fmt.Errorf("register database pool metrics: %w", err)
+	}
 	go func() {
 		if err := metricssrv.ListenAndServe(ctx, cfg.MetricsPort); err != nil {
 			log.Error("metrics server error", "err", err)

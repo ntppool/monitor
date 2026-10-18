@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/database"
+	"go.ntppool.org/common/database/pgdb"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/tracing"
@@ -59,6 +61,11 @@ func scorerRun(ctx context.Context, configFile string, continuous bool, metricsP
 	dbconn, err := ntpdb.OpenDB(ctx, configFile)
 	if err != nil {
 		return err
+	}
+	defer dbconn.Close()
+
+	if err := metricssrv.Registry().Register(pgdb.NewPoolCollector(dbconn)); err != nil {
+		return fmt.Errorf("register database pool metrics: %w", err)
 	}
 
 	sc, err := scorer.New(log, dbconn, metricssrv.Registry())
