@@ -6,7 +6,6 @@ import (
 	"net/netip"
 
 	"connectrpc.com/connect/v2"
-	"github.com/twitchtv/twirp"
 
 	"go.ntppool.org/common/logger"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
@@ -21,19 +20,12 @@ func NewConnectServer(srv *Server) *conServer {
 }
 
 // connectError converts an error from the shared Server methods to a
-// connect error. connect v2 doesn't send the text of plain errors, so
-// Twirp errors keep their code and message. Internal errors and anything
-// else get a fixed message, and the error is logged here instead.
+// connect error. Connect errors keep their code and message, except
+// CodeInternal. Those and any other errors are logged here and the client
+// gets a fixed "internal error".
 func connectError(ctx context.Context, monID string, err error) error {
-	if _, ok := errors.AsType[*connect.Error](err); ok {
-		return err
-	}
-
-	if twerr, ok := errors.AsType[twirp.Error](err); ok && twerr.Code() != twirp.Internal {
-		var code connect.Code
-		if uerr := code.UnmarshalText([]byte(twerr.Code())); uerr == nil {
-			return connect.NewError(code, twerr.Msg()).WithCause(err)
-		}
+	if cerr, ok := errors.AsType[*connect.Error](err); ok && cerr.Code() != connect.CodeInternal {
+		return cerr
 	}
 
 	log := logger.FromContext(ctx)

@@ -86,7 +86,6 @@ test-ci-minimal:
 
 tools:
 	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
-	go install github.com/twitchtv/twirp/protoc-gen-twirp@latest
 
 TAG ?= ""
 

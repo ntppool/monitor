@@ -16,23 +16,17 @@ import (
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	otrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/common/config/depenv"
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.ntppool.org/monitor/api/pb"
 	apitls "go.ntppool.org/monitor/api/tls"
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
 	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
-	sctx "go.ntppool.org/monitor/server/context"
 	"go.ntppool.org/monitor/server/metrics"
-	twirpmetrics "go.ntppool.org/monitor/server/metrics/twirp"
-	twirptrace "go.ntppool.org/monitor/server/twirptrace"
 	vtm "go.ntppool.org/vault-token-manager"
 )
 
@@ -136,8 +130,6 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 }
 
 func (srv *Server) Run() error {
-	twSrv := NewTwServer(srv)
-
 	log := logger.FromContext(srv.ctx)
 
 	ctx, cancel := context.WithCancel(srv.ctx)
@@ -159,63 +151,7 @@ func (srv *Server) Run() error {
 		VerifyPeerCertificate: srv.verifyClient,
 	}
 
-	tracer := tracing.Tracer()
-
-	hooks := twirp.ChainHooks(
-		twirptrace.NewOpenTracingHooks(
-			tracer,
-			twirptrace.WithTags(twirptrace.TraceTag{Key: "ottwirp", Value: true}),
-			twirptrace.IncludeClientErrors(true),
-			twirptrace.WithContextTags(func(ctx context.Context) (context.Context, []twirptrace.TraceTag) {
-				mon, acc, ctx, err := srv.getMonitor(ctx, "")
-				if err != nil {
-					return ctx, nil
-				}
-				tags := []twirptrace.TraceTag{
-					{
-						Key:   "monitor_id",
-						Value: mon.ID,
-					},
-					{
-						Key:   "monitor_name",
-						Value: mon.TlsName.String,
-					},
-					{
-						Key:   "monitor_account",
-						Value: mon.AccountID.Int64,
-					},
-				}
-				if acc != nil && acc.IDToken.Valid {
-					tags = append(tags, twirptrace.TraceTag{
-						Key:   "account_id_token",
-						Value: acc.IDToken.String,
-					})
-				}
-				return ctx, tags
-			}),
-		),
-		NewLoggingServerHooks(),
-		twirpmetrics.NewServerHooks(srv.m.Registry()),
-	)
-
-	twirpHandler := pb.NewMonitorServer(
-		twSrv,
-		twirp.WithServerPathPrefix("/api/v1"),
-		twirp.WithServerHooks(hooks),
-	)
-
 	mux := http.NewServeMux()
-	mux.Handle(
-		twirpHandler.PathPrefix(),
-		twirptrace.WithTraceContext(
-			srv.dualAuthMiddleware(
-				WithUserAgent(
-					twirpHandler,
-				),
-			),
-			tracer,
-		),
-	)
 
 	conSrv := NewConnectServer(srv)
 
@@ -267,8 +203,6 @@ func (srv *Server) Run() error {
 		IdleTimeout:       240 * time.Second,
 	}
 
-	log.Info("Starting gRPC server", "port", listen)
-
 	g.Go(func() error {
 		err := server.ListenAndServeTLS("", "")
 		if err != nil {
@@ -279,7 +213,7 @@ func (srv *Server) Run() error {
 
 	g.Go(func() error {
 		<-ctx.Done()
-		log.Info("shutting down twirp server")
+		log.Info("shutting down server")
 		if err := server.Shutdown(ctx); err != nil {
 			log.Error("server shutdown error", "err", err)
 		}
@@ -299,52 +233,6 @@ func (srv *Server) Run() error {
 	err = g.Wait()
 
 	return err
-}
-
-func NewLoggingServerHooks() *twirp.ServerHooks {
-	type logData struct {
-		CN         string
-		MethodName string
-		Span       otrace.Span
-	}
-
-	logDataFn := func(ctx context.Context) *logData {
-		method, _ := twirp.MethodName(ctx)
-		span := otrace.SpanFromContext(ctx)
-		cn := getCertificateName(ctx)
-
-		return &logData{
-			CN:         cn,
-			MethodName: method,
-			Span:       span,
-		}
-	}
-
-	return &twirp.ServerHooks{
-		RequestRouted: func(ctx context.Context) (context.Context, error) {
-			d := logDataFn(ctx)
-
-			ctx = context.WithValue(ctx, sctx.RequestStartKey, time.Now())
-
-			log := logger.Setup()
-			log = log.With("request", d.MethodName, "cn", d.CN, "TraceID", d.Span.SpanContext().TraceID())
-			ctx = logger.NewContext(ctx, log)
-
-			return ctx, nil
-		},
-		Error: func(ctx context.Context, twerr twirp.Error) context.Context {
-			log := logger.FromContext(ctx)
-			log.Error("request error", "error", string(twerr.Code()), "msg", twerr.Msg())
-			return ctx
-		},
-		ResponseSent: func(ctx context.Context) {
-			requestStart, _ := ctx.Value(sctx.RequestStartKey).(time.Time)
-			duration := time.Since(requestStart)
-
-			log := logger.FromContext(ctx)
-			log.Debug("completed", "duration", duration)
-		},
-	}
 }
 
 var hasOutputVaultEnvMessage bool

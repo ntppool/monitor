@@ -5,15 +5,12 @@ import (
 )
 
 type Metrics struct {
-	r              prometheus.Registerer
 	TestsRequested *prometheus.CounterVec
 	TestsCompleted *prometheus.CounterVec
 }
 
 func New(r prometheus.Registerer) *Metrics {
-	m := &Metrics{
-		r: r,
-	}
+	m := &Metrics{}
 
 	requestCounters := map[string]*prometheus.CounterVec{
 		"tests_requested_total": nil,
@@ -45,8 +42,4 @@ func New(r prometheus.Registerer) *Metrics {
 	m.TestsCompleted = requestCounters["tests_completed_total"]
 
 	return m
-}
-
-func (m *Metrics) Registry() prometheus.Registerer {
-	return m.r
 }

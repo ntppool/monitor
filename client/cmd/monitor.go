@@ -53,16 +53,6 @@ const (
 
 var ErrNoWork = errors.New("no work")
 
-// type SetConfig interface {
-// 	SetConfigFromPb(cfg *pb.Config)
-// 	SetConfigFromApi(cfg *apiv2.GetConfigResponse)
-// }
-
-// type ConfigStore interface {
-// 	SetConfig
-// 	GetConfig() *checkconfig.Config
-// }
-
 type monitorCmd struct {
 	Once       bool `name:"once" help:"Only run once instead of forever"`
 	SanityOnly bool `name:"sanity-only" help:"Only run the local sanity check"`

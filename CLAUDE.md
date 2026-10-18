@@ -51,7 +51,7 @@ make test           # Run comprehensive test suite
 - `*.sql.go` - sqlc generated database code
 - `otel.go` - OpenTelemetry instrumentation wrappers
 - `*_string.go` - Enum string methods
-- Files in `api/pb/` and `gen/` directories
+- Files in the `gen/` directory
 
 **Run `make generate` after:**
 - Modifying `query.sql` or `.proto` files
@@ -432,7 +432,7 @@ if !ipc.IsLive() {
 
 ### Communication
 
-- **Connect RPC** (replacing legacy Twirp) for client-server communication
+- **Connect RPC** for client-server communication
 - **MQTT** for real-time messaging and live monitoring updates
 - **TLS certificates** for mutual authentication via Vault or API
 
@@ -568,9 +568,7 @@ For complex changes, break work into distinct phases:
 - Discourage global variables and disallow panics unless absolutely necessary
 
 **APIs:**
-- Legacy Twirp API is frozen and will be removed after legacy clients are upgraded
-- Flag any new code using Twirp or modifying the Twirp-based API
-- Prefer Connect RPC API for all new development
+- The agent and monitor-api use Connect RPC (`proto/monitor/v2`); the legacy Twirp API was removed
 
 **General Guidance:**
 - If context is missing or unclear, ask for clarification before proceeding

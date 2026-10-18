@@ -3,11 +3,11 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connectinprocess"
-	"github.com/twitchtv/twirp"
 
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 	apiv2connect "go.ntppool.org/monitor/gen/monitor/v2/monitorv2connect"
@@ -29,11 +29,10 @@ func TestConnectError(t *testing.T) {
 		code connect.Code
 		msg  string
 	}{
-		{"twirp not found", twirp.NotFoundError("no such monitor"), connect.CodeNotFound, "no such monitor"},
-		{"twirp permission denied", twirp.PermissionDenied.Error("monitor not active"), connect.CodePermissionDenied, "monitor not active"},
-		{"twirp invalid argument", twirp.InvalidArgumentError("Version", "Unsupported data version"), connect.CodeInvalidArgument, "Version Unsupported data version"},
-		{"twirp internal", twirp.InternalErrorWith(errors.New("db password=secret")), connect.CodeInternal, "internal error"},
-		{"twirp malformed", twirp.NewError(twirp.Malformed, "bad input"), connect.CodeInternal, "internal error"},
+		{"not found", connect.NewError(connect.CodeNotFound, "no such monitor"), connect.CodeNotFound, "no such monitor"},
+		{"permission denied", connect.NewError(connect.CodePermissionDenied, "monitor not active"), connect.CodePermissionDenied, "monitor not active"},
+		{"wrapped invalid argument", fmt.Errorf("submit: %w", connect.NewError(connect.CodeInvalidArgument, "invalid batch ID").WithCause(errors.New("bad ulid"))), connect.CodeInvalidArgument, "invalid batch ID"},
+		{"internal", connect.NewError(connect.CodeInternal, "could not get config").WithCause(errors.New("db password=secret")), connect.CodeInternal, "internal error"},
 		{"plain error", errors.New("db password=secret"), connect.CodeInternal, "internal error"},
 		{"connect error", connect.NewError(connect.CodeUnavailable, "try later"), connect.CodeUnavailable, "try later"},
 	}

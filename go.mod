@@ -35,7 +35,6 @@ require (
 	github.com/prometheus/client_model v0.6.3
 	github.com/samber/slog-echo v1.23.0
 	github.com/stretchr/testify v1.12.1
-	github.com/twitchtv/twirp v8.1.3+incompatible
 	go.ntppool.org/common v0.10.6
 	go.ntppool.org/pingtrace v0.0.4
 	go.ntppool.org/vault-token-manager v0.0.1

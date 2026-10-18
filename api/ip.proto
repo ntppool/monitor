@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package api;
-
-option go_package = "go.ntppool.org/monitor/api/pb/types/ippb";
-
-message IP {
-    bytes IP = 1;
-}

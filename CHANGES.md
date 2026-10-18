@@ -1,5 +1,10 @@
 # NTP Pool Monitor Changes
 
+## Unreleased
+
+### Upgrade notes
+- **Legacy Twirp API removed**: `monitor-api` no longer serves the Twirp API at `/api/v1`. Only agents older than v4.0.0 used it. The Twirp-only `rpc_requests_total`, `rpc_responses_total` and `rpc_durations_seconds` metrics are gone too.
+
 ## v4.2.1
 
 ### Upgrade notes

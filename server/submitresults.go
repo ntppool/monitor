@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/oklog/ulid/v2"
-	"github.com/twitchtv/twirp"
 	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
 
@@ -47,7 +47,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	now := time.Now()
 	log := logger.FromContext(ctx)
 
-	monitor, account, ctx, err := srv.getMonitor(ctx, monIP)
+	monitor, account, err := srv.getMonitor(ctx, monIP)
 	if err != nil {
 		log.Error("get monitor error", "err", err)
 		return false, err
@@ -56,7 +56,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	log = log.With("mon_id", monitor.ID)
 
 	if !monitor.IsLive() {
-		return false, twirp.PermissionDenied.Error("monitor not active")
+		return false, connect.NewError(connect.CodePermissionDenied, "monitor not active")
 	}
 
 	// features := struct {
@@ -64,7 +64,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	// }{}
 
 	if in.Version < 2 || in.Version > 4 {
-		return false, twirp.InvalidArgumentError("Version", "Unsupported data version")
+		return false, connect.NewError(connect.CodeInvalidArgument, "unsupported data version")
 	}
 
 	// if in.Version >= 5 {
@@ -104,7 +104,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 
 	batchID := ulid.ULID{}
 	if err := batchID.UnmarshalText(in.BatchId); err != nil {
-		return false, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, "invalid batch ID"), err)
+		return false, connect.NewError(connect.CodeInvalidArgument, "invalid batch ID").WithCause(err)
 	}
 
 	span.SetAttributes(attribute.String("batchID", batchID.String()))
@@ -133,7 +133,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 
 		span.AddEvent("Out of order batch", otrace.WithAttributes(attribute.String("previous", lastSubmit.Time.String())))
 
-		return false, twirp.NewError(twirp.InvalidArgument, "invalid batch submission: older than the previous batch")
+		return false, connect.NewError(connect.CodeInvalidArgument, "invalid batch submission: older than the previous batch")
 	}
 
 	if err := srv.db.UpdateMonitorSubmit(ctx, ntpdb.UpdateMonitorSubmitParams{
@@ -168,7 +168,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 					span.AddEvent("signature validation failed")
 					log.Error("signature validation failed", "test_ip", status.GetIP().String(), "err", err)
 					counters.Sig.Counter += len(in.List) - i
-					return false, twirp.NewError(twirp.InvalidArgument, "signature validation failed")
+					return false, connect.NewError(connect.CodeInvalidArgument, "signature validation failed")
 				}
 			}
 
@@ -187,7 +187,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 			if err != nil {
 				span.AddEvent("error processing status", otrace.WithAttributes(attribute.String("error", err.Error())))
 				log.Error("error processing status", "status", status, "err", err)
-				return false, twirp.InternalErrorWith(err)
+				return false, fmt.Errorf("process status: %w", err)
 			}
 		}
 
