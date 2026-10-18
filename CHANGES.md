@@ -3,7 +3,10 @@
 ## Unreleased
 
 ### Upgrade notes
-- **Legacy Twirp API removed**: `monitor-api` no longer serves the Twirp API at `/api/v1`. Only agents older than v4.0.0 used it. The Twirp-only `rpc_requests_total`, `rpc_responses_total` and `rpc_durations_seconds` metrics are gone too.
+- **Legacy Twirp API removed**: `monitor-api` no longer serves the Twirp API at `/api/v1`. Only agents older than v4.0.0 used it. The Twirp-only `rpc_requests_total`, `rpc_responses_total` and `rpc_durations_seconds` metrics are gone too; use `rpc_server_call_duration_seconds` instead (below).
+
+### Server
+- **Connect request metrics**: `monitor-api` exports `rpc_server_call_duration_seconds{rpc_method, rpc_response_status_code}` for every Connect call, with the Connect status code (`OK`, `INVALID_ARGUMENT`, ...). Its `_count` series replaces the old request and response counters.
 
 ## v4.2.1
 

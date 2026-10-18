@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
 
 	"go.ntppool.org/common/config/depenv"
@@ -35,6 +36,7 @@ type Server struct {
 	cfg         *Config
 	tokens      *vtm.TokenManager
 	m           *metrics.Metrics
+	meters      *sdkmetric.MeterProvider
 	db          ntpdb.QuerierTx
 	dbconn      *pgxpool.Pool
 	jwtAuth     *JWTAuthenticator
@@ -68,6 +70,11 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 		return nil, err
 	}
 
+	meters, err := metrics.NewMeterProvider(promRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	metrics := metrics.New(promRegistry)
 
 	// Initialize JWT authenticator
@@ -89,6 +96,7 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 		dbconn:   dbconn,
 		tokens:   tm,
 		m:        metrics,
+		meters:   meters,
 		jwtAuth:  jwtAuth,
 		settings: settings,
 	}
@@ -116,7 +124,7 @@ func NewServer(ctx context.Context, cfg Config, dbconn *pgxpool.Pool, promRegist
 		log.InfoContext(ctx, "API startup tracing", "trace", span.SpanContext().TraceID())
 	}()
 
-	srv.shutdownFns = append(srv.shutdownFns, tpShutdownFn)
+	srv.shutdownFns = append(srv.shutdownFns, tpShutdownFn, meters.Shutdown)
 
 	// Add JWT authenticator cleanup
 	if jwtAuth != nil {
@@ -157,6 +165,7 @@ func (srv *Server) Run() error {
 
 	otelinter, err := otelconnect.NewServerInterceptor(
 		otelconnect.WithTrustRemote(), // trust trace ids from the monitors
+		otelconnect.WithMeterProvider(srv.meters),
 	)
 	if err != nil {
 		return fmt.Errorf("could not setup otelconnect interceptor: %w", err)
