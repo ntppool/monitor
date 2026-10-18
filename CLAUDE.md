@@ -604,7 +604,7 @@ For complex changes, break work into distinct phases:
 ## Recent Architecture Changes
 
 **Key recent changes (2025):**
-- **PostgreSQL Migration**: Migrated from MySQL to PostgreSQL 16 with pgx/v5 driver and pgxpool connection pooling
+- **PostgreSQL Migration**: Migrated from MySQL to PostgreSQL 18 with pgx/v5 driver and pgxpool connection pooling
 - **JWT Authentication**: Complete JWT authentication with JWKS support replacing planned API key auth (commits: 10e2a70, deb9a16, 304cc1c)
 - **OpenTelemetry Migration**: Client metrics fully migrated to OpenTelemetry from Prometheus (commit: 9aa4d39)
 - **Database Consolidation**: Migrated to shared common/database package reducing code duplication (commits: 650aeb9, 393a251, c86adf2)

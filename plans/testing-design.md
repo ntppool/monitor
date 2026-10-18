@@ -146,7 +146,7 @@ func validateStateTransitions(changes []statusChange, expected []transition) err
 
 **Infrastructure**:
 - Use CI tools (`./scripts/test-db.sh start`) for database setup
-- Port allocation (3308: all test databases - unified for consistency)
+- Port allocation (5432: all test databases, see `scripts/test-db.sh`)
 - Clean database state for each test run
 - Transaction rollbacks for test isolation
 
@@ -318,13 +318,13 @@ func TestSelfExclusionInConstraints(t *testing.T) {
 
 **Integration Test Matrix**:
 - Multiple Go versions (1.19, 1.20, 1.21)
-- Multiple database versions (MySQL 8.0, 8.1)
+- PostgreSQL 18 (matches CI)
 - Concurrent test execution with race detection
 
 #### Test Environment Management
 
 **Database Port Allocation**:
-- 3308: All test databases (unified port for consistency)
+- 5432: All test databases (see `scripts/test-db.sh`)
 
 **Test Data Isolation**:
 - Use separate databases per test suite

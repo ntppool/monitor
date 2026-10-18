@@ -89,7 +89,7 @@ Cumulative count of errors in `Run()` and post-commit `UpdateServer` failures. I
 **Type**: Counter
 **Labels**: none
 
-MySQL deadlock errors (Error 1213) encountered during batch processing or post-commit `UpdateServer`. Each retry attempt increments this; a healthy scorer will show occasional deadlocks under load. Sustained growth indicates lock contention.
+PostgreSQL deadlock errors (SQLSTATE 40P01) encountered during batch processing or post-commit `UpdateServer`. Each retry attempt increments this; a healthy scorer will show occasional deadlocks under load. Sustained growth indicates lock contention.
 
 #### `scorer_retries_total`
 **Type**: Counter
