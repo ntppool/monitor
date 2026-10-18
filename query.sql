@@ -93,7 +93,7 @@ WHERE m.type = 'score' and (m.id=s.scorer_id);
 
 -- name: UpdateScorerStatus :exec
 UPDATE scorer_status
-  SET log_score_id = $1
+  SET log_score_id = $1, modified_on = NOW()
   WHERE scorer_id = $2;
 
 -- name: InsertScorerStatus :exec

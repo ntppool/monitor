@@ -870,7 +870,7 @@ func (q *Queries) UpdateMonitorVersion(ctx context.Context, arg UpdateMonitorVer
 
 const updateScorerStatus = `-- name: UpdateScorerStatus :exec
 UPDATE scorer_status
-  SET log_score_id = $1
+  SET log_score_id = $1, modified_on = NOW()
   WHERE scorer_id = $2
 `
 
