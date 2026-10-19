@@ -139,37 +139,8 @@ sum by ({group_by_labels}) (
 
 ### Available Metrics
 
-#### Core Monitoring Metrics
-1. **tests_completed_total**
-   - **Purpose**: Track completed NTP tests by result type
-   - **Labels**: account, account_id, monitor, ip_version, result
-   - **Result Values**: ok, timeout, offset, signature_validation, batch_out_of_order
-
-2. **tests_requested_total**
-   - **Purpose**: Track total test requests initiated
-   - **Labels**: account, account_id, monitor, ip_version
-
-3. **monitors_connected**
-   - **Purpose**: Track monitor connection status
-   - **Labels**: account, account_id, monitor
-
-#### Performance Metrics
-1. **rpc_request_duration_seconds**
-   - **Purpose**: RPC call performance tracking
-   - **Labels**: account, account_id, method
-
-2. **tests_response_time_seconds**
-   - **Purpose**: NTP test response time measurements
-   - **Labels**: account, account_id, monitor, server_id
-
-#### System Health Metrics
-1. **monitor_health_score**
-   - **Purpose**: Composite health scoring
-   - **Labels**: account, account_id, monitor
-
-2. **constraint_violations_total**
-   - **Purpose**: Track constraint violations in selector
-   - **Labels**: account, account_id, monitor, constraint_type
+The metrics `monitor-api` exports, with their labels, are listed in
+[cmd/monitor-api/README.md](../cmd/monitor-api/README.md#prometheus-metrics).
 
 ### API Usage Examples
 
