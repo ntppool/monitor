@@ -17,10 +17,18 @@ import (
 	"go.ntppool.org/monitor/scorer/score"
 )
 
-type StatusScorer struct{}
+// Options configures a StatusScorer.
+type Options struct {
+	// AllowLeapAnnouncements turns off the penalty for LI=1 and LI=2.
+	AllowLeapAnnouncements bool
+}
 
-func NewScorer() *StatusScorer {
-	return &StatusScorer{}
+type StatusScorer struct {
+	opts Options
+}
+
+func NewScorer(opts Options) *StatusScorer {
+	return &StatusScorer{opts: opts}
 }
 
 func (s *StatusScorer) Score(ctx context.Context, server *ntpdb.Server, status *apiv2.ServerStatus) (*score.Score, error) {
@@ -130,13 +138,19 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 
 	sc.Step = step
 
+	var warning string
+	if !status.NoResponse && status.Stratum > 0 && status.Error == "" {
+		warning = s.leapPenalty(&sc, status.Leap)
+	}
+
 	if status.Leap > 0 || len(status.Error) > 0 {
 		log.Debug("Got attributes", "status", status)
 		attributes := ntpdb.LogScoreAttributes{
 			Leap: int8(status.Leap),
 			// jsonb rejects \u0000; the client sends a zero
 			// reference ID as NUL bytes in the error.
-			Error: strings.ReplaceAll(status.Error, "\x00", ""),
+			Error:   strings.ReplaceAll(status.Error, "\x00", ""),
+			Warning: warning,
 		}
 		b, err := json.Marshal(attributes)
 		if err != nil {
@@ -147,4 +161,30 @@ func (s *StatusScorer) calc(ctx context.Context, server *ntpdb.Server, status *a
 	}
 
 	return &sc, nil
+}
+
+// leapPenalty adjusts the step and max score of an otherwise valid response
+// for its leap indicator. No leap second is scheduled, so LI=1 or LI=2 is a
+// false announcement that clients may act on; LI=3 (unsynchronized)
+// responses are discarded by RFC 5905 clients. It returns the warning to
+// record, if any.
+func (s *StatusScorer) leapPenalty(sc *score.Score, leap int32) string {
+	switch leap {
+	case 1, 2:
+		if s.opts.AllowLeapAnnouncements {
+			return ""
+		}
+		sc.Step = math.Min(sc.Step, -4)
+		if !sc.HasMaxScore || sc.MaxScore > 5 {
+			sc.HasMaxScore = true
+			sc.MaxScore = 5
+		}
+		return "unexpected leap second"
+	case 3:
+		if sc.Step > 0 {
+			sc.Step = -1
+		}
+		return "unsynchronized (LI=3)"
+	}
+	return ""
 }

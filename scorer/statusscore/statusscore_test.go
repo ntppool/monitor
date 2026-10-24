@@ -18,7 +18,7 @@ import (
 )
 
 func TestScoringAlgorithm(t *testing.T) {
-	scorer := NewScorer()
+	scorer := NewScorer(Options{})
 	ctx := context.Background()
 	server := &ntpdb.Server{ID: 1}
 
@@ -80,7 +80,7 @@ func TestScoringAlgorithm(t *testing.T) {
 }
 
 func TestSanityChecks(t *testing.T) {
-	scorer := NewScorer()
+	scorer := NewScorer(Options{})
 	ctx := context.Background()
 	server := &ntpdb.Server{ID: 1}
 
@@ -118,7 +118,7 @@ func TestEquilibriumScoring(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Simulate sustained measurements to reach equilibrium
-			scorer := NewScorer()
+			scorer := NewScorer(Options{})
 			ctx := context.Background()
 			server := &ntpdb.Server{ID: 1}
 
@@ -151,7 +151,7 @@ func TestEquilibriumScoring(t *testing.T) {
 }
 
 func TestSpecialCases(t *testing.T) {
-	scorer := NewScorer()
+	scorer := NewScorer(Options{})
 	ctx := context.Background()
 	server := &ntpdb.Server{ID: 1}
 
@@ -326,7 +326,7 @@ func TestRttStorage(t *testing.T) {
 			))
 			server := &ntpdb.Server{ID: 42}
 
-			got, err := NewScorer().Score(ctx, server, tt.status)
+			got, err := NewScorer(Options{}).Score(ctx, server, tt.status)
 			if err != nil {
 				t.Fatalf("Score() error = %v", err)
 			}
@@ -400,7 +400,7 @@ func TestAttributesWithoutNUL(t *testing.T) {
 		Stratum: 0,
 	}
 
-	got, err := NewScorer().Score(context.Background(), &ntpdb.Server{ID: 1}, status)
+	got, err := NewScorer(Options{}).Score(context.Background(), &ntpdb.Server{ID: 1}, status)
 	if err != nil {
 		t.Fatalf("Score() error = %v", err)
 	}
@@ -417,5 +417,117 @@ func TestAttributesWithoutNUL(t *testing.T) {
 	}
 	if want := "bad stratum 0 (referenceID: 0x0, )"; attrs.Error != want {
 		t.Errorf("attributes error = %q, want %q", attrs.Error, want)
+	}
+}
+
+func TestLeapIndicator(t *testing.T) {
+	const (
+		leapWarning   = "unexpected leap second"
+		unsyncWarning = "unsynchronized (LI=3)"
+	)
+
+	tests := []struct {
+		name         string
+		opts         Options
+		leap         int32
+		stratum      int32
+		offset       time.Duration
+		error        string
+		noResponse   bool
+		wantStep     float64
+		wantMax      bool
+		wantMaxScore float64
+		wantWarning  string
+	}{
+		{name: "LI=0 good offset", stratum: 2, wantStep: 1},
+		{
+			name: "LI=1 good offset", leap: 1, stratum: 1,
+			wantStep: -4, wantMax: true, wantMaxScore: 5, wantWarning: leapWarning,
+		},
+		{
+			name: "LI=2 good offset", leap: 2, stratum: 1,
+			wantStep: -4, wantMax: true, wantMaxScore: 5, wantWarning: leapWarning,
+		},
+		{
+			name: "LI=1 allowed", opts: Options{AllowLeapAnnouncements: true}, leap: 1, stratum: 1,
+			wantStep: 1,
+		},
+		{
+			// the lower offset cap wins
+			name: "LI=1 offset over 3s", leap: 1, stratum: 1, offset: 4 * time.Second,
+			wantStep: -4, wantMax: true, wantMaxScore: -20, wantWarning: leapWarning,
+		},
+		{
+			name: "LI=1 stratum 0 RATE", leap: 1, stratum: 0, error: "RATE",
+			wantStep: -3.5,
+		},
+		{
+			name: "LI=1 no response", leap: 1, noResponse: true,
+			wantStep: -5,
+		},
+		{
+			name: "LI=3 good offset", leap: 3, stratum: 2,
+			wantStep: -1, wantWarning: unsyncWarning,
+		},
+		{
+			name: "LI=3 200ms offset", leap: 3, stratum: 2, offset: 200 * time.Millisecond,
+			wantStep: -1, wantWarning: unsyncWarning,
+		},
+		{
+			name: "LI=3 600ms offset keeps its step", leap: 3, stratum: 2, offset: 600 * time.Millisecond,
+			wantStep: -0.6538, wantWarning: unsyncWarning,
+		},
+		{
+			name: "LI=3 stratum 16", leap: 3, stratum: 16,
+			wantStep: -4, wantWarning: unsyncWarning,
+		},
+		{
+			name: "LI=3 allowed", opts: Options{AllowLeapAnnouncements: true}, leap: 3, stratum: 2,
+			wantStep: -1, wantWarning: unsyncWarning,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status := &apiv2.ServerStatus{
+				Ts:         timestamppb.New(time.Now()),
+				Rtt:        durationpb.New(10 * time.Millisecond),
+				Leap:       tt.leap,
+				Stratum:    tt.stratum,
+				Error:      tt.error,
+				NoResponse: tt.noResponse,
+			}
+			if !tt.noResponse {
+				status.Offset = durationpb.New(tt.offset)
+			}
+
+			got, err := NewScorer(tt.opts).Score(context.Background(), &ntpdb.Server{ID: 1}, status)
+			if err != nil {
+				t.Fatalf("Score() error = %v", err)
+			}
+
+			if abs(got.Step-tt.wantStep) > 0.0001 {
+				t.Errorf("Step = %v, want %v", got.Step, tt.wantStep)
+			}
+			if got.HasMaxScore != tt.wantMax {
+				t.Errorf("HasMaxScore = %v, want %v", got.HasMaxScore, tt.wantMax)
+			}
+			if tt.wantMax && got.MaxScore != tt.wantMaxScore {
+				t.Errorf("MaxScore = %v, want %v", got.MaxScore, tt.wantMaxScore)
+			}
+
+			var attrs ntpdb.LogScoreAttributes
+			if got.Attributes != nil {
+				if err := json.Unmarshal(*got.Attributes, &attrs); err != nil {
+					t.Fatalf("attributes %q: %v", *got.Attributes, err)
+				}
+			}
+			if attrs.Leap != int8(tt.leap) {
+				t.Errorf("attributes leap = %d, want %d", attrs.Leap, tt.leap)
+			}
+			if attrs.Warning != tt.wantWarning {
+				t.Errorf("attributes warning = %q, want %q", attrs.Warning, tt.wantWarning)
+			}
+		})
 	}
 }

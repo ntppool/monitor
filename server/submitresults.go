@@ -211,7 +211,9 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 			return err
 		}
 
-		scorer := statusscore.NewScorer()
+		scorer := statusscore.NewScorer(statusscore.Options{
+			AllowLeapAnnouncements: srv.settings.Current().AllowLeapAnnouncements,
+		})
 
 		score, err := scorer.Score(ctx, &server, status)
 		if err != nil {

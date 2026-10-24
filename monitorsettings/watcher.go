@@ -131,6 +131,7 @@ func (w *Watcher) logSettings(ctx context.Context, level slog.Level, msg string,
 		slog.Duration("interval_testing", s.IntervalTesting.Duration),
 		slog.Duration("interval_all", s.IntervalAll.Duration),
 		slog.Int("batch_size", int(s.BatchSize)),
+		slog.Bool("allow_leap_announcements", s.AllowLeapAnnouncements),
 		slog.Int64("max_samples_24h", maxSamples),
 		slog.Int64("min_count_for_active", thresholdActive),
 		slog.Int64("min_count_for_testing", thresholdTesting),
@@ -158,6 +159,8 @@ func (w *Watcher) logChange(ctx context.Context, prev, fresh MonitorSettings) {
 		slog.Duration("new_interval_all", fresh.IntervalAll.Duration),
 		slog.Int("prev_batch_size", int(prev.BatchSize)),
 		slog.Int("new_batch_size", int(fresh.BatchSize)),
+		slog.Bool("prev_allow_leap_announcements", prev.AllowLeapAnnouncements),
+		slog.Bool("new_allow_leap_announcements", fresh.AllowLeapAnnouncements),
 	)
 	w.logSettings(ctx, slog.LevelInfo, "monitor settings (post-change)", fresh)
 }

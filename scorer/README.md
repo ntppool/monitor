@@ -7,6 +7,32 @@ Two scorers are registered:
 - `every` — records every log_score (used for full-history scoring).
 - `recentmedian` — the main scorer; produces the score visible to clients via the public API.
 
+## Leap Indicator
+
+Each test result gets its step in `monitor-api` (`statusscore`), before it is
+written to `log_scores`. The leap indicator changes the step of an otherwise
+valid response (stratum > 0, no error):
+
+- **LI=1 or LI=2** (leap second announced): step at most -4 and the monitor's
+  score is capped at 5. No leap second is scheduled, so these are false
+  announcements. `attributes.warning` is `unexpected leap second`.
+- **LI=3** (unsynchronized): a positive step becomes -1. RFC 5905 clients
+  discard these responses. `attributes.warning` is `unsynchronized (LI=3)`.
+
+To turn off the LI=1/LI=2 penalty, for example if a real leap second is
+scheduled:
+
+```sql
+UPDATE system_settings
+SET value = jsonb_set(value, '{allow_leap_announcements}', 'true'),
+    modified_on = now()
+WHERE key = 'monitors';
+```
+
+`monitor-api` rereads the settings hourly with up to 10 minutes of jitter,
+so the change takes up to about 70 minutes, or a restart. It doesn't affect
+LI=3.
+
 ## Prometheus Metrics
 
 All scorer metrics are registered in `runner.go` (`New()`) and live under the `scorer_` prefix.

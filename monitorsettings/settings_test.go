@@ -1,6 +1,7 @@
 package monitorsettings
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -108,5 +109,25 @@ func TestWithDefaults(t *testing.T) {
 	}
 	if fixed.BatchSize != DefaultBatchSize {
 		t.Errorf("tooSmall BatchSize not defaulted")
+	}
+}
+
+func TestAllowLeapAnnouncements(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want bool
+	}{
+		{`{"interval_testing": "30m"}`, false},
+		{`{"allow_leap_announcements": false}`, false},
+		{`{"allow_leap_announcements": true}`, true},
+	}
+	for _, tt := range tests {
+		var s MonitorSettings
+		if err := json.Unmarshal([]byte(tt.raw), &s); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", tt.raw, err)
+		}
+		if got := s.WithDefaults().AllowLeapAnnouncements; got != tt.want {
+			t.Errorf("%s: AllowLeapAnnouncements = %v, want %v", tt.raw, got, tt.want)
+		}
 	}
 }

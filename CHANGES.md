@@ -6,6 +6,7 @@
 - **Legacy Twirp API removed**: `monitor-api` no longer serves the Twirp API at `/api/v1`. Only agents older than v4.0.0 used it. The Twirp-only `rpc_requests_total`, `rpc_responses_total` and `rpc_durations_seconds` metrics are gone too; use `rpc_server_call_duration_seconds` instead (below).
 
 ### Server
+- **Leap indicator scoring**: A response announcing a leap second (LI=1 or LI=2) scores -4 and caps the monitor's score at 5, so the server leaves the pool once most active monitors have tested it. No leap second is scheduled; some GPS-disciplined servers announce one by mistake every 256 weeks, and clients may insert it at the end of the month. A response flagged unsynchronized (LI=3) scores -1 instead of its usual positive step. Both record a `warning` in `log_scores.attributes`. Setting `allow_leap_announcements` in `system_settings("monitors")` turns off the LI=1/LI=2 penalty.
 - **Connect request metrics**: `monitor-api` exports `rpc_server_call_duration_seconds{rpc_method, rpc_response_status_code}` for every Connect call, with the Connect status code (`OK`, `INVALID_ARGUMENT`, ...). Its `_count` series replaces the old request and response counters.
 
 ## v4.2.1

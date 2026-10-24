@@ -16,6 +16,11 @@ type MonitorSettings struct {
 	IntervalTesting timeutil.Duration `json:"interval_testing"`
 	IntervalAll     timeutil.Duration `json:"interval_all"`
 	BatchSize       int32             `json:"batch_size"`
+
+	// AllowLeapAnnouncements turns off the score penalty for responses
+	// announcing a leap second (LI=1 or LI=2). Set it if a real leap
+	// second is ever scheduled.
+	AllowLeapAnnouncements bool `json:"allow_leap_announcements"`
 }
 
 // Default values applied to MonitorSettings when fields are unset or below
