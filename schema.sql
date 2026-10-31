@@ -2412,13 +2412,6 @@ CREATE INDEX idx_18270_monitor_id ON public.server_scores USING btree (monitor_i
 
 
 --
--- Name: idx_18270_monitor_id_2; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_18270_monitor_id_2 ON public.server_scores USING btree (monitor_id, score_ts);
-
-
---
 -- Name: idx_18270_server_id; Type: INDEX; Schema: public; Owner: -
 --
 

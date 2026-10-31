@@ -72,7 +72,7 @@ steps:
             memory: 256Mi
 
   - name: fury-publish
-    image: golang:1.27
+    image: golang:1.27.3
     pull: true
     depends_on: [download]
     environment:
