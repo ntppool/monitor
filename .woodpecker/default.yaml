@@ -1,19 +1,6 @@
 when:
   - event: [push, tag, pull_request, manual]
 
-variables:
-  - &go_env
-    GOMODCACHE: /go/pkg/mod
-    GOCACHE: /go/pkg/cache
-  - &go_volumes
-    - go-pkg:/go/pkg
-
-clone:
-  git:
-    image: woodpeckerci/plugin-git
-    settings:
-      tags: true
-
 services:
   - name: database
     image: postgres:18
@@ -23,171 +10,42 @@ services:
       POSTGRES_PASSWORD: test123
 
 steps:
-  - name: generate-tags
-    image: ghcr.io/abh/woodpecker-docker-tags-plugin:0.2.1-abh.1
-    depends_on: []
-    settings:
-      tags: |
-        branch
-        sha
-        edge -v latest
-        raw -v build-${CI_PIPELINE_NUMBER}
-        semver --auto
-
   - name: test
-    image: golang:1.27.3
-    pull: true
-    depends_on: []
-    environment:
-      <<: *go_env
-      TEST_DATABASE_URL: postgres://monitor:test123@database:5432/monitor_test?sslmode=disable
-    volumes: *go_volumes
-    commands:
-      - apt update && apt install -y postgresql-client git
-      - go build ./...
-      - |
-        echo "Waiting for database to be ready..."
-        for i in $(seq 1 30); do
-          if psql "$TEST_DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
-            echo "Database is ready!"
-            break
-          fi
-          echo "Waiting for database... ($i/30)"
-          sleep 2
-        done
-      # schema.sql ends with GRANTs to roles the service container does
-      # not create; without them ON_ERROR_STOP aborts on that ACL block.
-      - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -c "CREATE ROLE ntppool" -c "CREATE ROLE postgres"
-      - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -f schema.sql
+    image: harbor.ntppool.org/dev/woodpecker-std/go-test:v1
+    settings:
+      env:
+        TEST_DATABASE_URL: postgres://monitor:test123@database:5432/monitor_test?sslmode=disable
+      before:
+        - apt update && apt install -y postgresql-client
+        - |
+          echo "Waiting for database to be ready..."
+          for i in $$(seq 1 30); do
+            if psql "$$TEST_DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+              echo "Database is ready!"
+              break
+            fi
+            echo "Waiting for database... ($$i/30)"
+            sleep 2
+          done
+        # schema.sql ends with GRANTs to roles the service container does
+        # not create; without them ON_ERROR_STOP aborts on that ACL block.
+        - psql -v ON_ERROR_STOP=1 "$$TEST_DATABASE_URL" -c "CREATE ROLE ntppool" -c "CREATE ROLE postgres"
+        - psql -v ON_ERROR_STOP=1 "$$TEST_DATABASE_URL" -f schema.sql
       # Runs every untagged test too, so there is no separate go test.
-      - make test-integration
-      - echo OK
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 128Mi
-          limits:
-            cpu: 2000m
-            memory: 2Gi
+      test:
+        - make test-integration
 
-  - name: goreleaser
-    image: golang:1.27.3
-    pull: true
+  - name: release
+    image: harbor.ntppool.org/dev/woodpecker-std/release:v1
     depends_on: [test]
-    environment:
-      <<: *go_env
-      GITHUB_TOKEN:
-        from_secret: GITHUB_TOKEN
-    volumes: *go_volumes
-    commands:
-      - apt update && apt install -y git
-      - ./scripts/run-goreleaser
-      - echo Done
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: 10000m
-            memory: 2Gi
-          limits:
-            cpu: 16000m
-            memory: 8Gi
+    settings:
+      name: ntppool-agent
+      env:
+        GITHUB_TOKEN:
+          from_secret: GITHUB_TOKEN
 
   - name: docker
-    image: woodpeckerci/plugin-kaniko
-    pull: true
-    depends_on: [goreleaser, generate-tags]
+    image: harbor.ntppool.org/dev/woodpecker-std/docker:v1
+    depends_on: [release]
     settings:
-      registry: harbor.ntppool.org
       repo: ntppool/monitor-api
-      cache: true
-      username:
-        from_secret: harbor_username
-      password:
-        from_secret: harbor_password
-
-  - name: upload
-    image: woodpeckerci/plugin-s3
-    depends_on: [goreleaser]
-    settings:
-      access_key:
-        from_secret: s3_access_key
-      secret_key:
-        from_secret: s3_secret_key
-      bucket: ntp-releases
-      target: /ntppool-agent/builds/test/${CI_PIPELINE_NUMBER}
-      source: dist/*
-      strip_prefix: dist/
-      endpoint: https://c3.hkga.ntp.dev/
-      path_style: true
-      # Go's mime table has no .md, .deb or .rpm, and maps .apk to Android
-      # packages; these are Alpine packages. Serve the changelog as plain
-      # text so browsers show it instead of downloading it.
-      content_type:
-        '\.md$': 'text/plain; charset=utf-8'
-        '\.deb$': application/vnd.debian.binary-package
-        '\.rpm$': application/x-rpm
-        '\.apk$': application/octet-stream
-    when:
-      - event: push
-        branch: main
-      - event: tag
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: 250m
-            memory: 64Mi
-          limits:
-            cpu: 250m
-            memory: 256Mi
-
-  - name: index
-    image: alpine:3
-    depends_on: [upload]
-    environment:
-      AWS_ACCESS_KEY_ID:
-        from_secret: s3_access_key
-      AWS_SECRET_ACCESS_KEY:
-        from_secret: s3_secret_key
-    commands:
-      - apk add --no-cache aws-cli jq
-      - ./scripts/publish-build-index ntppool-agent test
-    when:
-      - event: push
-        branch: main
-      - event: tag
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: 250m
-            memory: 64Mi
-          limits:
-            cpu: 250m
-            memory: 256Mi
-
-  - name: fury-publish
-    image: golang:1.27.3
-    pull: true
-    depends_on: [goreleaser]
-    environment:
-      FURY_TOKEN:
-        from_secret: fury_test_token
-    commands:
-      - ./scripts/fury-publish ntppool-test
-    when:
-      - event: push
-        branch: main
-      - event: tag
-    backend_options:
-      kubernetes:
-        resources:
-          requests:
-            cpu: 250m
-            memory: 64Mi
-          limits:
-            cpu: 250m
-            memory: 256Mi
