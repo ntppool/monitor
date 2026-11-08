@@ -59,7 +59,7 @@ steps:
       # not create; without them ON_ERROR_STOP aborts on that ACL block.
       - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -c "CREATE ROLE ntppool" -c "CREATE ROLE postgres"
       - psql -v ON_ERROR_STOP=1 "$TEST_DATABASE_URL" -f schema.sql
-      - go test -v ./... -short
+      # Runs every untagged test too, so there is no separate go test.
       - make test-integration
       - echo OK
     backend_options:
