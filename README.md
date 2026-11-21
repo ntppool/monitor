@@ -85,7 +85,7 @@ See **[plans/](plans/)** directory for comprehensive implementation planning:
 - **Archive** - Historical context from completed implementations
 
 ### Project Documentation
-- **[AGENTS.md](AGENTS.md)** / **[CLAUDE.md](CLAUDE.md)** - Developer guidelines and architectural patterns
+- **[AGENTS.md](AGENTS.md)** - Developer guidelines and architectural patterns
 - **[plans/README.md](plans/README.md)** - Planning documentation overview and status summary
 
 ### Monitor Types

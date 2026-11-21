@@ -94,7 +94,7 @@ These documents describe "what needs to be done":
 
 ## Cross-References
 
-- **[LLM_CODING_AGENT.md](../LLM_CODING_AGENT.md)** - Implementation patterns and architectural decisions
+- **[AGENTS.md](../AGENTS.md)** - Implementation patterns and architectural decisions
 - **[CONSOLIDATION-SUMMARY.md](CONSOLIDATION-SUMMARY.md)** - History of plan organization and consolidation
 - **[Main README.md](../README.md)** - Project overview and installation instructions
 

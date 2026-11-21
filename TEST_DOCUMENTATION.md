@@ -896,7 +896,7 @@ factory.CreateTestLogScore(t, 3001, 2003, 20.0+float64(i%100)/100, 0.8, nil, now
 **Files Modified**: `scorer/runner_integration_test.go`
 
 ### Testing Methodology Used
-These fixes followed the enhanced testing approach documented in `LLM_CODING_AGENT.md`:
+These fixes followed the enhanced testing approach documented in `AGENTS.md`:
 
 1. **Used CI Tools**: Employed `./scripts/test-ci-local.sh` and `./scripts/test-scorer-integration.sh` to reproduce CI environment locally
 2. **Understood Data Dependencies**: Traced through the `GetScorerRecentScores` query to understand required data relationships
