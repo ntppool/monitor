@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,10 +18,18 @@ type fakeQuerier struct {
 	value string
 	err   error
 	calls atomic.Int64
+	// gate, when non-nil, blocks GetSystemSetting until it is closed.
+	gate chan struct{}
 }
 
 func (f *fakeQuerier) GetSystemSetting(ctx context.Context, key string) ([]byte, error) {
 	f.calls.Add(1)
+	f.mu.Lock()
+	gate := f.gate
+	f.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
@@ -117,35 +126,39 @@ func TestWatcherRefreshDetectsChange(t *testing.T) {
 }
 
 func TestWatcherRefreshCoalesces(t *testing.T) {
-	ctx := t.Context()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
 
-	q := &fakeQuerier{value: `{"interval_testing":"30m"}`}
-	w, err := NewWatcher(ctx, q, discardLogger())
-	if err != nil {
-		t.Fatalf("NewWatcher: %v", err)
-	}
-	baseline := q.calls.Load()
+		q := &fakeQuerier{value: `{"interval_testing":"30m"}`}
+		w, err := NewWatcher(ctx, q, discardLogger())
+		if err != nil {
+			t.Fatalf("NewWatcher: %v", err)
+		}
+		baseline := q.calls.Load()
 
-	// Fire many concurrent forced refreshes; singleflight should
-	// coalesce at least some of them. We don't assert a tight bound
-	// because singleflight only deduplicates calls that overlap with an
-	// in-flight call, and with an instant fake DB the window is small.
-	const n = 50
-	var wg sync.WaitGroup
-	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_ = w.Refresh(ctx)
-		}()
-	}
-	wg.Wait()
+		// Hold the query open so all callers overlap with the first
+		// in-flight refresh. synctest.Wait returns once every goroutine
+		// is parked: one in the gated query, the rest in singleflight.
+		gate := make(chan struct{})
+		q.mu.Lock()
+		q.gate = gate
+		q.mu.Unlock()
 
-	delta := q.calls.Load() - baseline
-	if delta == 0 {
-		t.Errorf("expected at least one underlying call after concurrent refreshes")
-	}
-	if delta >= n {
-		t.Errorf("expected singleflight to coalesce some calls; saw %d/%d", delta, n)
-	}
+		const n = 50
+		var wg sync.WaitGroup
+		for range n {
+			wg.Go(func() {
+				if err := w.Refresh(ctx); err != nil {
+					t.Errorf("Refresh: %v", err)
+				}
+			})
+		}
+		synctest.Wait()
+		close(gate)
+		wg.Wait()
+
+		if delta := q.calls.Load() - baseline; delta != 1 {
+			t.Errorf("underlying calls: got %d, want 1 for %d concurrent refreshes", delta, n)
+		}
+	})
 }
