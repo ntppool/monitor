@@ -151,7 +151,7 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 
 	ctx = context.WithValue(ctx, sctx.DeploymentEnv, depEnv)
 
-	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
+	metricssrv := metricsserver.New()
 	version.RegisterMetric("monitorapi", metricssrv.Registry())
 	if err := metricssrv.Registry().Register(pgdb.NewPoolCollector(dbconn)); err != nil {
 		return fmt.Errorf("register database pool metrics: %w", err)

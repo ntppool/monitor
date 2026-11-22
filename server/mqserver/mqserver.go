@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,17 +22,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	slogecho "github.com/samber/slog-echo"
 
-	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"github.com/labstack/echo/v5"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/common/config/depenv"
-	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/ekko"
 	"go.ntppool.org/common/ulid"
 	"go.ntppool.org/common/version"
 	"go.ntppool.org/monitor/api"
@@ -51,7 +48,8 @@ type server struct {
 	clients map[string]*client
 	cmux    sync.RWMutex
 
-	promGauge *prometheus.GaugeVec
+	promGauge    *prometheus.GaugeVec
+	promRegistry prometheus.Registerer
 
 	rr *mqttResponseRouter
 
@@ -89,6 +87,7 @@ func Setup(log *slog.Logger, dbconn *pgxpool.Pool, promRegistry prometheus.Regis
 		return nil, err
 	}
 	mqs.promGauge = monitorsConnected
+	mqs.promRegistry = promRegistry
 
 	return mqs, nil
 }
@@ -98,28 +97,19 @@ func (mqs *server) SetConnectionManager(cm *autopaho.ConnectionManager) {
 }
 
 func (mqs *server) Run(ctx context.Context) error {
-	var r *echo.Echo
-	var err error
-	log := logger.FromContext(ctx)
-
-	go func() {
-		r, err = mqs.setupEcho(ctx)
-		if err != nil {
-			log.Error("echo error (fatal)", "err", err)
-			os.Exit(2)
-		}
-	}()
-
-	<-ctx.Done()
-
-	if r != nil {
-		log.Info("Shutting down API http server")
-		if err := r.Shutdown(ctx); err != nil {
-			return err
-		}
+	ek, err := ekko.New("mqserver",
+		ekko.WithPort(8095),
+		ekko.WithPrometheus(mqs.promRegistry),
+		ekko.WithEchoSetup(func(e *echo.Echo) error {
+			mqs.setupRoutes(ctx, e)
+			return nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("mqserver: setting up http server: %w", err)
 	}
 
-	return nil
+	return ek.Start(ctx)
 }
 
 func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Router {
@@ -256,10 +246,10 @@ func (mqs *server) seenClients() []client {
 	return online
 }
 
-func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) error {
+func (mqs *server) MetricsDiscovery(ctx context.Context) func(*echo.Context) error {
 	minimumVersion := "v3.6.0-rc3"
 
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		sd := []promTargetGroup{}
 
 		for _, cl := range mqs.seenClients() {
@@ -293,13 +283,13 @@ func (mqs *server) MetricsDiscovery(ctx context.Context) func(echo.Context) erro
 	}
 }
 
-func (mqs *server) Metrics(ctx context.Context) func(echo.Context) error {
+func (mqs *server) Metrics(ctx context.Context) func(*echo.Context) error {
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 
 	tracePropagator := otel.GetTextMapPropagator()
 
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		id, err := ulid.MakeULID(time.Now())
 		if err != nil {
 			return err
@@ -417,11 +407,11 @@ func supportsAdHocNTPCheck(clientVersion string) bool {
 	return false
 }
 
-func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
+func (mqs *server) CheckNTP(ctx context.Context) func(*echo.Context) error {
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
 	topics := mqttcm.NewTopics(depEnv)
 
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		id, err := ulid.MakeULID(time.Now())
 		if err != nil {
 			return err
@@ -671,41 +661,10 @@ func (mqs *server) CheckNTP(ctx context.Context) func(echo.Context) error {
 	}
 }
 
-func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
-	log := logger.Setup()
-	r := echo.New()
-
-	trustOptions := []echo.TrustOption{
-		echo.TrustLoopback(true),
-		echo.TrustLinkLocal(false),
-		echo.TrustPrivateNet(true),
-	}
-	r.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
-
-	r.Use(otelecho.Middleware("mqserver"))
-	logConfig := slogecho.DefaultConfig()
-	logConfig.WithTraceID = true
-	// logConfig.WithSpanID = true
-	// logConfig.WithRequestHeader = true
-	logConfig.Filters = []slogecho.Filter{
-		slogecho.IgnorePath("/monitor/metrics"),
-	}
-	r.Use(slogecho.NewWithConfig(log, logConfig))
-	r.Use(
-		func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				request := c.Request()
-				span := otrace.SpanFromContext(request.Context())
-				span.SetAttributes(attribute.String("http.real_ip", c.RealIP()))
-				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
-				return next(c)
-			}
-		},
-	)
-
+func (mqs *server) setupRoutes(ctx context.Context, r *echo.Echo) {
 	r.GET("/monitors/metrics/discovery", mqs.MetricsDiscovery(ctx))
 	r.GET("/monitors/metrics", mqs.Metrics(ctx))
-	r.GET("/monitors/online", func(c echo.Context) error {
+	r.GET("/monitors/online", func(c *echo.Context) error {
 		type onlineJSON struct {
 			Name       string
 			IpVersions []string     `json:"IpVersions"`
@@ -755,13 +714,6 @@ func (mqs *server) setupEcho(ctx context.Context) (*echo.Echo, error) {
 	})
 
 	r.POST("/check/ntp/:ip", mqs.CheckNTP(ctx))
-
-	err := r.Start(":8095")
-	if err != nil {
-		return nil, err
-	}
-
-	return r, nil
 }
 
 /*

@@ -1,5 +1,15 @@
 # NTP Pool Monitor Changes
 
+## v4.2.4
+
+### Server
+- **Internal HTTP API**: The `monitor-api` HTTP API on port 8095 (`/monitors/online`, `/monitors/metrics`, `/check/ntp/:ip`) moved to Echo v5 and the shared `ekko` setup. It exports `mqserver_requests_total`, `mqserver_request_duration_seconds` and request and response size metrics, gzips responses for clients that accept it, and turns a handler panic into a 500 with an access log line. The response header with the trace ID is now `TraceID` (was `Traceparent`).
+- Fix: On shutdown, `monitor-api` lets requests to the internal HTTP API finish for up to 5 seconds instead of dropping them
+
+### Build
+- CI builds, tests and publishes with the shared woodpecker-std steps
+- `go.ntppool.org/common` v0.11.0 and other dependency updates
+
 ## v4.2.3
 
 ### Server

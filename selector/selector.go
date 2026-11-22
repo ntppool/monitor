@@ -128,7 +128,7 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 	defer dbconn.Close()
 
 	// Create and start metrics server
-	metricssrv := metricsserver.New(metricsserver.WithRuntimeMetrics())
+	metricssrv := metricsserver.New()
 	version.RegisterMetric("selector", metricssrv.Registry())
 	if err := metricssrv.Registry().Register(pgdb.NewPoolCollector(dbconn)); err != nil {
 		return fmt.Errorf("register database pool metrics: %w", err)
