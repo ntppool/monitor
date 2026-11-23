@@ -39,16 +39,23 @@ import (
 	sctx "go.ntppool.org/monitor/server/context"
 )
 
+// staleAfter is how long a client stays online without a new "online"
+// status message. Agents republish their status every 5 minutes, so this
+// is three missed republishes. It covers agents whose "offline" message
+// never reaches us; the broker doesn't tell subscribers when a retained
+// status message expires.
+const staleAfter = 15 * time.Minute
+
 type server struct {
 	cm     *autopaho.ConnectionManager
 	db     *ntpdb.Queries
 	dbconn *pgxpool.Pool
 	log    *slog.Logger
 
+	// clients and depEnv are protected by cmux
 	clients map[string]*client
 	cmux    sync.RWMutex
 
-	promGauge    *prometheus.GaugeVec
 	promRegistry prometheus.Registerer
 
 	rr *mqttResponseRouter
@@ -65,6 +72,12 @@ type client struct {
 	Data      []ntpdb.Monitor
 }
 
+// isOnline reports whether the client's last status was "online" and
+// arrived within staleAfter of now.
+func (c *client) isOnline(now time.Time) bool {
+	return c.Online && now.Sub(c.LastSeen) <= staleAfter
+}
+
 type promTargetGroup struct {
 	Targets []string          `json:"targets"`
 	Labels  map[string]string `json:"labels"`
@@ -78,15 +91,10 @@ func Setup(log *slog.Logger, dbconn *pgxpool.Pool, promRegistry prometheus.Regis
 		mqs.db = ntpdb.New(dbconn)
 	}
 
-	monitorsConnected := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "monitors_connected",
-		Help: "monitors connected via mqtt",
-	}, []string{"client", "version", "ip_version", "account", "account_id", "depenv"})
-	err := promRegistry.Register(monitorsConnected)
+	err := promRegistry.Register(&connectedCollector{mqs: mqs})
 	if err != nil {
 		return nil, err
 	}
-	mqs.promGauge = monitorsConnected
 	mqs.promRegistry = promRegistry
 
 	return mqs, nil
@@ -117,7 +125,9 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 	// router.SetDebugLogger(log.Default())
 
 	depEnv := sctx.GetDeploymentEnvironment(ctx)
+	mqs.cmux.Lock()
 	mqs.depEnv = depEnv
+	mqs.cmux.Unlock()
 
 	topics := mqttcm.NewTopics(depEnv)
 
@@ -205,40 +215,88 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 	// mqs.log.Debug("new status", "cs", cs, "status", status)
 	// mqs.log.Info("new map", "clients", mqs.clients)
+}
 
-	mqs.promGauge.Reset()
-	for _, c := range mqs.clients {
-		if c.Online {
-			for _, m := range c.Data {
-				if !m.IpVersion.Valid {
-					continue
-				}
+// connectedCollector exports monitors_connected from the client list when
+// it's scraped, so clients that go stale drop out without a new status
+// message.
+type connectedCollector struct {
+	mqs *server
+}
 
-				accountID := "0"
-				if m.AccountID.Valid {
-					accountID = strconv.Itoa(int(m.AccountID.Int64))
-				}
-				mqs.promGauge.WithLabelValues(
-					m.Hostname,
-					c.Version.Version,
-					m.IpVersion.MonitorsIpVersion.String(),
-					"", // account id_token not available in MQTT context
-					accountID,
-					mqs.depEnv.String(),
-				).Add(1.0)
-			}
+var monitorsConnectedDesc = prometheus.NewDesc(
+	"monitors_connected",
+	"monitors connected via mqtt",
+	[]string{"client", "version", "ip_version", "account", "account_id", "depenv"},
+	nil,
+)
+
+func (cc *connectedCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- monitorsConnectedDesc
+}
+
+func (cc *connectedCollector) Collect(ch chan<- prometheus.Metric) {
+	mqs := cc.mqs
+
+	// the same label set can come from more than one client
+	type labelSet [5]string
+	counts := map[labelSet]float64{}
+
+	for _, c := range mqs.seenClients() {
+		if !c.Online {
+			continue
 		}
+		for _, m := range c.Data {
+			if !m.IpVersion.Valid {
+				continue
+			}
+
+			accountID := "0"
+			if m.AccountID.Valid {
+				accountID = strconv.Itoa(int(m.AccountID.Int64))
+			}
+			counts[labelSet{
+				m.Hostname,
+				c.Version.Version,
+				m.IpVersion.MonitorsIpVersion.String(),
+				"", // account id_token not available in MQTT context
+				accountID,
+			}]++
+		}
+	}
+
+	if len(counts) == 0 {
+		return
+	}
+
+	// Clients only come from status messages, which arrive after
+	// MQTTRouter has set depEnv. Its zero value panics in String(), and a
+	// scrape can come before MQTTRouter runs.
+	mqs.cmux.RLock()
+	depEnv := mqs.depEnv.String()
+	mqs.cmux.RUnlock()
+
+	for l, n := range counts {
+		ch <- prometheus.MustNewConstMetric(
+			monitorsConnectedDesc, prometheus.GaugeValue, n,
+			l[0], l[1], l[2], l[3], l[4], depEnv,
+		)
 	}
 }
 
+// seenClients returns a copy of every known client. Online is false for
+// clients whose last "online" status is older than staleAfter.
 func (mqs *server) seenClients() []client {
 	mqs.cmux.RLock()
 	defer mqs.cmux.RUnlock()
 
+	now := time.Now()
 	online := []client{}
 
 	for _, c := range mqs.clients {
-		online = append(online, *c)
+		cl := *c
+		cl.Online = c.isOnline(now)
+		online = append(online, cl)
 	}
 
 	// todo: shuffle list
