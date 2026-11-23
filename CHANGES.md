@@ -1,5 +1,11 @@
 # NTP Pool Monitor Changes
 
+## v4.3.0
+
+### Server
+- Fix: `monitor-api` treats an agent as offline when its last "online" MQTT status is more than 15 minutes old. Before, an agent whose "offline" status was missed stayed listed until `monitor-api` restarted, so `/monitors/online`, metrics discovery and ad hoc NTP checks kept using it, and the Prometheus scrape through `/monitors/metrics` got a 502 after 8 seconds about 1,400 times a day for each such agent.
+- `monitors_connected` is computed from the client list at scrape time, so it drops when an agent goes stale. The metric name and labels are unchanged.
+
 ## v4.2.4
 
 ### Server
