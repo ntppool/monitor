@@ -267,21 +267,23 @@ func setOfflineWill(cfg *autopaho.ClientConfig, statusChannel string, offlineMes
 	}
 }
 
+// StatusMessage is the retained status an agent publishes on its status
+// topic. UpdatedMQ is when an "online" status was sent. The "offline" status
+// is the will, built when the connection is set up and published by the
+// broker later, so it has no UpdatedMQ.
 type StatusMessage struct {
 	Online    bool
 	Version   version.Info
-	UpdatedMQ time.Time
+	UpdatedMQ time.Time `json:",omitzero"`
 }
 
 func StatusMessageJSON(online bool) ([]byte, error) {
 	sm := &StatusMessage{
-		Online:    online,
-		Version:   version.VersionInfo(),
-		UpdatedMQ: time.Now().Truncate(time.Second),
+		Online:  online,
+		Version: version.VersionInfo(),
 	}
-	js, err := json.Marshal(sm)
-	if err != nil {
-		return nil, err
+	if online {
+		sm.UpdatedMQ = time.Now().Truncate(time.Second)
 	}
-	return js, err
+	return json.Marshal(sm)
 }

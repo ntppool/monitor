@@ -14,6 +14,7 @@
 ### Agent
 - Fix: The agent reports itself offline when it stops. Before, a normal stop sent no "offline" status, so `monitor-api` listed the agent as online until the status went stale (15 minutes) and again after each `monitor-api` restart for up to a day.
 - Fix: The agent no longer logs "Failed to disconnect MQTT: context canceled" on every stop
+- The "offline" MQTT status has no `UpdatedMQ` field. It used to carry the time the agent connected, since the broker publishes it later as the will.
 
 ### Build
 - `github.com/eclipse/paho.golang` v0.24.0
