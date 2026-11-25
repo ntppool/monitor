@@ -21,6 +21,10 @@ import (
 	"go.ntppool.org/monitor/client/config/checkconfig"
 )
 
+// statusMessageExpiry is the MQTT message expiry, in seconds, for the
+// retained online and offline status messages.
+const statusMessageExpiry = 86400
+
 // Setup creates an autopaho connection manager with session-takeover backoff
 // wired in. If state is nil, Setup uses a throwaway state internal to this
 // connection. Callers that need to observe takeover state from outside (e.g.
@@ -68,36 +72,23 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 		}
 		msg, err := StatusMessageJSON(true)
 		if err != nil {
+			// Don't publish an empty retained message; it would clear the status.
 			log.Warn("mqtt status error", "err", err)
+			return
 		}
 		log.Debug("sending mqtt status message", "topic", statusChannel, "msg", msg)
-		expireSeconds := uint32(86400)
 		_, err = cm.Publish(ctx, &paho.Publish{
 			Topic:   statusChannel,
 			Payload: msg,
 			QoS:     1,
 			Retain:  true,
 			Properties: &paho.PublishProperties{
-				MessageExpiry: &expireSeconds,
+				MessageExpiry: paho.Uint32(statusMessageExpiry),
 			},
 		})
 		if err != nil {
 			log.Warn("mqtt status publish error", "err", err)
 		}
-	}
-
-	offlineMessage, err := StatusMessageJSON(false)
-	if err != nil {
-		return nil, fmt.Errorf("status message: %w", err)
-	}
-
-	// log.Info("status for will message", "topic", statusChannel, "msg", offlineMessage)
-
-	willMessage := &paho.WillMessage{
-		// QoS:     1,
-		Retain:  true,
-		Topic:   statusChannel,
-		Payload: offlineMessage,
 	}
 
 	mqttcfg := autopaho.ClientConfig{
@@ -210,11 +201,11 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	}
 
 	if len(statusChannel) > 0 {
-		mqttcfg.WillMessage = willMessage
-		mqttcfg.WillProperties = &paho.WillProperties{
-			WillDelayInterval: paho.Uint32(30),
-			MessageExpiry:     paho.Uint32(86400),
+		offlineMessage, err := StatusMessageJSON(false)
+		if err != nil {
+			return nil, fmt.Errorf("status message: %w", err)
 		}
+		setOfflineWill(&mqttcfg, statusChannel, offlineMessage)
 	}
 
 	// todo: make this an option
@@ -250,6 +241,30 @@ func Setup(ctx context.Context, name, statusChannel string, subscribe []string, 
 	}()
 
 	return cm, err
+}
+
+// setOfflineWill sets the retained "offline" status as the will message and
+// makes a clean disconnect send it too. With MQTT 5 the broker discards the
+// will on a DISCONNECT with reason code 0, so a normal stop would otherwise
+// never report the client offline.
+//
+// The broker waits WillDelayInterval and drops the will if the client resumes
+// the session in that time. A new process connects with Clean Start set
+// (CleanStartOnInitialConnection), which ends the old session, so the broker
+// publishes the will right away and the new process then publishes "online".
+func setOfflineWill(cfg *autopaho.ClientConfig, statusChannel string, offlineMessage []byte) {
+	cfg.WillMessage = &paho.WillMessage{
+		Retain:  true,
+		Topic:   statusChannel,
+		Payload: offlineMessage,
+	}
+	cfg.WillProperties = &paho.WillProperties{
+		WillDelayInterval: paho.Uint32(30),
+		MessageExpiry:     paho.Uint32(statusMessageExpiry),
+	}
+	cfg.DisconnectPacketBuilder = func() *paho.Disconnect {
+		return &paho.Disconnect{ReasonCode: packets.DisconnectDisconnectWithWillMessage}
+	}
 }
 
 type StatusMessage struct {
