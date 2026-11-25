@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -24,9 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/labstack/echo/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/propagation"
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"go.ntppool.org/common/config/depenv"
@@ -76,11 +73,6 @@ type client struct {
 // arrived within staleAfter of now.
 func (c *client) isOnline(now time.Time) bool {
 	return c.Online && now.Sub(c.LastSeen) <= staleAfter
-}
-
-type promTargetGroup struct {
-	Targets []string          `json:"targets"`
-	Labels  map[string]string `json:"labels"`
 }
 
 func Setup(log *slog.Logger, dbconn *pgxpool.Pool, promRegistry prometheus.Registerer) (*server, error) {
@@ -302,153 +294,6 @@ func (mqs *server) seenClients() []client {
 	// todo: shuffle list
 
 	return online
-}
-
-func (mqs *server) MetricsDiscovery(ctx context.Context) func(*echo.Context) error {
-	minimumVersion := "v3.6.0-rc3"
-
-	return func(c *echo.Context) error {
-		sd := []promTargetGroup{}
-
-		for _, cl := range mqs.seenClients() {
-			if !cl.Online || cl.Data == nil {
-				continue
-			}
-			if !version.CheckVersion(cl.Version.Version, minimumVersion) {
-				continue
-			}
-
-			accountID := ""
-			if dotIdx := strings.Index(cl.Name, "."); dotIdx > 0 {
-				name := cl.Name[:dotIdx]
-				if dashIdx := strings.Index(name, "-"); dashIdx > 0 {
-					accountID = name[dashIdx+1:]
-				}
-			}
-
-			for _, m := range cl.Data {
-				sd = append(sd, promTargetGroup{
-					Targets: []string{cl.Name},
-					Labels: map[string]string{
-						"account":    accountID,
-						"ip_version": m.IpVersion.MonitorsIpVersion.String(),
-					},
-				})
-			}
-		}
-
-		return c.JSON(200, sd)
-	}
-}
-
-func (mqs *server) Metrics(ctx context.Context) func(*echo.Context) error {
-	depEnv := sctx.GetDeploymentEnvironment(ctx)
-	topics := mqttcm.NewTopics(depEnv)
-
-	tracePropagator := otel.GetTextMapPropagator()
-
-	return func(c *echo.Context) error {
-		id, err := ulid.MakeULID(time.Now())
-		if err != nil {
-			return err
-		}
-		log := mqs.log.With("requestID", id)
-
-		clientName := c.QueryParam("client")
-
-		ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second*8)
-		defer cancel()
-
-		span := otrace.SpanFromContext(ctx)
-
-		rc := make(chan *paho.Publish)
-
-		span.SetAttributes(attribute.String("Request-ID", id.String()))
-		span.SetAttributes(attribute.String("client_name", clientName))
-		mqs.rr.AddResponseID(ctx, id.String(), rc)
-		defer mqs.rr.CloseResponseID(id.String())
-
-		mqs.cmux.RLock()
-		cl, ok := mqs.clients[clientName]
-		var clientTLSName string
-		if ok {
-			clientTLSName = cl.Name
-		}
-		mqs.cmux.RUnlock()
-
-		if !ok {
-			return c.String(http.StatusNotFound, "Not found")
-		}
-
-		topic := topics.Request(clientTLSName, "metrics")
-		responseTopic := topics.DataResponse(clientTLSName, id.String())
-
-		log.Debug("topics", "topic", topic, "responseTopic", responseTopic)
-
-		publishPacket := &paho.Publish{
-			Topic: topic,
-			Properties: &paho.PublishProperties{
-				ResponseTopic: responseTopic,
-				User:          paho.UserProperties{},
-			},
-			QoS:     0,
-			Retain:  false,
-			Payload: []byte{},
-		}
-
-		publishPacket.Properties.User.Add("ID", id.String())
-
-		traceCarrier := propagation.MapCarrier{}
-		tracePropagator.Inject(ctx, traceCarrier)
-
-		for _, f := range tracePropagator.Fields() {
-			publishPacket.Properties.User.Add(f, traceCarrier.Get(f))
-		}
-		publishPacket.Properties.User.Add("TraceID", span.SpanContext().TraceID().String())
-
-		// log.Printf("cm: %+v", mqs.cm)
-
-		pubResp, err := mqs.cm.Publish(ctx, publishPacket)
-		if err != nil {
-			log.Warn("error sending request", "err", err)
-			return c.String(http.StatusInternalServerError, "server error")
-		}
-		if pubResp != nil && pubResp.ReasonCode != 0 {
-			log.Warn("unexpected reasoncode in mqtt response", "code", pubResp.ReasonCode)
-		}
-
-		for {
-			select {
-
-			case p, ok := <-rc:
-				if !ok {
-					return nil
-				}
-
-				_, host, err := topics.ParseRequestTopic(p.Topic)
-				if err != nil {
-					log.Error("could not parse servername", "topic", p.Topic)
-					continue
-				}
-
-				if host != clientTLSName {
-					return c.String(http.StatusBadGateway, "unexpected response")
-				}
-
-				span.AddEvent("received response", otrace.WithAttributes(attribute.String("host", host)))
-
-				return c.String(http.StatusOK, string(p.Payload))
-
-			case <-ctx.Done():
-				log.Debug("request cancelled")
-				span.AddEvent("context done", otrace.WithAttributes(attribute.String("err", ctx.Err().Error())))
-				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-					return c.String(http.StatusBadGateway, "timeout")
-				}
-				return ctx.Err()
-			}
-		}
-	}
 }
 
 // supportsAdHocNTPCheck returns true if the client version supports ad hoc NTP checks.
@@ -720,8 +565,6 @@ func (mqs *server) CheckNTP(ctx context.Context) func(*echo.Context) error {
 }
 
 func (mqs *server) setupRoutes(ctx context.Context, r *echo.Echo) {
-	r.GET("/monitors/metrics/discovery", mqs.MetricsDiscovery(ctx))
-	r.GET("/monitors/metrics", mqs.Metrics(ctx))
 	r.GET("/monitors/online", func(c *echo.Context) error {
 		type onlineJSON struct {
 			Name       string

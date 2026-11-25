@@ -2,6 +2,9 @@
 
 ## v4.3.0
 
+### Upgrade notes
+- **Agent metrics endpoints removed**: `monitor-api` no longer serves `/monitors/metrics` and `/monitors/metrics/discovery`. They let Prometheus scrape agents through MQTT, but agents since v4.0.0 send their metrics over OTLP and answered the scrape with an empty body. Remove any Prometheus job that uses them. The agent still answers the `metrics` MQTT request with an empty reply, so rolling `monitor-api` back to an older version keeps working.
+
 ### Server
 - Fix: `monitor-api` sends `info` when the merged config has no `otlp_log_level`. Clearing a debug override now returns the agent to `info` when there's no system-level setting.
 - Fix: `monitor-api` treats an agent as offline when its last "online" MQTT status is more than 15 minutes old. Before, an agent whose "offline" status was missed stayed listed until `monitor-api` restarted, so `/monitors/online`, metrics discovery and ad hoc NTP checks kept using it, and the Prometheus scrape through `/monitors/metrics` got a 502 after 8 seconds about 1,400 times a day for each such agent.
