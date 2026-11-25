@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/abh/certman"
 	"go.ntppool.org/common/config/depenv"
@@ -185,11 +186,9 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		router, &mqcfg, wrapCertMan(cm), nil,
 	)
 	if err != nil {
-		// todo: autopaho should handle reconnecting, so temporary errors
-		// aren't fatal -- unclear if they error out and should be ignored
-		// and Setup() only returns errors that are unrecoverable (and thus
-		// worth not starting on).
-		log.Error("could not setup mqtt connection", "err", err)
+		// Setup only fails on configuration errors (CA pool, TLS auth,
+		// broker URL); autopaho retries connection errors itself.
+		return fmt.Errorf("mqtt setup: %w", err)
 	}
 
 	mqs.SetConnectionManager(mq)
@@ -231,7 +230,10 @@ func (cfg *serverCmd) Run(ctx context.Context, root *ApiCmd) error {
 		}
 	}
 
-	if err := mq.Disconnect(ctx); err != nil {
+	// ctx is cancelled by now; give the disconnect its own deadline.
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := mq.Disconnect(dctx); err != nil {
 		log.Error("mqtt disconnect error", "err", err)
 	}
 

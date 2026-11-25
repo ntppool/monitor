@@ -270,16 +270,12 @@ func runMQTTClient(ctx context.Context, cli *ClientCmd, mqconfigger checkconfig.
 	log.InfoContext(ctx, "MQTT client shutting down")
 
 	if mq != nil {
-		if err := mq.Disconnect(ctx); err != nil {
-			log.WarnContext(ctx, "Failed to disconnect MQTT", "err", err)
-		}
-	}
-
-	if mq != nil {
-		// wait until the mqtt connection is done; or two seconds
-		select {
-		case <-mq.Done():
-		case <-time.After(DefaultMQTTWait):
+		// ctx is cancelled by now; Disconnect waits for the connection to
+		// close, up to DefaultMQTTWait.
+		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), DefaultMQTTWait)
+		defer cancel()
+		if err := mq.Disconnect(dctx); err != nil {
+			log.WarnContext(dctx, "Failed to disconnect MQTT", "err", err)
 		}
 	}
 
