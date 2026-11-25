@@ -279,7 +279,7 @@
 ### API & Communication
 - New Connect RPC API replacing legacy Twirp
 - Enhanced authentication with JWT tokens and bearer authorization
-- OpenTelemetry integration for improved monitoring and debugging
+- **OpenTelemetry (OTLP) from the agent**: Metrics and logs are sent via OTLP for the first time in v4.0.0. Traces were already sent since v3.7.0. The agent's metrics moved from Prometheus to OpenTelemetry.
 - Updated command-line interface using Kong for better flag parsing
 
 ### Configuration
