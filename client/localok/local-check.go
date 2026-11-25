@@ -10,7 +10,6 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go4.org/netipx"
 	"golang.org/x/sync/errgroup"
@@ -23,18 +22,11 @@ import (
 )
 
 type LocalOK struct {
-	cfg        *checkconfig.Config
+	conf       checkconfig.ConfigGetter
 	isv4       bool
 	lastCheck  time.Time
 	lastStatus bool
-	seenHosts  map[string]bool
 	mu         sync.RWMutex
-}
-
-type hostResult struct {
-	name      string
-	ok        bool
-	checkTime time.Time
 }
 
 const (
@@ -43,24 +35,15 @@ const (
 )
 
 func NewLocalOK(conf checkconfig.ConfigGetter) *LocalOK {
-	var isv4 bool
-
 	cfg := conf.GetConfig()
 
 	if cfg == nil || cfg.IP == nil {
 		return nil
 	}
 
-	if cfg.IP.Is4() {
-		isv4 = true
-	} else {
-		isv4 = false
-	}
-
 	return &LocalOK{
-		cfg:       cfg,
-		isv4:      isv4,
-		seenHosts: make(map[string]bool),
+		conf: conf,
+		isv4: cfg.IP.Is4(),
 	}
 }
 
@@ -78,22 +61,13 @@ func (l *LocalOK) NextCheckIn() time.Duration {
 	return wait
 }
 
-func (l *LocalOK) SetConfig(cfg *checkconfig.Config) {
+func (l *LocalOK) Check(ctx context.Context) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.cfg = cfg
-}
 
-func (l *LocalOK) Check(ctx context.Context) bool {
-	l.mu.RLock()
 	if time.Now().Before(l.lastCheck.Add(localCacheTTL)) {
-		l.mu.RUnlock()
 		return l.lastStatus
 	}
-	l.mu.RUnlock()
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
 
 	ok := l.update(ctx)
 	l.lastCheck = time.Now()
@@ -109,7 +83,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 	defer span.End()
 
 	// update() is wrapped in a lock
-	cfg := l.cfg
+	cfg := l.conf.GetConfig()
 	log := logger.FromContext(ctx)
 
 	ipVersion := "v6"
@@ -117,14 +91,15 @@ func (l *LocalOK) update(ctx context.Context) bool {
 		ipVersion = "v4"
 	}
 
-	if len(cfg.BaseChecks) == 0 {
-		log.WarnContext(ctx, "did not get NTP BaseChecks from API; no localok configuration available")
+	if cfg == nil || cfg.IP == nil || !cfg.IP.IsValid() || cfg.IP.Is4() != l.isv4 {
+		log.WarnContext(ctx, "local check configuration does not match the monitor IP family", "ip_version", ipVersion)
+		metrics.SetLocalCheckResults(ipVersion, nil)
 		return false
 	}
-
-	var allHosts []string
-	for _, s := range cfg.BaseChecks {
-		allHosts = append(allHosts, string(s))
+	if len(cfg.BaseChecks) == 0 {
+		log.WarnContext(ctx, "did not get NTP BaseChecks from API; no localok configuration available")
+		metrics.SetLocalCheckResults(ipVersion, nil)
+		return false
 	}
 
 	type namedIP struct {
@@ -136,12 +111,7 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 	fails := 0
 
-	for h := range l.seenHosts {
-		// mark not seen
-		l.seenHosts[h] = false
-	}
-
-	for _, h := range allHosts {
+	for _, h := range cfg.BaseChecks {
 
 		ips, err := net.LookupIP(h)
 		if err != nil {
@@ -176,45 +146,24 @@ func (l *LocalOK) update(ctx context.Context) bool {
 		hosts = append(hosts, namedIP{Name: h, IP: ip})
 	}
 
-	results := make(chan bool)
+	type hostResult struct {
+		name   string
+		result metrics.LocalCheckResult
+	}
 	hostResults := make(chan hostResult)
 
 	g, _ := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		for ok := range results {
-			if !ok {
+		allHostResults := make(map[string]metrics.LocalCheckResult, len(hosts))
+		for hr := range hostResults {
+			if !hr.result.OK {
 				fails++
 			}
-		}
-		return nil
-	})
-
-	g.Go(func() error {
-		var allHostResults []hostResult
-		for hr := range hostResults {
-			allHostResults = append(allHostResults, hr)
+			allHostResults[hr.name] = hr.result
 		}
 
-		// Update metrics at the end of the LocalOK run
-		if metrics.LocalCheckUp != nil && metrics.LocalCheckTime != nil {
-			for _, hr := range allHostResults {
-				upValue := int64(0)
-				if hr.ok {
-					upValue = 1
-				}
-
-				metrics.LocalCheckUp.Record(ctx, upValue,
-					metric.WithAttributes(
-						attribute.String("host", hr.name),
-						attribute.String("ip_version", ipVersion)))
-
-				metrics.LocalCheckTime.Record(ctx, hr.checkTime.Unix(),
-					metric.WithAttributes(
-						attribute.String("host", hr.name),
-						attribute.String("ip_version", ipVersion)))
-			}
-		}
+		metrics.SetLocalCheckResults(ipVersion, allHostResults)
 
 		return nil
 	})
@@ -224,9 +173,6 @@ func (l *LocalOK) update(ctx context.Context) bool {
 
 		for i, h := range hosts {
 			wg.Add(1)
-
-			// seen
-			l.seenHosts[h.Name] = true
 
 			if i > 0 {
 				time.Sleep(20 * time.Millisecond)
@@ -240,18 +186,18 @@ func (l *LocalOK) update(ctx context.Context) bool {
 					span.RecordError(err)
 				}
 
-				results <- ok
 				hostResults <- hostResult{
-					name:      h.Name,
-					ok:        ok,
-					checkTime: checkTime,
+					name: h.Name,
+					result: metrics.LocalCheckResult{
+						OK:        ok,
+						CheckTime: checkTime,
+					},
 				}
 				wg.Done()
 			}(h)
 		}
 
 		wg.Wait()
-		close(results)
 		close(hostResults)
 
 		return nil

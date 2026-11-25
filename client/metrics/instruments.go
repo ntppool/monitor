@@ -4,16 +4,14 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"go.ntppool.org/common/metrics"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 var (
-	// Existing metrics (converted from Prometheus)
-	LocalCheckUp   metric.Int64Gauge
-	LocalCheckTime metric.Int64Gauge
-
 	// New counters
 	ServersChecked metric.Int64Counter
 	NTPQueriesSent metric.Int64Counter
@@ -22,6 +20,24 @@ var (
 	setupOnce sync.Once
 	setupErr  error
 )
+
+type LocalCheckResult struct {
+	OK        bool
+	CheckTime time.Time
+}
+
+var localChecks = struct {
+	sync.RWMutex
+	byIPVersion map[string]map[string]LocalCheckResult
+}{byIPVersion: make(map[string]map[string]LocalCheckResult)}
+
+// SetLocalCheckResults replaces the observations for one IP family.
+// The caller gives up ownership of results.
+func SetLocalCheckResults(ipVersion string, results map[string]LocalCheckResult) {
+	localChecks.Lock()
+	defer localChecks.Unlock()
+	localChecks.byIPVersion[ipVersion] = results
+}
 
 // InitInstruments initializes all metric instruments for the client.
 // This function is safe to call multiple times - it will only initialize once.
@@ -36,20 +52,39 @@ func initializeInstruments() error {
 	log := slog.Default()
 	meter := metrics.GetMeter("monitor.client")
 
-	var err error
-
 	// Existing metrics (converted from Prometheus)
-	LocalCheckUp, err = meter.Int64Gauge("monitor.local_check_up",
+	localCheckUp, err := meter.Int64ObservableGauge("monitor.local_check_up",
 		metric.WithDescription("Local NTP check status (1=up, 0=down)"))
 	if err != nil {
 		log.ErrorContext(context.Background(), "failed to create LocalCheckUp gauge", "err", err)
 		return err
 	}
 
-	LocalCheckTime, err = meter.Int64Gauge("monitor.local_check_time",
+	localCheckTime, err := meter.Int64ObservableGauge("monitor.local_check_time",
 		metric.WithDescription("Last local NTP check timestamp"))
 	if err != nil {
 		log.ErrorContext(context.Background(), "failed to create LocalCheckTime gauge", "err", err)
+		return err
+	}
+	// Observable gauges export only the current host set. Synchronous gauges
+	// with cumulative temporality keep exporting old values for removed hosts.
+	_, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		localChecks.RLock()
+		defer localChecks.RUnlock()
+		for ipVersion, results := range localChecks.byIPVersion {
+			for host, result := range results {
+				var up int64
+				if result.OK {
+					up = 1
+				}
+				attrs := metric.WithAttributes(attribute.String("host", host), attribute.String("ip_version", ipVersion))
+				observer.ObserveInt64(localCheckUp, up, attrs)
+				observer.ObserveInt64(localCheckTime, result.CheckTime.Unix(), attrs)
+			}
+		}
+		return nil
+	}, localCheckUp, localCheckTime)
+	if err != nil {
 		return err
 	}
 

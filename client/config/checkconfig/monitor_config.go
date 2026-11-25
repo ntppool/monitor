@@ -79,7 +79,7 @@ func (c *Configger) SetConfigFromApi(cfg *apiv2.GetConfigResponse) {
 		mqtt = c.cfg.MQTTConfig
 	}
 
-	c.cfg = &Config{
+	next := &Config{
 		Samples:    cfg.GetSamples(),
 		IP:         cfg.GetIP(),
 		IPNat:      cfg.GetNatIP(),
@@ -87,11 +87,16 @@ func (c *Configger) SetConfigFromApi(cfg *apiv2.GetConfigResponse) {
 	}
 
 	for _, b := range cfg.BaseChecks {
-		c.cfg.BaseChecks = append(c.cfg.BaseChecks, string(b))
+		next.BaseChecks = append(next.BaseChecks, string(b))
+	}
+	// An incomplete response can update other settings while local checks
+	// continue using the last list for this IP family.
+	if len(next.BaseChecks) == 0 && c.cfg != nil && c.cfg.IP != nil && c.cfg.IP.Is4() == next.IP.Is4() {
+		next.BaseChecks = c.cfg.BaseChecks
 	}
 
 	if cfg.MqttConfig != nil {
-		c.cfg.MQTTConfig = &MQTTConfig{
+		next.MQTTConfig = &MQTTConfig{
 			Host:   string(cfg.MqttConfig.GetHost()),
 			Port:   int(cfg.MqttConfig.GetPort()),
 			JWT:    cfg.MqttConfig.GetJwt(),
@@ -99,10 +104,7 @@ func (c *Configger) SetConfigFromApi(cfg *apiv2.GetConfigResponse) {
 		}
 	}
 
-	// restore saved config if necessary
-	if c.cfg.MQTTConfig == nil && mqtt != nil {
-		c.cfg.MQTTConfig = mqtt
-	}
+	c.cfg = next
 
 	// Store the OTLP log level (caller handles applying and persisting)
 	c.otlpLogLevel = cfg.GetOtlpLogLevel()

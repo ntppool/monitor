@@ -344,16 +344,16 @@ func (cmd *monitorCmd) runMonitor(ctx context.Context, ipc config.IPConfig, api 
 					}
 				}
 
-				// Only signal completion on first run if we have valid BaseChecks for LocalOK
-				if firstRun {
-					if cfgresp != nil && len(cfgresp.BaseChecks) > 0 {
-						log.InfoContext(ctx, "received valid configuration with BaseChecks, LocalOK can be initialized", "basecheck_count", len(cfgresp.BaseChecks))
-						initialConfig.Done()
-						firstRun = false
-					} else {
+				if len(cfgresp.BaseChecks) == 0 {
+					if firstRun {
 						log.WarnContext(ctx, "configuration received but no BaseChecks available, waiting for complete config")
-						// Continue as first run until we get BaseChecks
+					} else {
+						log.WarnContext(ctx, "configuration received without BaseChecks, keeping previous base checks")
 					}
+				} else if firstRun {
+					log.InfoContext(ctx, "received valid configuration with BaseChecks, LocalOK can be initialized", "basecheck_count", len(cfgresp.BaseChecks))
+					initialConfig.Done()
+					firstRun = false
 				}
 			}
 
@@ -523,6 +523,9 @@ func fetchConfig(ctx context.Context, ipc config.IPConfig, api apiv2connect.Moni
 		}
 		return nil, err
 	}
+	if ip := cfgresp.GetIP(); ip.Is4() != ipc.IP.Is4() {
+		return nil, fmt.Errorf("configuration IP %s does not match monitor IP family", ip)
+	}
 	return cfgresp, nil
 }
 
@@ -554,6 +557,12 @@ func (cmd *monitorCmd) doMonitorBatch(ctx context.Context, ipc config.IPConfig, 
 	}
 
 	if serverlist.Config != nil {
+		if ip := serverlist.Config.GetIP(); ip.Is4() != ipc.IP.Is4() {
+			return 0, fmt.Errorf("server list configuration IP %s does not match monitor IP family", ip)
+		}
+		if len(serverlist.Config.BaseChecks) == 0 {
+			log.WarnContext(ctx, "server list configuration received without BaseChecks, keeping previous base checks")
+		}
 		cfgStore.SetConfigFromApi(serverlist.Config)
 	}
 
