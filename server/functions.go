@@ -66,10 +66,6 @@ func (srv *Server) getMonitorConfig(ctx context.Context, monitor *ntpdb.Monitor)
 		span.AddEvent("Single Config")
 	}
 
-	if cfg.OtlpLogLevel == "" {
-		cfg.OtlpLogLevel = "info"
-	}
-
 	return cfg, nil
 }
 

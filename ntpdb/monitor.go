@@ -56,9 +56,16 @@ func (m *Monitor) getConfig(conf []byte) (*MonitorConfig, error) {
 }
 
 func (cfg *MonitorConfig) APIv2() (*apiv2.GetConfigResponse, error) {
+	// The client always gets an explicit level; clearing an override
+	// takes effect as "info".
+	level := cfg.OtlpLogLevel
+	if level == "" {
+		level = "info"
+	}
+
 	rcfg := &apiv2.GetConfigResponse{
 		Samples:      cfg.Samples,
-		OtlpLogLevel: cfg.OtlpLogLevel,
+		OtlpLogLevel: level,
 	}
 
 	if len(cfg.BaseChecks) > 0 {
