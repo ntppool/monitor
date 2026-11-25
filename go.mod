@@ -23,7 +23,7 @@ require (
 	github.com/alecthomas/kong v1.17.0
 	github.com/beevik/ntp v1.6.0
 	github.com/cenkalti/backoff/v5 v5.0.3
-	github.com/eclipse/paho.golang v0.23.0
+	github.com/eclipse/paho.golang v0.24.0
 	github.com/evanphx/json-patch v0.5.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
