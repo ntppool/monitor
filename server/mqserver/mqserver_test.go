@@ -1,6 +1,7 @@
 package mqserver
 
 import (
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"testing/synctest"
@@ -10,17 +11,26 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"go.ntppool.org/common/config/depenv"
+	"go.ntppool.org/monitor/mqttcm"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
 const testStatusTopic = "/devel/monitors/status/uspao-abc/status"
 
-func publishStatus(mqs *server, online bool) {
-	payload := []byte(`{"Online":false}`)
-	if online {
-		payload = []byte(`{"Online":true}`)
+// publishStatus passes a status message to MQTTStatusHandler. expiryLeft,
+// if not nil, is the message expiry the broker has left when it delivers
+// the message.
+func publishStatus(t *testing.T, mqs *server, status mqttcm.StatusMessage, expiryLeft *uint32) {
+	t.Helper()
+	payload, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
 	}
-	mqs.MQTTStatusHandler(&paho.Publish{Topic: testStatusTopic, Payload: payload})
+	mqs.MQTTStatusHandler(&paho.Publish{
+		Topic:      testStatusTopic,
+		Payload:    payload,
+		Properties: &paho.PublishProperties{MessageExpiry: expiryLeft},
+	})
 }
 
 func countSeries(t *testing.T, reg *prometheus.Registry, name string) int {
@@ -43,7 +53,7 @@ func TestClientState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	publishStatus(mqs, true)
+	publishStatus(t, mqs, mqttcm.StatusMessage{Online: true}, nil)
 
 	c, ok := mqs.clients["uspao-abc"]
 	if !ok {
@@ -60,7 +70,7 @@ func TestClientState(t *testing.T) {
 		t.Error("client didn't set LastSeen")
 	}
 
-	publishStatus(mqs, false)
+	publishStatus(t, mqs, mqttcm.StatusMessage{Online: false}, nil)
 
 	c, ok = mqs.clients["uspao-abc"]
 	if !ok {
@@ -84,7 +94,7 @@ func TestStaleClientGoesOffline(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		publishStatus(mqs, true)
+		publishStatus(t, mqs, mqttcm.StatusMessage{Online: true}, nil)
 
 		// MQTTRouter sets depEnv, and MQTTStatusHandler loads Data from the
 		// database; the test runs without either.
@@ -125,7 +135,7 @@ func TestStaleClientGoesOffline(t *testing.T) {
 		check("10 minutes later", true)
 
 		// a republished status keeps the client online
-		publishStatus(mqs, true)
+		publishStatus(t, mqs, mqttcm.StatusMessage{Online: true}, nil)
 		time.Sleep(staleAfter)
 		check("staleAfter after the republish", true)
 
@@ -133,9 +143,122 @@ func TestStaleClientGoesOffline(t *testing.T) {
 		check("past staleAfter", false)
 
 		// a new status brings it back without a restart
-		publishStatus(mqs, true)
+		publishStatus(t, mqs, mqttcm.StatusMessage{Online: true}, nil)
 		check("after a new online status", true)
 	})
+}
+
+// LastSeen comes from how long the broker held the status, by the broker's
+// clock, so a stopped agent's old retained "online" status, replayed after a
+// monitor-api restart or broker reconnect, doesn't count as fresh.
+func TestStatusLastSeen(t *testing.T) {
+	tests := []struct {
+		name string
+		// liveAgo, if set, sends a live status this long before the
+		// tested one.
+		liveAgo time.Duration
+		status  mqttcm.StatusMessage
+		// expiryLeft is the message expiry the broker has left.
+		expiryLeft *uint32
+		// wantSeenAgo is how long before the tested status LastSeen is.
+		wantSeenAgo time.Duration
+		wantOnline  bool
+	}{
+		{
+			name:        "held 20 minutes",
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 86400},
+			expiryLeft:  paho.Uint32(86400 - 20*60),
+			wantSeenAgo: 20 * time.Minute,
+			wantOnline:  false,
+		},
+		{
+			name:        "held 2 minutes",
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 86400},
+			expiryLeft:  paho.Uint32(86400 - 2*60),
+			wantSeenAgo: 2 * time.Minute,
+			wantOnline:  true,
+		},
+		{
+			name:        "agent sets a shorter expiry",
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 3600},
+			expiryLeft:  paho.Uint32(3600 - 2*60),
+			wantSeenAgo: 2 * time.Minute,
+			wantOnline:  true,
+		},
+		{
+			name:        "no MessageExpiry in the status (agent v3.7.0 to v4.2.x)",
+			status:      mqttcm.StatusMessage{Online: true},
+			expiryLeft:  paho.Uint32(86400 - 20*60),
+			wantSeenAgo: 20 * time.Minute,
+			wantOnline:  false,
+		},
+		{
+			name:       "live status",
+			status:     mqttcm.StatusMessage{Online: true, MessageExpiry: 86400},
+			expiryLeft: paho.Uint32(86400),
+			wantOnline: true,
+		},
+		{
+			name:       "no message expiry (agent older than v3.7.0)",
+			status:     mqttcm.StatusMessage{Online: true},
+			wantOnline: true,
+		},
+		{
+			// The age is unknown, so LastSeen stays at the live status.
+			name:        "more expiry left than the agent set",
+			liveAgo:     time.Minute,
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 3600},
+			expiryLeft:  paho.Uint32(86000),
+			wantSeenAgo: time.Minute,
+			wantOnline:  true,
+		},
+		{
+			name:        "reconnect replays a status older than the last live one",
+			liveAgo:     time.Minute,
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 86400},
+			expiryLeft:  paho.Uint32(86400 - 10*60),
+			wantSeenAgo: time.Minute,
+			wantOnline:  true,
+		},
+		{
+			name:        "reconnect replays a status sent while disconnected",
+			liveAgo:     6 * time.Minute,
+			status:      mqttcm.StatusMessage{Online: true, MessageExpiry: 86400},
+			expiryLeft:  paho.Uint32(86400 - 60),
+			wantSeenAgo: time.Minute,
+			wantOnline:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mqs, err := Setup(slog.Default(), nil, prometheus.NewRegistry())
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if tt.liveAgo > 0 {
+					publishStatus(t, mqs, mqttcm.StatusMessage{Online: true, MessageExpiry: 86400}, paho.Uint32(86400))
+					time.Sleep(tt.liveAgo)
+				}
+
+				now := time.Now()
+				publishStatus(t, mqs, tt.status, tt.expiryLeft)
+
+				clients := mqs.seenClients()
+				if len(clients) != 1 {
+					t.Fatalf("got %d clients, want 1", len(clients))
+				}
+				if got, want := clients[0].LastSeen, now.Add(-tt.wantSeenAgo); !got.Equal(want) {
+					t.Errorf("LastSeen is %s before the status, want %s", now.Sub(got), tt.wantSeenAgo)
+				}
+				if clients[0].Online != tt.wantOnline {
+					t.Errorf("Online = %t, want %t", clients[0].Online, tt.wantOnline)
+				}
+			})
+		})
+	}
 }
 
 // A scrape can come before MQTTRouter has set depEnv.

@@ -70,7 +70,7 @@ type client struct {
 }
 
 // isOnline reports whether the client's last status was "online" and
-// arrived within staleAfter of now.
+// LastSeen is within staleAfter of now.
 func (c *client) isOnline(now time.Time) bool {
 	return c.Online && now.Sub(c.LastSeen) <= staleAfter
 }
@@ -137,9 +137,31 @@ func (mqs *server) MQTTRouter(ctx context.Context, topicPrefix string) paho.Rout
 	return router
 }
 
-func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
-	// mqs.log.Debug("status message", "packetID", p.PacketID, "topic", p.Topic, "payload", p.Payload)
+// legacyStatusExpiry is the message expiry, in seconds, that agents v3.7.0
+// to v4.2.x set on their status without sending it in the status message.
+const legacyStatusExpiry = 86400
 
+// statusAge returns how long the broker held a status message, by the
+// broker's clock: the expiry the agent set minus what the broker has left.
+// A retained status the broker replays when we subscribe, after a restart
+// or reconnect, can be up to a day old; a live one has an age of 0. A
+// message without an expiry (agents before v3.7.0) has an age of 0.
+func statusAge(p *paho.Publish, status mqttcm.StatusMessage) (time.Duration, error) {
+	if p.Properties == nil || p.Properties.MessageExpiry == nil {
+		return 0, nil
+	}
+	set := status.MessageExpiry
+	if set == 0 {
+		set = legacyStatusExpiry
+	}
+	left := *p.Properties.MessageExpiry
+	if left > set {
+		return 0, fmt.Errorf("message expiry left %ds is more than the %ds the agent set", left, set)
+	}
+	return time.Duration(set-left) * time.Second, nil
+}
+
+func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 	path := strings.Split(p.Topic, "/")
 
 	if t := path[len(path)-1]; t != "status" {
@@ -157,6 +179,14 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 	name := path[len(path)-2]
 
+	var expiryLeft any
+	if p.Properties != nil && p.Properties.MessageExpiry != nil {
+		expiryLeft = *p.Properties.MessageExpiry
+	}
+	mqs.log.Debug("status message", "name", name, "online", status.Online,
+		"retain", p.Retain, "updated_mq", status.UpdatedMQ,
+		"message_expiry", status.MessageExpiry, "expiry_left", expiryLeft)
+
 	mqs.cmux.Lock()
 	defer mqs.cmux.Unlock()
 
@@ -168,7 +198,15 @@ func (mqs *server) MQTTStatusHandler(p *paho.Publish) {
 
 	if status.Online {
 		cs.Online = true
-		cs.LastSeen = time.Now()
+
+		// A status of unknown age doesn't refresh LastSeen. Never move
+		// LastSeen back, for example when a reconnect replays a status
+		// older than one we already got.
+		if age, err := statusAge(p, status); err != nil {
+			mqs.log.Warn("status message age", "name", name, "err", err)
+		} else if seen := time.Now().Add(-age); seen.After(cs.LastSeen) {
+			cs.LastSeen = seen
+		}
 		cs.Version = status.Version
 		cs.UpdatedMQ = status.UpdatedMQ
 

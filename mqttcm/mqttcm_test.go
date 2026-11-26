@@ -35,7 +35,7 @@ func TestSetOfflineWill(t *testing.T) {
 	}
 }
 
-func TestStatusMessageJSONUpdatedMQ(t *testing.T) {
+func TestStatusMessageJSON(t *testing.T) {
 	tests := []struct {
 		online      bool
 		wantUpdated bool
@@ -54,6 +54,11 @@ func TestStatusMessageJSONUpdatedMQ(t *testing.T) {
 		}
 		if _, ok := fields["UpdatedMQ"]; ok != tt.wantUpdated {
 			t.Errorf("StatusMessageJSON(%v) = %s, UpdatedMQ present %v, want %v", tt.online, js, ok, tt.wantUpdated)
+		}
+		// The status is published with statusMessageExpiry (the online
+		// status and the will).
+		if fields["MessageExpiry"] != float64(statusMessageExpiry) {
+			t.Errorf("StatusMessageJSON(%v) = %s, MessageExpiry want %d", tt.online, js, statusMessageExpiry)
 		}
 		if fields["Online"] != tt.online {
 			t.Errorf("StatusMessageJSON(%v) = %s, wrong Online", tt.online, js)

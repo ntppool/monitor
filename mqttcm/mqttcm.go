@@ -271,16 +271,23 @@ func setOfflineWill(cfg *autopaho.ClientConfig, statusChannel string, offlineMes
 // topic. UpdatedMQ is when an "online" status was sent. The "offline" status
 // is the will, built when the connection is set up and published by the
 // broker later, so it has no UpdatedMQ.
+//
+// MessageExpiry is the MQTT message expiry, in seconds, the agent set on
+// the message. The broker counts the expiry down while it holds the
+// message, so the receiver can tell how old a replayed retained status is
+// by the broker's clock. Agents before v4.3.0 don't send it.
 type StatusMessage struct {
-	Online    bool
-	Version   version.Info
-	UpdatedMQ time.Time `json:",omitzero"`
+	Online        bool
+	Version       version.Info
+	UpdatedMQ     time.Time `json:",omitzero"`
+	MessageExpiry uint32    `json:",omitzero"`
 }
 
 func StatusMessageJSON(online bool) ([]byte, error) {
 	sm := &StatusMessage{
-		Online:  online,
-		Version: version.VersionInfo(),
+		Online:        online,
+		Version:       version.VersionInfo(),
+		MessageExpiry: statusMessageExpiry,
 	}
 	if online {
 		sm.UpdatedMQ = time.Now().Truncate(time.Second)

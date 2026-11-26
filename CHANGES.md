@@ -10,12 +10,14 @@
 - Fix: `monitor-api` sends `info` when the merged config has no `otlp_log_level`. Clearing a debug override now returns the agent to `info` when there's no system-level setting.
 - Fix: `monitor-api` treats an agent as offline when its last "online" MQTT status is more than 15 minutes old. Before, an agent whose "offline" status was missed stayed listed until `monitor-api` restarted, so `/monitors/online`, metrics discovery and ad hoc NTP checks kept using it, and the Prometheus scrape through `/monitors/metrics` got a 502 after 8 seconds about 1,400 times a day for each such agent.
 - `monitors_connected` is computed from the client list at scrape time, so it drops when an agent goes stale. The metric name and labels are unchanged.
+- Fix: After a restart or broker reconnect, `monitor-api` uses the age of each agent's retained status to decide if the agent is online. It takes the age from the MQTT message expiry the broker has left, so the agent's clock doesn't matter. Before, a stopped agent's last "online" status, kept by the broker for up to a day, listed it as online for another 15 minutes after each restart.
 - Fix: `monitor-api` exits with an error when the MQTT setup fails (for example the CA pool can't be loaded), instead of crashing with a nil pointer
 
 ### Agent
 - Fix: The agent reports itself offline when it stops. Before, a normal stop sent no "offline" status, so `monitor-api` listed the agent as online until the status went stale (15 minutes) and again after each `monitor-api` restart for up to a day.
 - Fix: The agent no longer logs "Failed to disconnect MQTT: context canceled" on every stop
 - The "offline" MQTT status has no `UpdatedMQ` field. It used to carry the time the agent connected, since the broker publishes it later as the will.
+- The MQTT status has a `MessageExpiry` field with the message expiry the agent set, so `monitor-api` can tell how long the broker held the status. For older agents `monitor-api` uses 86400 seconds, the value they all set.
 
 ### Build
 - `github.com/eclipse/paho.golang` v0.24.0
