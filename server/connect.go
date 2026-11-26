@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strings"
 
 	"connectrpc.com/connect/v2"
 
@@ -18,18 +17,6 @@ import (
 // before v4.0.5 republish their MQTT status only once an hour.
 const minAgentVersion = "v4.0.5"
 
-// agentVersion returns the version in an agent's User-Agent, without the
-// git revision and build details that version.Version() adds, as in
-// "ntppool-agent/v4.2.4/0dd4039-M (2026-11-20T10:00:00Z, go1.25.4)".
-// CheckVersion strips "/..." only after its "dev-snapshot" check and
-// doesn't handle the " (...)" part.
-func agentVersion(userAgent string) string {
-	v := parseClientVersion(userAgent)
-	v, _, _ = strings.Cut(v, " ")
-	v, _, _ = strings.Cut(v, "/")
-	return v
-}
-
 // agentVersionInterceptor refuses calls from agents older than
 // minAgentVersion, by the version in the User-Agent header. The agent logs
 // the error message, so it tells the operator to upgrade.
@@ -40,7 +27,7 @@ func agentVersionInterceptor(next connect.ServerFunc) connect.ServerFunc {
 			return connect.NewError(connect.CodeInternal, "no call info")
 		}
 		userAgent := info.RequestHeader().Get("User-Agent")
-		v := agentVersion(userAgent)
+		v := parseClientVersion(userAgent)
 		if !version.CheckVersion(v, minAgentVersion) {
 			// otelconnect counts the refusals. An old agent retries
 			// every few minutes, so log at debug level.

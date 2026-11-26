@@ -21,6 +21,7 @@
 
 ### Build
 - `github.com/eclipse/paho.golang` v0.24.0
+- `go.ntppool.org/common` v0.11.1, which accepts dev builds and version strings with build details in `CheckVersion`
 
 ## v4.2.4
 
