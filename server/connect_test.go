@@ -57,3 +57,37 @@ func TestConnectError(t *testing.T) {
 		})
 	}
 }
+
+// Calls from agents older than minAgentVersion are refused; others reach
+// the handler (Unimplemented here).
+func TestAgentVersionInterceptor(t *testing.T) {
+	tests := []struct {
+		userAgent string
+		want      connect.Code
+	}{
+		// User-Agent formats from version.Version()
+		{"ntppool-agent/v4.0.5/0dd4039 (2026-11-20T10:00:00Z, go1.25.4)", connect.CodeUnimplemented},
+		{"ntppool-agent/v4.3.0 (go1.25.4)", connect.CodeUnimplemented},
+		{"ntppool-agent/dev-snapshot/0dd4039-M (go1.25.4)", connect.CodeUnimplemented},
+		{"ntppool-agent/dev-snapshot (go1.25.4)", connect.CodeUnimplemented},
+		{"ntppool-agent/v4.0.4/0dd4039 (2026-01-10T10:00:00Z, go1.24.2)", connect.CodeFailedPrecondition},
+		{"ntppool-monitor/v3.8.6/0dd4039 (go1.22.1)", connect.CodeFailedPrecondition},
+		{"", connect.CodeFailedPrecondition},
+	}
+
+	srv := connect.NewServer(agentVersionInterceptor)
+	apiv2connect.RegisterMonitorServiceHandler(srv, apiv2connect.UnimplementedMonitorServiceHandler{})
+	client := apiv2connect.NewMonitorServiceClient(connect.NewClient(connectinprocess.New(srv)))
+
+	for _, tt := range tests {
+		t.Run(tt.userAgent, func(t *testing.T) {
+			ctx, info := connect.NewClientContext(t.Context())
+			info.RequestHeader().Set("User-Agent", tt.userAgent)
+
+			_, err := client.GetConfig(ctx, &apiv2.GetConfigRequest{MonId: "192.0.2.1"})
+			if code := connect.CodeOf(err); code != tt.want {
+				t.Errorf("code = %v (%v), want %v", code, err, tt.want)
+			}
+		})
+	}
+}

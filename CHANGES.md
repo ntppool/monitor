@@ -3,6 +3,7 @@
 ## v4.3.0
 
 ### Upgrade notes
+- **Minimum agent version v4.0.5**: `monitor-api` refuses API calls from agents older than v4.0.5, with an error the agent logs telling the operator to upgrade. Those agents stop testing until they are upgraded. Agents before v4.0.5 republish their MQTT status only once an hour, so `monitor-api` would list them as offline most of the time.
 - **Agent metrics endpoints removed**: `monitor-api` no longer serves `/monitors/metrics` and `/monitors/metrics/discovery`. They let Prometheus scrape agents through MQTT, but agents since v4.0.0 send their metrics over OTLP and answered the scrape with an empty body. Remove any Prometheus job that uses them. The agent still answers the `metrics` MQTT request with an empty reply, so rolling `monitor-api` back to an older version keeps working.
 
 ### Server

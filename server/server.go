@@ -170,7 +170,7 @@ func (srv *Server) Run() error {
 	if err != nil {
 		return fmt.Errorf("could not setup otelconnect interceptor: %w", err)
 	}
-	connectServer := connect.NewServer(otelinter)
+	connectServer := connect.NewServer(otelinter, agentVersionInterceptor)
 	apiv2connect.RegisterMonitorServiceHandler(connectServer, conSrv)
 
 	// Mount registers one route per method, so it goes on its own mux to

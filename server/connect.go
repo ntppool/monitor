@@ -3,13 +3,55 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
+	"strings"
 
 	"connectrpc.com/connect/v2"
 
 	"go.ntppool.org/common/logger"
+	"go.ntppool.org/common/version"
 	apiv2 "go.ntppool.org/monitor/gen/monitor/v2"
 )
+
+// minAgentVersion is the oldest agent version monitor-api serves. Agents
+// before v4.0.5 republish their MQTT status only once an hour.
+const minAgentVersion = "v4.0.5"
+
+// agentVersion returns the version in an agent's User-Agent, without the
+// git revision and build details that version.Version() adds, as in
+// "ntppool-agent/v4.2.4/0dd4039-M (2026-11-20T10:00:00Z, go1.25.4)".
+// CheckVersion strips "/..." only after its "dev-snapshot" check and
+// doesn't handle the " (...)" part.
+func agentVersion(userAgent string) string {
+	v := parseClientVersion(userAgent)
+	v, _, _ = strings.Cut(v, " ")
+	v, _, _ = strings.Cut(v, "/")
+	return v
+}
+
+// agentVersionInterceptor refuses calls from agents older than
+// minAgentVersion, by the version in the User-Agent header. The agent logs
+// the error message, so it tells the operator to upgrade.
+func agentVersionInterceptor(next connect.ServerFunc) connect.ServerFunc {
+	return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
+		info, ok := connect.CallInfoForServerContext(ctx)
+		if !ok {
+			return connect.NewError(connect.CodeInternal, "no call info")
+		}
+		userAgent := info.RequestHeader().Get("User-Agent")
+		v := agentVersion(userAgent)
+		if !version.CheckVersion(v, minAgentVersion) {
+			// otelconnect counts the refusals. An old agent retries
+			// every few minutes, so log at debug level.
+			logger.FromContext(ctx).DebugContext(ctx, "refusing old agent",
+				"user_agent", userAgent, "procedure", spec.Procedure, "peer", info.PeerAddr)
+			return connect.NewError(connect.CodeFailedPrecondition,
+				fmt.Sprintf("ntppool-agent %q is too old; upgrade to %s or newer", v, minAgentVersion))
+		}
+		return next(ctx, spec, stream)
+	}
+}
 
 type conServer struct {
 	srv *Server
