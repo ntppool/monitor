@@ -636,6 +636,149 @@ func (_d QuerierTxWithTracing) GetServersMonitorReview(ctx context.Context) (ia1
 	return _d.QuerierTx.GetServersMonitorReview(ctx)
 }
 
+// GetSettingsMonitorLoad implements QuerierTx
+func (_d QuerierTxWithTracing) GetSettingsMonitorLoad(ctx context.Context) (ga1 []GetSettingsMonitorLoadRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSettingsMonitorLoad")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetSettingsMonitorLoad(ctx)
+}
+
+// GetSettingsPromotions implements QuerierTx
+func (_d QuerierTxWithTracing) GetSettingsPromotions(ctx context.Context, arg GetSettingsPromotionsParams) (ga1 []GetSettingsPromotionsRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSettingsPromotions")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetSettingsPromotions(ctx, arg)
+}
+
+// GetSettingsServerLoad implements QuerierTx
+func (_d QuerierTxWithTracing) GetSettingsServerLoad(ctx context.Context, bootstrapLimit int64) (ga1 []GetSettingsServerLoadRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSettingsServerLoad")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx":            ctx,
+				"bootstrapLimit": bootstrapLimit}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetSettingsServerLoad(ctx, bootstrapLimit)
+}
+
+// GetSettingsStatusCounts implements QuerierTx
+func (_d QuerierTxWithTracing) GetSettingsStatusCounts(ctx context.Context) (ga1 []GetSettingsStatusCountsRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSettingsStatusCounts")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetSettingsStatusCounts(ctx)
+}
+
+// GetSettingsTrialStarts implements QuerierTx
+func (_d QuerierTxWithTracing) GetSettingsTrialStarts(ctx context.Context, sinceSeconds float64) (ga1 []GetSettingsTrialStartsRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSettingsTrialStarts")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx":          ctx,
+				"sinceSeconds": sinceSeconds}, map[string]interface{}{
+				"ga1": ga1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetSettingsTrialStarts(ctx, sinceSeconds)
+}
+
 // GetSystemSetting implements QuerierTx
 func (_d QuerierTxWithTracing) GetSystemSetting(ctx context.Context, key string) (ba1 []byte, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetSystemSetting")

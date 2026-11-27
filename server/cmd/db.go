@@ -12,8 +12,9 @@ import (
 )
 
 type dbCmd struct {
-	ConfigFile string       `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
-	Mon        dbMonitorCmd `cmd:"" help:"monitor config debug"`
+	ConfigFile string        `name:"config" short:"c" default:"database.yaml" help:"Database config file"`
+	Mon        dbMonitorCmd  `cmd:"" help:"monitor config debug"`
+	Settings   dbSettingsCmd `cmd:"" help:"show and check the monitors system setting"`
 }
 
 type dbMonitorCmd struct {

@@ -2,16 +2,18 @@ package monitorsettings
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/singleflight"
+
+	shared "go.ntppool.org/common/monitorsettings"
 )
 
 // Querier is the minimum DB surface the Watcher needs. Both ntpdb.Queries
@@ -19,9 +21,6 @@ import (
 type Querier interface {
 	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
 }
-
-// SettingsKey is the system_settings row key that holds the JSON payload.
-const SettingsKey = "monitors"
 
 // RefreshInterval is the nominal cadence for background re-reads of the
 // system_settings row. The actual sleep is jittered up to RefreshJitter.
@@ -40,6 +39,11 @@ type Watcher struct {
 	mu       sync.RWMutex
 	current  MonitorSettings
 	loadedAt time.Time
+
+	// findings are the Check results of the last load, logged again only
+	// when they change. Only refresh touches them, under sf or in
+	// NewWatcher before the refresh goroutine starts.
+	findings []Finding
 
 	sf singleflight.Group
 }
@@ -83,25 +87,22 @@ func (w *Watcher) Refresh(ctx context.Context) error {
 }
 
 func (w *Watcher) refresh(ctx context.Context, initial bool) error {
-	raw, err := w.q.GetSystemSetting(ctx, SettingsKey)
+	raw, err := w.q.GetSystemSetting(ctx, shared.SettingsKey)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 
-	var parsed MonitorSettings
-	if len(raw) > 0 {
-		if jerr := json.Unmarshal(raw, &parsed); jerr != nil {
-			if !initial {
-				// Keep last-known-good settings rather than silently reverting to defaults.
-				return fmt.Errorf("could not parse monitor settings: %w", jerr)
-			}
-			w.log.WarnContext(
-				ctx, "could not parse monitor settings; using defaults",
-				slog.String("err", jerr.Error()),
-				slog.String("raw", string(raw)),
-			)
-			parsed = MonitorSettings{}
+	parsed, fields, perr := shared.Inspect(raw)
+	if perr != nil {
+		if !initial {
+			// Keep last-known-good settings rather than silently reverting to defaults.
+			return perr
 		}
+		w.log.WarnContext(
+			ctx, "could not parse monitor settings; using defaults",
+			slog.String("err", perr.Error()),
+			slog.String("raw", string(raw)),
+		)
 	}
 	fresh := parsed.WithDefaults()
 
@@ -117,14 +118,30 @@ func (w *Watcher) refresh(ctx context.Context, initial bool) error {
 	case fresh != prev:
 		w.logChange(ctx, prev, fresh)
 	}
+
+	findings := Check(fields, fresh, nil)
+	if initial || !slices.Equal(findings, w.findings) {
+		w.logFindings(ctx, findings)
+	}
+	w.findings = findings
 	return nil
+}
+
+// logFindings logs each problem of the stored settings, so a value the
+// selector replaces with its default shows up in the log.
+func (w *Watcher) logFindings(ctx context.Context, findings []Finding) {
+	for _, f := range findings {
+		level := slog.LevelWarn
+		if f.Severity == SeverityError {
+			level = slog.LevelError
+		}
+		w.log.Log(ctx, level, "monitor settings problem", slog.String("problem", f.Message))
+	}
 }
 
 func (w *Watcher) logSettings(ctx context.Context, level slog.Level, msg string, s MonitorSettings) {
 	window := s.SampleWindow.Duration
-	maxSamples := MaxSamplesInWindow(s.IntervalTesting.Duration, window)
-	thresholdActive := RequiredCountForActive(s.IntervalTesting.Duration, window)
-	thresholdTesting := RequiredCountForTesting(s.IntervalCandidate.Duration, window)
+	d := Derive(s)
 
 	w.log.Log(
 		ctx, level, msg,
@@ -133,21 +150,22 @@ func (w *Watcher) logSettings(ctx context.Context, level slog.Level, msg string,
 		slog.Duration("interval_all", s.IntervalAll.Duration),
 		slog.Duration("interval_candidate", s.IntervalCandidate.Duration),
 		slog.Duration("sample_window", window),
+		slog.Duration("candidate_window", s.CandidateWindow.Duration),
 		slog.Int("batch_size", int(s.BatchSize)),
 		slog.Bool("allow_leap_announcements", s.AllowLeapAnnouncements),
-		slog.Int64("max_samples_in_window", maxSamples),
-		slog.Int64("min_count_for_active", thresholdActive),
-		slog.Int64("min_count_for_testing", thresholdTesting),
+		slog.Int64("max_samples_in_window", d.TestingMaxSamples),
+		slog.Int64("min_count_for_active", d.TestingRequired),
+		slog.Int64("min_count_for_testing", d.CandidateRequired),
 	)
 
-	if maxSamples < HistoricalMinForActive {
+	if d.TestingMaxSamples < HistoricalMinForActive {
 		w.log.WarnContext(
 			ctx,
 			"interval_testing too long for historical 32-sample threshold; using degraded dynamic threshold",
 			slog.Duration("interval_testing", s.IntervalTesting.Duration),
 			slog.Duration("sample_window", window),
-			slog.Int64("max_samples_in_window", maxSamples),
-			slog.Int64("dynamic_threshold", thresholdActive),
+			slog.Int64("max_samples_in_window", d.TestingMaxSamples),
+			slog.Int64("dynamic_threshold", d.TestingRequired),
 		)
 	}
 }

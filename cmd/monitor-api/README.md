@@ -5,6 +5,36 @@ connect with Connect RPC (`monitor.v2.MonitorService`) to get their
 configuration and server lists and to submit test results. It also
 tracks agent status over MQTT.
 
+## Checking the settings
+
+`monitor-api db settings` reads `system_settings("monitors")` and prints:
+
+- each key: the stored value, the value the selector uses, whether the
+  api accepts it (for `candidate_pool`, `trial_every`, `candidate_window`
+  and `new_monitor_servers`), and why a stored value isn't used
+- the derived values: the samples a candidate and a testing monitor can
+  get against the count they need, the trials running at once per
+  server, and the candidates a new server starts with
+- the checks: errors and warnings
+- the load per IP version: servers and monitors, rows per status,
+  candidates per server, trials started in the last 24h against the
+  expected number, promotions in `promotion_window` against
+  `health_promotions`, candidate probes per monitor and hour, and the
+  servers in bootstrap mode
+
+It exits non-zero when a check is an error: a key the api requires is
+missing or under its minimum, or a promotion needs more samples than a
+monitor can get. Run it after each edit of the setting. `--json` prints
+the same report as JSON. The database config is read from `--config`
+(`database.yaml`), as for `db mon`:
+
+```
+monitor-api db -c database.yaml settings
+```
+
+The keys, defaults and minimums are in `go.ntppool.org/common/monitorsettings`,
+shared with the api.
+
 ## Prometheus Metrics
 
 `monitor-api` exports metrics on its metrics port (`--metrics-port`,

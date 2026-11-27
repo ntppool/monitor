@@ -60,7 +60,7 @@ func classifyServer(evaluated []evaluatedMonitor) serverMode {
 		}
 	}
 	return serverMode{
-		Bootstrap: active <= bootStrapModeLimit,
+		Bootstrap: active <= BootstrapModeLimit,
 		LooksBad:  unhealthy*2 > sampled,
 	}
 }

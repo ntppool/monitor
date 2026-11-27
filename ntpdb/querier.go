@@ -44,6 +44,24 @@ type Querier interface {
 	GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error)
 	GetServers(ctx context.Context, arg GetServersParams) ([]GetServersRow, error)
 	GetServersMonitorReview(ctx context.Context) ([]int64, error)
+	// Per IP version: the active and testing monitors, and the candidate rows
+	// per monitor (average and max over those monitors).
+	GetSettingsMonitorLoad(ctx context.Context) ([]GetSettingsMonitorLoadRow, error)
+	// Per IP version and boundary: the promotions within the window, counted
+	// like GetServerPromotionCounts, the most on one server, and the servers
+	// with at least budget promotions.
+	GetSettingsPromotions(ctx context.Context, arg GetSettingsPromotionsParams) ([]GetSettingsPromotionsRow, error)
+	// Read-only queries for `monitor-api db settings`. Only regular monitors
+	// (type 'monitor') and servers that aren't deleted are counted.
+	// Per IP version: servers, the candidates per server, and the servers with
+	// at most bootstrap_limit active rows (the selector's bootstrap mode).
+	GetSettingsServerLoad(ctx context.Context, bootstrapLimit int64) ([]GetSettingsServerLoadRow, error)
+	// Per IP version and status: the server_scores rows.
+	GetSettingsStatusCounts(ctx context.Context) ([]GetSettingsStatusCountsRow, error)
+	// Per IP version: the trials started within the window, with the condition
+	// of GetTrialStartedSince. A new server's first candidates count as trials
+	// too.
+	GetSettingsTrialStarts(ctx context.Context, sinceSeconds float64) ([]GetSettingsTrialStartsRow, error)
 	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
 	// Whether a candidate trial started on the server within the window: a row
 	// inserted as a candidate, or a reserve row made a candidate. A testing row

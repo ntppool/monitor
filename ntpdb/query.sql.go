@@ -811,6 +811,288 @@ func (q *Queries) GetServersMonitorReview(ctx context.Context) ([]int64, error) 
 	return items, nil
 }
 
+const getSettingsMonitorLoad = `-- name: GetSettingsMonitorLoad :many
+WITH candidates AS (
+    SELECT ss.monitor_id, count(*) AS candidates
+      FROM server_scores ss
+      INNER JOIN servers s ON s.id = ss.server_id
+      WHERE ss.status = 'candidate'
+        AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+      GROUP BY ss.monitor_id
+)
+SELECT m.ip_version::text AS ip_version,
+    (count(*) FILTER (WHERE m.status = 'active'))::bigint AS active_monitors,
+    (count(*) FILTER (WHERE m.status = 'testing'))::bigint AS testing_monitors,
+    coalesce(avg(coalesce(c.candidates, 0)), 0)::float8 AS candidates_avg,
+    coalesce(max(c.candidates), 0)::bigint AS candidates_max
+  FROM monitors m
+  LEFT JOIN candidates c ON c.monitor_id = m.id
+  WHERE m.type = 'monitor'
+    AND m.status IN ('active', 'testing')
+    AND m.ip_version IS NOT NULL
+  GROUP BY m.ip_version
+  ORDER BY m.ip_version
+`
+
+type GetSettingsMonitorLoadRow struct {
+	IpVersion       string  `json:"ip_version"`
+	ActiveMonitors  int64   `json:"active_monitors"`
+	TestingMonitors int64   `json:"testing_monitors"`
+	CandidatesAvg   float64 `json:"candidates_avg"`
+	CandidatesMax   int64   `json:"candidates_max"`
+}
+
+// Per IP version: the active and testing monitors, and the candidate rows
+// per monitor (average and max over those monitors).
+func (q *Queries) GetSettingsMonitorLoad(ctx context.Context) ([]GetSettingsMonitorLoadRow, error) {
+	rows, err := q.db.Query(ctx, getSettingsMonitorLoad)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSettingsMonitorLoadRow
+	for rows.Next() {
+		var i GetSettingsMonitorLoadRow
+		if err := rows.Scan(
+			&i.IpVersion,
+			&i.ActiveMonitors,
+			&i.TestingMonitors,
+			&i.CandidatesAvg,
+			&i.CandidatesMax,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSettingsPromotions = `-- name: GetSettingsPromotions :many
+WITH per_server AS (
+    SELECT l.server_id,
+        count(*) FILTER (WHERE l.old_status = 'candidate' AND l.new_status = 'testing') AS into_testing,
+        count(*) FILTER (WHERE l.old_status = 'testing' AND l.new_status = 'active') AS into_active
+      FROM server_scores_status_log l
+      INNER JOIN monitors m ON m.id = l.monitor_id
+      WHERE m.type = 'monitor'
+        AND l.op = 'update'
+        AND l.ts > NOW() - make_interval(secs => $2::float8)
+      GROUP BY l.server_id
+)
+SELECT s.ip_version::text AS ip_version,
+    coalesce(sum(p.into_testing), 0)::bigint AS into_testing,
+    coalesce(max(p.into_testing), 0)::bigint AS into_testing_max,
+    (count(*) FILTER (WHERE p.into_testing >= $1::bigint))::bigint AS into_testing_at_budget,
+    coalesce(sum(p.into_active), 0)::bigint AS into_active,
+    coalesce(max(p.into_active), 0)::bigint AS into_active_max,
+    (count(*) FILTER (WHERE p.into_active >= $1::bigint))::bigint AS into_active_at_budget
+  FROM per_server p
+  INNER JOIN servers s ON s.id = p.server_id
+  WHERE s.deletion_on IS NULL OR s.deletion_on > NOW()
+  GROUP BY s.ip_version
+  ORDER BY s.ip_version
+`
+
+type GetSettingsPromotionsParams struct {
+	Budget        int64   `json:"budget"`
+	WindowSeconds float64 `json:"window_seconds"`
+}
+
+type GetSettingsPromotionsRow struct {
+	IpVersion           string `json:"ip_version"`
+	IntoTesting         int64  `json:"into_testing"`
+	IntoTestingMax      int64  `json:"into_testing_max"`
+	IntoTestingAtBudget int64  `json:"into_testing_at_budget"`
+	IntoActive          int64  `json:"into_active"`
+	IntoActiveMax       int64  `json:"into_active_max"`
+	IntoActiveAtBudget  int64  `json:"into_active_at_budget"`
+}
+
+// Per IP version and boundary: the promotions within the window, counted
+// like GetServerPromotionCounts, the most on one server, and the servers
+// with at least budget promotions.
+func (q *Queries) GetSettingsPromotions(ctx context.Context, arg GetSettingsPromotionsParams) ([]GetSettingsPromotionsRow, error) {
+	rows, err := q.db.Query(ctx, getSettingsPromotions, arg.Budget, arg.WindowSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSettingsPromotionsRow
+	for rows.Next() {
+		var i GetSettingsPromotionsRow
+		if err := rows.Scan(
+			&i.IpVersion,
+			&i.IntoTesting,
+			&i.IntoTestingMax,
+			&i.IntoTestingAtBudget,
+			&i.IntoActive,
+			&i.IntoActiveMax,
+			&i.IntoActiveAtBudget,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSettingsServerLoad = `-- name: GetSettingsServerLoad :many
+
+WITH monitor_rows AS (
+    SELECT ss.server_id, ss.status
+      FROM server_scores ss
+      INNER JOIN monitors m ON m.id = ss.monitor_id
+      WHERE m.type = 'monitor'
+), per_server AS (
+    SELECT s.id, s.ip_version::text AS ip_version,
+        count(r.server_id) FILTER (WHERE r.status = 'candidate') AS candidates,
+        count(r.server_id) FILTER (WHERE r.status = 'active') AS active
+      FROM servers s
+      LEFT JOIN monitor_rows r ON r.server_id = s.id
+      WHERE s.deletion_on IS NULL OR s.deletion_on > NOW()
+      GROUP BY s.id, s.ip_version
+)
+SELECT ip_version::text AS ip_version,
+    count(*)::bigint AS servers,
+    avg(candidates)::float8 AS candidates_avg,
+    (percentile_disc(0.5) WITHIN GROUP (ORDER BY candidates))::bigint AS candidates_p50,
+    (percentile_disc(0.9) WITHIN GROUP (ORDER BY candidates))::bigint AS candidates_p90,
+    max(candidates)::bigint AS candidates_max,
+    (count(*) FILTER (WHERE active <= $1::bigint))::bigint AS bootstrap_servers
+  FROM per_server
+  GROUP BY ip_version
+  ORDER BY ip_version
+`
+
+type GetSettingsServerLoadRow struct {
+	IpVersion        string  `json:"ip_version"`
+	Servers          int64   `json:"servers"`
+	CandidatesAvg    float64 `json:"candidates_avg"`
+	CandidatesP50    int64   `json:"candidates_p50"`
+	CandidatesP90    int64   `json:"candidates_p90"`
+	CandidatesMax    int64   `json:"candidates_max"`
+	BootstrapServers int64   `json:"bootstrap_servers"`
+}
+
+// Read-only queries for `monitor-api db settings`. Only regular monitors
+// (type 'monitor') and servers that aren't deleted are counted.
+// Per IP version: servers, the candidates per server, and the servers with
+// at most bootstrap_limit active rows (the selector's bootstrap mode).
+func (q *Queries) GetSettingsServerLoad(ctx context.Context, bootstrapLimit int64) ([]GetSettingsServerLoadRow, error) {
+	rows, err := q.db.Query(ctx, getSettingsServerLoad, bootstrapLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSettingsServerLoadRow
+	for rows.Next() {
+		var i GetSettingsServerLoadRow
+		if err := rows.Scan(
+			&i.IpVersion,
+			&i.Servers,
+			&i.CandidatesAvg,
+			&i.CandidatesP50,
+			&i.CandidatesP90,
+			&i.CandidatesMax,
+			&i.BootstrapServers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSettingsStatusCounts = `-- name: GetSettingsStatusCounts :many
+SELECT s.ip_version::text AS ip_version, ss.status, count(*)::bigint AS rows
+  FROM server_scores ss
+  INNER JOIN servers s ON s.id = ss.server_id
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  WHERE m.type = 'monitor'
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+  GROUP BY s.ip_version, ss.status
+  ORDER BY s.ip_version, ss.status
+`
+
+type GetSettingsStatusCountsRow struct {
+	IpVersion string             `json:"ip_version"`
+	Status    ServerScoresStatus `json:"status"`
+	Rows      int64              `json:"rows"`
+}
+
+// Per IP version and status: the server_scores rows.
+func (q *Queries) GetSettingsStatusCounts(ctx context.Context) ([]GetSettingsStatusCountsRow, error) {
+	rows, err := q.db.Query(ctx, getSettingsStatusCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSettingsStatusCountsRow
+	for rows.Next() {
+		var i GetSettingsStatusCountsRow
+		if err := rows.Scan(&i.IpVersion, &i.Status, &i.Rows); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSettingsTrialStarts = `-- name: GetSettingsTrialStarts :many
+SELECT s.ip_version::text AS ip_version, count(*)::bigint AS trials
+  FROM server_scores_status_log l
+  INNER JOIN servers s ON s.id = l.server_id
+  WHERE l.ts > NOW() - make_interval(secs => $1::float8)
+    AND ((l.op = 'insert' AND l.new_status = 'candidate')
+      OR (l.op = 'update' AND l.old_status = 'reserve' AND l.new_status = 'candidate'))
+    AND NOT EXISTS (
+        SELECT 1 FROM monitors m
+          WHERE m.id = l.monitor_id AND m.type <> 'monitor')
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+  GROUP BY s.ip_version
+  ORDER BY s.ip_version
+`
+
+type GetSettingsTrialStartsRow struct {
+	IpVersion string `json:"ip_version"`
+	Trials    int64  `json:"trials"`
+}
+
+// Per IP version: the trials started within the window, with the condition
+// of GetTrialStartedSince. A new server's first candidates count as trials
+// too.
+func (q *Queries) GetSettingsTrialStarts(ctx context.Context, sinceSeconds float64) ([]GetSettingsTrialStartsRow, error) {
+	rows, err := q.db.Query(ctx, getSettingsTrialStarts, sinceSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSettingsTrialStartsRow
+	for rows.Next() {
+		var i GetSettingsTrialStartsRow
+		if err := rows.Scan(&i.IpVersion, &i.Trials); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSystemSetting = `-- name: GetSystemSetting :one
 SELECT value FROM system_settings WHERE "key" = $1
 `

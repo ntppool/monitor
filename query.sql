@@ -338,3 +338,114 @@ WHERE server_id = $1 AND monitor_id = $2;
 -- Remove a monitor assignment from a server
 DELETE FROM server_scores
 WHERE server_id = $1 AND monitor_id = $2;
+
+-- Read-only queries for `monitor-api db settings`. Only regular monitors
+-- (type 'monitor') and servers that aren't deleted are counted.
+
+-- name: GetSettingsServerLoad :many
+-- Per IP version: servers, the candidates per server, and the servers with
+-- at most bootstrap_limit active rows (the selector's bootstrap mode).
+WITH monitor_rows AS (
+    SELECT ss.server_id, ss.status
+      FROM server_scores ss
+      INNER JOIN monitors m ON m.id = ss.monitor_id
+      WHERE m.type = 'monitor'
+), per_server AS (
+    SELECT s.id, s.ip_version::text AS ip_version,
+        count(r.server_id) FILTER (WHERE r.status = 'candidate') AS candidates,
+        count(r.server_id) FILTER (WHERE r.status = 'active') AS active
+      FROM servers s
+      LEFT JOIN monitor_rows r ON r.server_id = s.id
+      WHERE s.deletion_on IS NULL OR s.deletion_on > NOW()
+      GROUP BY s.id, s.ip_version
+)
+SELECT ip_version::text AS ip_version,
+    count(*)::bigint AS servers,
+    avg(candidates)::float8 AS candidates_avg,
+    (percentile_disc(0.5) WITHIN GROUP (ORDER BY candidates))::bigint AS candidates_p50,
+    (percentile_disc(0.9) WITHIN GROUP (ORDER BY candidates))::bigint AS candidates_p90,
+    max(candidates)::bigint AS candidates_max,
+    (count(*) FILTER (WHERE active <= sqlc.arg('bootstrap_limit')::bigint))::bigint AS bootstrap_servers
+  FROM per_server
+  GROUP BY ip_version
+  ORDER BY ip_version;
+
+-- name: GetSettingsStatusCounts :many
+-- Per IP version and status: the server_scores rows.
+SELECT s.ip_version::text AS ip_version, ss.status, count(*)::bigint AS rows
+  FROM server_scores ss
+  INNER JOIN servers s ON s.id = ss.server_id
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  WHERE m.type = 'monitor'
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+  GROUP BY s.ip_version, ss.status
+  ORDER BY s.ip_version, ss.status;
+
+-- name: GetSettingsMonitorLoad :many
+-- Per IP version: the active and testing monitors, and the candidate rows
+-- per monitor (average and max over those monitors).
+WITH candidates AS (
+    SELECT ss.monitor_id, count(*) AS candidates
+      FROM server_scores ss
+      INNER JOIN servers s ON s.id = ss.server_id
+      WHERE ss.status = 'candidate'
+        AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+      GROUP BY ss.monitor_id
+)
+SELECT m.ip_version::text AS ip_version,
+    (count(*) FILTER (WHERE m.status = 'active'))::bigint AS active_monitors,
+    (count(*) FILTER (WHERE m.status = 'testing'))::bigint AS testing_monitors,
+    coalesce(avg(coalesce(c.candidates, 0)), 0)::float8 AS candidates_avg,
+    coalesce(max(c.candidates), 0)::bigint AS candidates_max
+  FROM monitors m
+  LEFT JOIN candidates c ON c.monitor_id = m.id
+  WHERE m.type = 'monitor'
+    AND m.status IN ('active', 'testing')
+    AND m.ip_version IS NOT NULL
+  GROUP BY m.ip_version
+  ORDER BY m.ip_version;
+
+-- name: GetSettingsTrialStarts :many
+-- Per IP version: the trials started within the window, with the condition
+-- of GetTrialStartedSince. A new server's first candidates count as trials
+-- too.
+SELECT s.ip_version::text AS ip_version, count(*)::bigint AS trials
+  FROM server_scores_status_log l
+  INNER JOIN servers s ON s.id = l.server_id
+  WHERE l.ts > NOW() - make_interval(secs => sqlc.arg('since_seconds')::float8)
+    AND ((l.op = 'insert' AND l.new_status = 'candidate')
+      OR (l.op = 'update' AND l.old_status = 'reserve' AND l.new_status = 'candidate'))
+    AND NOT EXISTS (
+        SELECT 1 FROM monitors m
+          WHERE m.id = l.monitor_id AND m.type <> 'monitor')
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+  GROUP BY s.ip_version
+  ORDER BY s.ip_version;
+
+-- name: GetSettingsPromotions :many
+-- Per IP version and boundary: the promotions within the window, counted
+-- like GetServerPromotionCounts, the most on one server, and the servers
+-- with at least budget promotions.
+WITH per_server AS (
+    SELECT l.server_id,
+        count(*) FILTER (WHERE l.old_status = 'candidate' AND l.new_status = 'testing') AS into_testing,
+        count(*) FILTER (WHERE l.old_status = 'testing' AND l.new_status = 'active') AS into_active
+      FROM server_scores_status_log l
+      INNER JOIN monitors m ON m.id = l.monitor_id
+      WHERE m.type = 'monitor'
+        AND l.op = 'update'
+        AND l.ts > NOW() - make_interval(secs => sqlc.arg('window_seconds')::float8)
+      GROUP BY l.server_id
+)
+SELECT s.ip_version::text AS ip_version,
+    coalesce(sum(p.into_testing), 0)::bigint AS into_testing,
+    coalesce(max(p.into_testing), 0)::bigint AS into_testing_max,
+    (count(*) FILTER (WHERE p.into_testing >= sqlc.arg('budget')::bigint))::bigint AS into_testing_at_budget,
+    coalesce(sum(p.into_active), 0)::bigint AS into_active,
+    coalesce(max(p.into_active), 0)::bigint AS into_active_max,
+    (count(*) FILTER (WHERE p.into_active >= sqlc.arg('budget')::bigint))::bigint AS into_active_at_budget
+  FROM per_server p
+  INNER JOIN servers s ON s.id = p.server_id
+  WHERE s.deletion_on IS NULL OR s.deletion_on > NOW()
+  GROUP BY s.ip_version
+  ORDER BY s.ip_version;

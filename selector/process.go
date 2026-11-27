@@ -13,7 +13,7 @@ const (
 	targetActiveMonitors       = 7 // Target number of active monitors per server
 	baseTestingTarget          = 5 // Base number of testing monitors
 	minGloballyActiveInTesting = 4 // Minimum globally active monitors in testing pool
-	bootStrapModeLimit         = 4 // If active monitors <= this, add new ones faster
+	BootstrapModeLimit         = 4 // If active monitors <= this, add new ones faster (bootstrap mode)
 )
 
 // replacementType defines the type of performance-based replacement

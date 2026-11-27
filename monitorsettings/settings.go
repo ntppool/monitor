@@ -1,147 +1,18 @@
 // Package monitorsettings provides the live MonitorSettings shared between
 // the monitor-api server and the selector, including derived sample-count
-// thresholds used by the selector's promotion rules.
+// thresholds used by the selector's promotion rules. The payload, its
+// defaults and minimums are in go.ntppool.org/common/monitorsettings.
 package monitorsettings
 
 import (
 	"math"
 	"time"
 
-	"go.ntppool.org/common/timeutil"
+	shared "go.ntppool.org/common/monitorsettings"
 )
 
 // MonitorSettings is the JSON payload stored under system_settings(key="monitors").
-type MonitorSettings struct {
-	IntervalActive  timeutil.Duration `json:"interval_active"`
-	IntervalTesting timeutil.Duration `json:"interval_testing"`
-	IntervalAll     timeutil.Duration `json:"interval_all"`
-	BatchSize       int32             `json:"batch_size"`
-
-	// IntervalCandidate is how often a candidate (or paused) row is
-	// handed out for testing. The api also spreads a new server's first
-	// candidate probes over one interval.
-	IntervalCandidate timeutil.Duration `json:"interval_candidate"`
-
-	// SampleWindow is the trailing window over which the selector counts
-	// the log_scores of rows that are not candidates (see CandidateWindow).
-	SampleWindow timeutil.Duration `json:"sample_window"`
-
-	// PromotionWindow is the trailing window over which the selector
-	// counts a server's promotions across each status boundary.
-	PromotionWindow timeutil.Duration `json:"promotion_window"`
-
-	// HealthPromotions is how many health replacements and fills the
-	// selector allows per server and boundary within PromotionWindow.
-	HealthPromotions int `json:"health_promotions"`
-
-	// ReviewEvery is how long after a review without changes the
-	// selector reviews a server again.
-	ReviewEvery timeutil.Duration `json:"review_every"`
-
-	// ReviewAfterChange is the time until the next review after a review
-	// that changed a status.
-	ReviewAfterChange timeutil.Duration `json:"review_after_change"`
-
-	// ReviewBootstrap is the time until the next review of a server in
-	// bootstrap mode, where it needs monitors quickly.
-	ReviewBootstrap timeutil.Duration `json:"review_bootstrap"`
-
-	// CandidatePool is how many candidates a server keeps after trials
-	// end. Another candidate_window / trial_every are on trial.
-	CandidatePool int `json:"candidate_pool"`
-
-	// TrialEvery is the time between the starts of two candidate trials on
-	// one server.
-	TrialEvery timeutil.Duration `json:"trial_every"`
-
-	// CandidateWindow is how long a candidate is on trial, and the trailing
-	// window over which the selector counts a candidate's log_scores.
-	CandidateWindow timeutil.Duration `json:"candidate_window"`
-
-	// AllowLeapAnnouncements turns off the score penalty for responses
-	// announcing a leap second (LI=1 or LI=2). Set it if a real leap
-	// second is ever scheduled.
-	AllowLeapAnnouncements bool `json:"allow_leap_announcements"`
-}
-
-// Default values applied to MonitorSettings when fields are unset or below
-// the minimum sanity threshold. Kept in sync with the historical defaults
-// that previously lived in server/functions.go.
-const (
-	DefaultIntervalActive  = 9 * time.Minute
-	DefaultIntervalTesting = 30 * time.Minute
-	DefaultIntervalAll     = 60 * time.Second
-	DefaultBatchSize       = int32(10)
-
-	DefaultIntervalCandidate = 2 * time.Hour
-	DefaultSampleWindow      = 24 * time.Hour
-	DefaultPromotionWindow   = 24 * time.Hour
-	DefaultHealthPromotions  = 3
-	DefaultReviewEvery       = 2 * time.Hour
-	DefaultReviewAfterChange = 4 * time.Hour
-	DefaultReviewBootstrap   = time.Hour
-	DefaultCandidatePool     = 30
-	DefaultTrialEvery        = 12 * time.Hour
-	DefaultCandidateWindow   = 72 * time.Hour
-
-	minIntervalActive    = 20 * time.Second
-	minIntervalTesting   = 60 * time.Second
-	minIntervalAll       = 10 * time.Second
-	minIntervalCandidate = 10 * time.Minute
-	minSampleWindow      = time.Hour
-	minPromotionWindow   = time.Hour
-	minReview            = time.Minute
-	minTrialEvery        = time.Hour
-	minCandidateWindow   = time.Hour
-)
-
-// WithDefaults returns a copy of s with defaults applied where the
-// configured value is missing or below the minimum sanity threshold.
-func (s MonitorSettings) WithDefaults() MonitorSettings {
-	if s.IntervalActive.Duration < minIntervalActive {
-		s.IntervalActive = timeutil.Duration{Duration: DefaultIntervalActive}
-	}
-	if s.IntervalTesting.Duration < minIntervalTesting {
-		s.IntervalTesting = timeutil.Duration{Duration: DefaultIntervalTesting}
-	}
-	if s.IntervalAll.Duration < minIntervalAll {
-		s.IntervalAll = timeutil.Duration{Duration: DefaultIntervalAll}
-	}
-	if s.IntervalCandidate.Duration < minIntervalCandidate {
-		s.IntervalCandidate = timeutil.Duration{Duration: DefaultIntervalCandidate}
-	}
-	if s.SampleWindow.Duration < minSampleWindow {
-		s.SampleWindow = timeutil.Duration{Duration: DefaultSampleWindow}
-	}
-	if s.PromotionWindow.Duration < minPromotionWindow {
-		s.PromotionWindow = timeutil.Duration{Duration: DefaultPromotionWindow}
-	}
-	if s.ReviewEvery.Duration < minReview {
-		s.ReviewEvery = timeutil.Duration{Duration: DefaultReviewEvery}
-	}
-	if s.ReviewAfterChange.Duration < minReview {
-		s.ReviewAfterChange = timeutil.Duration{Duration: DefaultReviewAfterChange}
-	}
-	if s.ReviewBootstrap.Duration < minReview {
-		s.ReviewBootstrap = timeutil.Duration{Duration: DefaultReviewBootstrap}
-	}
-	if s.TrialEvery.Duration < minTrialEvery {
-		s.TrialEvery = timeutil.Duration{Duration: DefaultTrialEvery}
-	}
-	if s.CandidateWindow.Duration < minCandidateWindow {
-		s.CandidateWindow = timeutil.Duration{Duration: DefaultCandidateWindow}
-	}
-	if s.CandidatePool <= 0 {
-		s.CandidatePool = DefaultCandidatePool
-	}
-	if s.HealthPromotions <= 0 {
-		s.HealthPromotions = DefaultHealthPromotions
-	}
-	if s.BatchSize <= 0 {
-		s.BatchSize = DefaultBatchSize
-	}
-	return s
-}
+type MonitorSettings = shared.MonitorSettings
 
 // Threshold constants for selector promotion rules.
 //

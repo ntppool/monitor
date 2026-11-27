@@ -22,6 +22,10 @@
 - Fix: After a restart or broker reconnect, `monitor-api` uses the age of each agent's retained status to decide if the agent is online. It takes the age from the MQTT message expiry the broker has left, so the agent's clock doesn't matter. Before, a stopped agent's last "online" status, kept by the broker for up to a day, listed it as online for another 15 minutes after each restart.
 - Fix: `monitor-api` exits with an error when the MQTT setup fails (for example the CA pool can't be loaded), instead of crashing with a nil pointer
 - `log_scores` records the status (`candidate`, `testing`, `active`) the monitor had for the server when it submitted the result. The scorer's own rows leave it empty.
+- New `monitor-api db settings [--json]`: shows each key of `system_settings("monitors")` with the stored value, the value the selector uses and whether the api accepts it, the derived sample counts and trial numbers, and the load per IP version (rows per status, candidates per server, trial starts, promotions against `health_promotions`, candidate probes per monitor). It exits non-zero when a key the api requires is missing or under its minimum, or when a promotion needs more samples than a monitor can get. Run it after each edit of the setting.
+- `monitor-api` and the selector log the same checks when they load the setting and when the problems change: errors at ERROR, other problems (such as a value replaced with the default) at WARN, message "monitor settings problem".
+- The setting's keys, defaults and minimums moved to `go.ntppool.org/common/monitorsettings`, which the api uses too, so the api refuses the values the selector would replace with a default.
+- Fix: the startup log's `min_count_for_testing` is computed over `candidate_window`, as the selector does, not `sample_window`.
 
 ### Selector
 - New server status `reserve`: a monitor that is not a candidate, testing or active on a server. `GetServers` hands out no work for it. Rule 7 unpauses a resolved row to `reserve` (was `candidate`).
