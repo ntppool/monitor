@@ -5,10 +5,11 @@
 ### Upgrade notes
 - **Minimum agent version v4.0.5**: `monitor-api` refuses API calls from agents older than v4.0.5, with an error the agent logs telling the operator to upgrade. Those agents stop testing until they are upgraded. Agents before v4.0.5 republish their MQTT status only once an hour, so `monitor-api` would list them as offline most of the time.
 - **Agent metrics endpoints removed**: `monitor-api` no longer serves `/monitors/metrics` and `/monitors/metrics/discovery`. They let Prometheus scrape agents through MQTT, but agents since v4.0.0 send their metrics over OTLP and answered the scrape with an empty body. Remove any Prometheus job that uses them. The agent still answers the `metrics` MQTT request with an empty reply, so rolling `monitor-api` back to an older version keeps working.
+- **Deploy the selector before `monitor-api`**: `monitor-api` no longer hands out `paused` rows, so they stop getting samples. Only the selector from this release reviews rows without samples, so with an older selector paused rows would never be unpaused.
 - **Needs api migration 051**: Run the api migration that adds `log_scores.status` before deploying `monitor-api` and `monitor-scorer`. Without the column `monitor-api` fails every result submit and the scorer fails to read scores.
 
 ### Server
-- `GetServers` hands out only rows with status `candidate`, `testing`, `active` or `paused`. Candidates and paused rows are due after `interval_candidate` (setting, default 2h, was a fixed 120 minutes); active and testing rows of a down server stay at 120 minutes.
+- `GetServers` hands out only rows with status `candidate`, `testing` or `active`; `paused` rows get no work. Candidates are due after `interval_candidate` (setting, default 2h, was a fixed 120 minutes); active and testing rows of a down server stay at 120 minutes.
 - New `sample_window` setting (default 24h) in `system_settings("monitors")`: how far back the selector counts samples. It and `interval_candidate` set the selector's sample-count thresholds. A value below the minimum (1h for `sample_window`, 10m for `interval_candidate`) falls back to the default.
 - New metrics `queue_handouts_total`, `queue_handout_interval_seconds`, `queue_live_servers` and `queue_interval_seconds`. The interval histogram leaves out active and testing rows of down servers, which run on the fixed 120 minutes.
 - Fix: `monitor-api` sends `info` when the merged config has no `otlp_log_level`. Clearing a debug override now returns the agent to `info` when there's no system-level setting.

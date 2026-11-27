@@ -191,12 +191,12 @@ SELECT sqlc.embed(s), ss.status, ss.queue_ts AS prev_queue_ts,
     JOIN server_scores ss ON (s.id = ss.server_id)
 WHERE ss.monitor_id = sqlc.arg('monitor_id')
     AND s.ip_version = sqlc.arg('ip_version')
-    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active', 'paused'))
+    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active'))
           OR (ss.score_raw > -90 AND ss.status = 'active'
               AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds')))
           OR (ss.score_raw > -90 AND ss.status = 'testing'
               AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds_testing')))
-          OR (ss.status IN ('candidate', 'paused')
+          OR (ss.status = 'candidate'
               AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds_candidate')))
           OR (ss.status IN ('active', 'testing') AND ss.score_raw <= -90
               AND ss.queue_ts < NOW() - INTERVAL '120 minutes'))

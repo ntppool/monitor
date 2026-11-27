@@ -692,12 +692,12 @@ SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum,
     JOIN server_scores ss ON (s.id = ss.server_id)
 WHERE ss.monitor_id = $1
     AND s.ip_version = $2
-    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active', 'paused'))
+    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active'))
           OR (ss.score_raw > -90 AND ss.status = 'active'
               AND ss.queue_ts < NOW() - make_interval(secs => $3))
           OR (ss.score_raw > -90 AND ss.status = 'testing'
               AND ss.queue_ts < NOW() - make_interval(secs => $4))
-          OR (ss.status IN ('candidate', 'paused')
+          OR (ss.status = 'candidate'
               AND ss.queue_ts < NOW() - make_interval(secs => $5))
           OR (ss.status IN ('active', 'testing') AND ss.score_raw <= -90
               AND ss.queue_ts < NOW() - INTERVAL '120 minutes'))

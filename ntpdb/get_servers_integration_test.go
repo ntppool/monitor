@@ -14,8 +14,8 @@ import (
 )
 
 // GetServers hands out a row only for the statuses it names, on the
-// cadence of that status. interval_candidate paces candidate and paused
-// rows; active and testing rows of a down server (score_raw <= -90) stay
+// cadence of that status. interval_candidate paces candidate rows; paused
+// rows get no work; active and testing rows of a down server (score_raw <= -90) stay
 // at the fixed 120 minutes whatever interval_candidate is.
 func TestGetServers_StatusBranches(t *testing.T) {
 	tdb := testutil.NewTestDB(t)
@@ -54,7 +54,8 @@ func TestGetServers_StatusBranches(t *testing.T) {
 		{"candidate never queued", ntpdb.ServerScoresStatusCandidate, 0, nil, 2 * time.Hour, true, false},
 		{"candidate queued 1h ago", ntpdb.ServerScoresStatusCandidate, 0, ptr(time.Hour), 2 * time.Hour, false, false},
 		{"candidate queued 2h1m ago", ntpdb.ServerScoresStatusCandidate, 0, ptr(2*time.Hour + time.Minute), 2 * time.Hour, true, false},
-		{"paused queued 2h1m ago", ntpdb.ServerScoresStatusPaused, 0, ptr(2*time.Hour + time.Minute), 2 * time.Hour, true, false},
+		{"paused queued 2h1m ago", ntpdb.ServerScoresStatusPaused, 0, ptr(2*time.Hour + time.Minute), 2 * time.Hour, false, false},
+		{"paused never queued", ntpdb.ServerScoresStatusPaused, 0, nil, 2 * time.Hour, false, false},
 		{"active queued 10m ago", ntpdb.ServerScoresStatusActive, 10, ptr(10 * time.Minute), 2 * time.Hour, true, false},
 		{"testing queued 20m ago", ntpdb.ServerScoresStatusTesting, 10, ptr(20 * time.Minute), 2 * time.Hour, false, false},
 		{"active down server 2h1m ago, 4h candidate", ntpdb.ServerScoresStatusActive, -95, ptr(2*time.Hour + time.Minute), 4 * time.Hour, true, true},
