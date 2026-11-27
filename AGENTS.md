@@ -624,7 +624,7 @@ For complex changes, break work into distinct phases:
 - Rule 2.5: Testing pool management
 - Rule 6: Bootstrap promotion
 
-Rules 3 and 5 enforce a minimum sample count over the trailing 24h window.
-The thresholds are derived from `interval_testing` (or the 120-min
-candidate fallback) by `monitorsettings`. See `selector/README.md`
+Rules 3 and 5 enforce a minimum sample count over the trailing
+`sample_window` (default 24h). The thresholds are derived from
+`interval_testing` and `interval_candidate` by `monitorsettings`. See `selector/README.md`
 section "Promotion Sample-Count Thresholds" for the formula and table.

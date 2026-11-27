@@ -112,16 +112,16 @@ histogram_quantile(0.95, rate(selector_process_duration_seconds_bucket[5m]))
 
 Rule 3 (testing → active) and Rule 5 (candidate → testing) each require a
 minimum number of `log_scores` rows per (monitor, server) within the
-trailing 24-hour window before a promotion is allowed. The window is set
-in the `GetMonitorPriority` SQL query (`interval 24 hour`); the
-thresholds live in `monitorsettings`.
+trailing sample window before a promotion is allowed. The window is the
+`sample_window` setting (default 24h), which the selector passes to the
+`GetMonitorPriority` SQL query; the thresholds live in `monitorsettings`.
 
 The thresholds are derived from the system-wide `monitors` setting so they
 scale with the configured polling cadence:
 
 ```
 required = min(historicalFloor, ceil(0.80 × maxSamplesInWindow))
-maxSamplesInWindow = 24h / pollInterval
+maxSamplesInWindow = sample_window / pollInterval
 ```
 
 with an absolute floor of 8. `historicalFloor` is 32 for testing → active
@@ -130,11 +130,12 @@ and 9 for candidate → testing.
 `pollInterval` differs by transition:
 
 - **testing → active**: `interval_testing` from `system_settings("monitors")`.
-- **candidate → testing**: hardcoded 120-minute fallback branch in
-  `GetServers` (candidate-status `server_scores` rows match neither the
-  active nor testing branch of the polling-eligibility `OR`).
+- **candidate → testing**: `interval_candidate` from
+  `system_settings("monitors")` (default 2h), the cadence at which
+  `GetServers` hands out candidate and paused rows.
 
-Resulting thresholds at various `interval_testing` values:
+Resulting thresholds at various `interval_testing` values, with the
+default 24h `sample_window`:
 
 | `interval_testing` | max samples / 24h | testing → active threshold |
 |---|---|---|

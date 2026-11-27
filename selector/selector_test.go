@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -172,7 +173,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
-				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
+				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -183,7 +184,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
-				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
+				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -194,7 +195,7 @@ func TestIterativeAccountLimitEnforcement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
-				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
+				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},
@@ -277,7 +278,7 @@ func TestEmergencyOverrideBehavior(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive, // Must be globally active for emergency promotion
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
 				IsHealthy:    true,
-				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
+				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 		},

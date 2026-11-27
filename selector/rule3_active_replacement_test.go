@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -46,7 +47,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				Priority:     testingPriorities[i],
 				IsHealthy:    true,
-				Count:        int64(minCountForActive), // Ensure testing monitors can be promoted to active
+				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},

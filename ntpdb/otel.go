@@ -121,6 +121,34 @@ func (_d QuerierTxWithTracing) Commit(ctx context.Context) (err error) {
 	return _d.QuerierTx.Commit(ctx)
 }
 
+// CountLiveServers implements QuerierTx
+func (_d QuerierTxWithTracing) CountLiveServers(ctx context.Context) (ca1 []CountLiveServersRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.CountLiveServers")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx}, map[string]interface{}{
+				"ca1": ca1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.CountLiveServers(ctx)
+}
+
 // DeleteServerScore implements QuerierTx
 func (_d QuerierTxWithTracing) DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) (err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.DeleteServerScore")
@@ -178,13 +206,13 @@ func (_d QuerierTxWithTracing) GetMinLogScoreID(ctx context.Context) (i1 int64, 
 }
 
 // GetMonitorPriority implements QuerierTx
-func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID int64) (ga1 []GetMonitorPriorityRow, err error) {
+func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) (ga1 []GetMonitorPriorityRow, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetMonitorPriority")
 	defer func() {
 		if _d._spanDecorator != nil {
 			_d._spanDecorator(_span, map[string]interface{}{
-				"ctx":      ctx,
-				"serverID": serverID}, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
 				"ga1": ga1,
 				"err": err})
 		} else if err != nil {
@@ -203,7 +231,7 @@ func (_d QuerierTxWithTracing) GetMonitorPriority(ctx context.Context, serverID 
 
 		_span.End()
 	}()
-	return _d.QuerierTx.GetMonitorPriority(ctx, serverID)
+	return _d.QuerierTx.GetMonitorPriority(ctx, arg)
 }
 
 // GetMonitorServerStatusCounts implements QuerierTx
@@ -523,14 +551,14 @@ func (_d QuerierTxWithTracing) GetServerScore(ctx context.Context, arg GetServer
 }
 
 // GetServers implements QuerierTx
-func (_d QuerierTxWithTracing) GetServers(ctx context.Context, arg GetServersParams) (sa1 []Server, err error) {
+func (_d QuerierTxWithTracing) GetServers(ctx context.Context, arg GetServersParams) (ga1 []GetServersRow, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetServers")
 	defer func() {
 		if _d._spanDecorator != nil {
 			_d._spanDecorator(_span, map[string]interface{}{
 				"ctx": ctx,
 				"arg": arg}, map[string]interface{}{
-				"sa1": sa1,
+				"ga1": ga1,
 				"err": err})
 		} else if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

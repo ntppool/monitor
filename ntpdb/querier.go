@@ -12,11 +12,12 @@ import (
 
 type Querier interface {
 	ClearServerScoreConstraintViolation(ctx context.Context, arg ClearServerScoreConstraintViolationParams) error
+	CountLiveServers(ctx context.Context) ([]CountLiveServersRow, error)
 	// Remove a monitor assignment from a server
 	DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (int64, error)
-	GetMonitorPriority(ctx context.Context, serverID int64) ([]GetMonitorPriorityRow, error)
+	GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error)
 	GetMonitorServerStatusCounts(ctx context.Context) ([]GetMonitorServerStatusCountsRow, error)
 	GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error)
 	GetMonitorsTLSName(ctx context.Context, tlsName pgtype.Text) ([]Monitor, error)
@@ -33,7 +34,7 @@ type Querier interface {
 	GetServer(ctx context.Context, id int64) (Server, error)
 	GetServerIP(ctx context.Context, ip string) (Server, error)
 	GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error)
-	GetServers(ctx context.Context, arg GetServersParams) ([]Server, error)
+	GetServers(ctx context.Context, arg GetServersParams) ([]GetServersRow, error)
 	GetServersMonitorReview(ctx context.Context) ([]int64, error)
 	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
 	InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error)

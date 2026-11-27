@@ -31,6 +31,38 @@ func (q *Queries) ClearServerScoreConstraintViolation(ctx context.Context, arg C
 	return err
 }
 
+const countLiveServers = `-- name: CountLiveServers :many
+SELECT ip_version, count(*) AS servers
+    FROM servers
+WHERE deletion_on IS NULL OR deletion_on > NOW()
+GROUP BY ip_version
+`
+
+type CountLiveServersRow struct {
+	IpVersion ServersIpVersion `json:"ip_version"`
+	Servers   int64            `json:"servers"`
+}
+
+func (q *Queries) CountLiveServers(ctx context.Context) ([]CountLiveServersRow, error) {
+	rows, err := q.db.Query(ctx, countLiveServers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountLiveServersRow
+	for rows.Next() {
+		var i CountLiveServersRow
+		if err := rows.Scan(&i.IpVersion, &i.Servers); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteServerScore = `-- name: DeleteServerScore :exec
 DELETE FROM server_scores
 WHERE server_id = $1 AND monitor_id = $2
@@ -80,11 +112,16 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   LEFT JOIN accounts a ON (m.account_id = a.id)
   WHERE ls.server_id = $1
     AND m.type = 'monitor'
-    AND ls.ts > NOW() - INTERVAL '24 hours'
+    AND ls.ts > NOW() - make_interval(secs => $2::float8)
   GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
   ORDER BY healthy DESC, monitor_priority, avg_step DESC, avg_rtt
 `
+
+type GetMonitorPriorityParams struct {
+	ServerID            int64   `json:"server_id"`
+	SampleWindowSeconds float64 `json:"sample_window_seconds"`
+}
 
 type GetMonitorPriorityRow struct {
 	ID                       int64                  `json:"id"`
@@ -106,8 +143,8 @@ type GetMonitorPriorityRow struct {
 	PauseReason              pgtype.Text            `json:"pause_reason"`
 }
 
-func (q *Queries) GetMonitorPriority(ctx context.Context, serverID int64) ([]GetMonitorPriorityRow, error) {
-	rows, err := q.db.Query(ctx, getMonitorPriority, serverID)
+func (q *Queries) GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error) {
+	rows, err := q.db.Query(ctx, getMonitorPriority, arg.ServerID, arg.SampleWindowSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -608,71 +645,85 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 }
 
 const getServers = `-- name: GetServers :many
-SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.netspeed_target, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on, s.flags
+SELECT s.id, s.ip, s.ip_version, s.user_id, s.account_id, s.hostname, s.stratum, s.in_pool, s.in_server_list, s.netspeed, s.netspeed_target, s.created_on, s.updated_on, s.score_ts, s.score_raw, s.deletion_on, s.flags, ss.status, ss.queue_ts AS prev_queue_ts,
+    (ss.status IN ('active', 'testing') AND ss.score_raw <= -90)::boolean AS down
     FROM servers s
-    LEFT JOIN server_scores ss
-        ON (s.id = ss.server_id)
-WHERE (monitor_id = $3
-    AND s.ip_version = $4
-    AND (ss.queue_ts IS NULL
+    JOIN server_scores ss ON (s.id = ss.server_id)
+WHERE ss.monitor_id = $1
+    AND s.ip_version = $2
+    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active', 'paused'))
           OR (ss.score_raw > -90 AND ss.status = 'active'
-               AND ss.queue_ts < NOW() - make_interval(secs => $5))
+              AND ss.queue_ts < NOW() - make_interval(secs => $3))
           OR (ss.score_raw > -90 AND ss.status = 'testing'
-              AND ss.queue_ts < NOW() - make_interval(secs => $6))
-          OR (ss.queue_ts < NOW() - INTERVAL '120 minutes'))
+              AND ss.queue_ts < NOW() - make_interval(secs => $4))
+          OR (ss.status IN ('candidate', 'paused')
+              AND ss.queue_ts < NOW() - make_interval(secs => $5))
+          OR (ss.status IN ('active', 'testing') AND ss.score_raw <= -90
+              AND ss.queue_ts < NOW() - INTERVAL '120 minutes'))
     AND (s.score_ts IS NULL OR
-        (s.score_ts < NOW() - make_interval(secs => $7)))
-    AND (deletion_on IS NULL OR deletion_on > NOW()))
+        (s.score_ts < NOW() - make_interval(secs => $6)))
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
 ORDER BY ss.queue_ts
-LIMIT $1
-OFFSET $2
+LIMIT $8 OFFSET $7
 `
 
 type GetServersParams struct {
-	Limit                  int32            `json:"limit"`
-	Offset                 int32            `json:"offset"`
-	MonitorID              int64            `json:"monitor_id"`
-	IpVersion              ServersIpVersion `json:"ip_version"`
-	IntervalSeconds        float64          `json:"interval_seconds"`
-	IntervalSecondsTesting float64          `json:"interval_seconds_testing"`
-	IntervalSecondsAll     float64          `json:"interval_seconds_all"`
+	MonitorID                int64            `json:"monitor_id"`
+	IpVersion                ServersIpVersion `json:"ip_version"`
+	IntervalSeconds          float64          `json:"interval_seconds"`
+	IntervalSecondsTesting   float64          `json:"interval_seconds_testing"`
+	IntervalSecondsCandidate float64          `json:"interval_seconds_candidate"`
+	IntervalSecondsAll       float64          `json:"interval_seconds_all"`
+	Offset                   int32            `json:"offset"`
+	Limit                    int32            `json:"limit"`
 }
 
-func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]Server, error) {
+type GetServersRow struct {
+	Server      Server             `json:"server"`
+	Status      ServerScoresStatus `json:"status"`
+	PrevQueueTs pgtype.Timestamptz `json:"prev_queue_ts"`
+	Down        bool               `json:"down"`
+}
+
+func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]GetServersRow, error) {
 	rows, err := q.db.Query(ctx, getServers,
-		arg.Limit,
-		arg.Offset,
 		arg.MonitorID,
 		arg.IpVersion,
 		arg.IntervalSeconds,
 		arg.IntervalSecondsTesting,
+		arg.IntervalSecondsCandidate,
 		arg.IntervalSecondsAll,
+		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Server
+	var items []GetServersRow
 	for rows.Next() {
-		var i Server
+		var i GetServersRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Ip,
-			&i.IpVersion,
-			&i.UserID,
-			&i.AccountID,
-			&i.Hostname,
-			&i.Stratum,
-			&i.InPool,
-			&i.InServerList,
-			&i.Netspeed,
-			&i.NetspeedTarget,
-			&i.CreatedOn,
-			&i.UpdatedOn,
-			&i.ScoreTs,
-			&i.ScoreRaw,
-			&i.DeletionOn,
-			&i.Flags,
+			&i.Server.ID,
+			&i.Server.Ip,
+			&i.Server.IpVersion,
+			&i.Server.UserID,
+			&i.Server.AccountID,
+			&i.Server.Hostname,
+			&i.Server.Stratum,
+			&i.Server.InPool,
+			&i.Server.InServerList,
+			&i.Server.Netspeed,
+			&i.Server.NetspeedTarget,
+			&i.Server.CreatedOn,
+			&i.Server.UpdatedOn,
+			&i.Server.ScoreTs,
+			&i.Server.ScoreRaw,
+			&i.Server.DeletionOn,
+			&i.Server.Flags,
+			&i.Status,
+			&i.PrevQueueTs,
+			&i.Down,
 		); err != nil {
 			return nil, err
 		}

@@ -121,18 +121,21 @@ func (w *Watcher) refresh(ctx context.Context, initial bool) error {
 }
 
 func (w *Watcher) logSettings(ctx context.Context, level slog.Level, msg string, s MonitorSettings) {
-	maxSamples := MaxSamplesInWindow(s.IntervalTesting.Duration)
-	thresholdActive := RequiredCountForActive(s.IntervalTesting.Duration)
-	thresholdTesting := RequiredCountForTesting()
+	window := s.SampleWindow.Duration
+	maxSamples := MaxSamplesInWindow(s.IntervalTesting.Duration, window)
+	thresholdActive := RequiredCountForActive(s.IntervalTesting.Duration, window)
+	thresholdTesting := RequiredCountForTesting(s.IntervalCandidate.Duration, window)
 
 	w.log.Log(
 		ctx, level, msg,
 		slog.Duration("interval_active", s.IntervalActive.Duration),
 		slog.Duration("interval_testing", s.IntervalTesting.Duration),
 		slog.Duration("interval_all", s.IntervalAll.Duration),
+		slog.Duration("interval_candidate", s.IntervalCandidate.Duration),
+		slog.Duration("sample_window", window),
 		slog.Int("batch_size", int(s.BatchSize)),
 		slog.Bool("allow_leap_announcements", s.AllowLeapAnnouncements),
-		slog.Int64("max_samples_24h", maxSamples),
+		slog.Int64("max_samples_in_window", maxSamples),
 		slog.Int64("min_count_for_active", thresholdActive),
 		slog.Int64("min_count_for_testing", thresholdTesting),
 	)
@@ -142,7 +145,8 @@ func (w *Watcher) logSettings(ctx context.Context, level slog.Level, msg string,
 			ctx,
 			"interval_testing too long for historical 32-sample threshold; using degraded dynamic threshold",
 			slog.Duration("interval_testing", s.IntervalTesting.Duration),
-			slog.Int64("max_samples_24h", maxSamples),
+			slog.Duration("sample_window", window),
+			slog.Int64("max_samples_in_window", maxSamples),
 			slog.Int64("dynamic_threshold", thresholdActive),
 		)
 	}
@@ -157,6 +161,10 @@ func (w *Watcher) logChange(ctx context.Context, prev, fresh MonitorSettings) {
 		slog.Duration("new_interval_testing", fresh.IntervalTesting.Duration),
 		slog.Duration("prev_interval_all", prev.IntervalAll.Duration),
 		slog.Duration("new_interval_all", fresh.IntervalAll.Duration),
+		slog.Duration("prev_interval_candidate", prev.IntervalCandidate.Duration),
+		slog.Duration("new_interval_candidate", fresh.IntervalCandidate.Duration),
+		slog.Duration("prev_sample_window", prev.SampleWindow.Duration),
+		slog.Duration("new_sample_window", fresh.SampleWindow.Duration),
 		slog.Int("prev_batch_size", int(prev.BatchSize)),
 		slog.Int("new_batch_size", int(fresh.BatchSize)),
 		slog.Bool("prev_allow_leap_announcements", prev.AllowLeapAnnouncements),

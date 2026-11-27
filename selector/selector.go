@@ -253,23 +253,35 @@ func NewSelector(ctx context.Context, dbconn *pgxpool.Pool, log *slog.Logger, me
 	return &Selector{ctx: ctx, dbconn: dbconn, log: log, metrics: metrics, settings: settings}, nil
 }
 
+// currentSettings returns the live settings, or the defaults when no
+// settings watcher is configured (unit tests).
+func (sl *Selector) currentSettings() monitorsettings.MonitorSettings {
+	if sl.settings == nil {
+		return monitorsettings.MonitorSettings{}.WithDefaults()
+	}
+	return sl.settings.Current()
+}
+
+// sampleWindow returns the trailing window over which log_scores are
+// counted.
+func (sl *Selector) sampleWindow() time.Duration {
+	return sl.currentSettings().SampleWindow.Duration
+}
+
 // minCountForActive returns the per-Run sample-count threshold for the
 // testing -> active promotion, derived from the current interval_testing
-// when a settings watcher is configured, else the historical constant.
+// and sample_window.
 func (sl *Selector) minCountForActive() int64 {
-	if sl.settings == nil {
-		return int64(minCountForActive)
-	}
-	return monitorsettings.RequiredCountForActive(sl.settings.Current().IntervalTesting.Duration)
+	s := sl.currentSettings()
+	return monitorsettings.RequiredCountForActive(s.IntervalTesting.Duration, s.SampleWindow.Duration)
 }
 
 // minCountForTesting returns the sample-count threshold for the
-// candidate -> testing promotion.
+// candidate -> testing promotion, derived from the current
+// interval_candidate and sample_window.
 func (sl *Selector) minCountForTesting() int64 {
-	if sl.settings == nil {
-		return int64(minCountForTesting)
-	}
-	return monitorsettings.RequiredCountForTesting()
+	s := sl.currentSettings()
+	return monitorsettings.RequiredCountForTesting(s.IntervalCandidate.Duration, s.SampleWindow.Duration)
 }
 
 // trackMonitorServerCounts refreshes the selector_monitor_servers metric
@@ -368,7 +380,10 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 	}
 
 	// Step 2: Get all assigned monitors
-	assignedMonitors, err := db.GetMonitorPriority(ctx, serverID)
+	assignedMonitors, err := db.GetMonitorPriority(ctx, ntpdb.GetMonitorPriorityParams{
+		ServerID:            serverID,
+		SampleWindowSeconds: sl.sampleWindow().Seconds(),
+	})
 	if err != nil {
 		return false, fmt.Errorf("failed to get monitor priority: %w", err)
 	}

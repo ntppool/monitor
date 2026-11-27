@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/testutil"
 )
 
@@ -29,27 +30,11 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 		serverID          = 90001
 		timeoutMonitorID  = 90002
 		respondingMonitor = 90003
+		oldSampleMonitor  = 90004
 	)
 
-	cleanup := func() {
-		stmts := []struct {
-			sql string
-			id  int64
-		}{
-			{"DELETE FROM log_scores WHERE server_id = $1", serverID},
-			{"DELETE FROM server_scores WHERE server_id = $1", serverID},
-			{"DELETE FROM servers WHERE id = $1", serverID},
-			{"DELETE FROM monitors WHERE account_id = $1", accountID},
-			{"DELETE FROM accounts WHERE id = $1", accountID},
-		}
-		for _, s := range stmts {
-			if _, err := tdb.Exec(tdb.Context(), s.sql, s.id); err != nil {
-				t.Logf("cleanup %q: %v", s.sql, err)
-			}
-		}
-	}
-	cleanup()
-	defer cleanup()
+	cleanupServerAccount(t, tdb, serverID, accountID)
+	defer cleanupServerAccount(t, tdb, serverID, accountID)
 
 	now := time.Now()
 
@@ -58,7 +43,9 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	factory.CreateTestMonitor(t, timeoutMonitorID, "timeouts.test", accountID, "192.0.2.21", "active")
 	factory.CreateTestMonitor(t, respondingMonitor, "responds.test", accountID, "192.0.2.22", "active")
 	factory.CreateTestServerScore(t, serverID, timeoutMonitorID, "active", -50)
+	factory.CreateTestMonitor(t, oldSampleMonitor, "old-sample.test", accountID, "192.0.2.23", "active")
 	factory.CreateTestServerScore(t, serverID, respondingMonitor, "active", 20)
+	factory.CreateTestServerScore(t, serverID, oldSampleMonitor, "active", 20)
 
 	rtt := int32(25000) // microseconds
 	for i := 0; i < 5; i++ {
@@ -68,7 +55,15 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 		factory.CreateTestLogScore(t, serverID, respondingMonitor, 20, 1, &rtt, ts)
 	}
 
-	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), serverID)
+	// One sample 30h old and one recent: the old one only counts when the
+	// sample window is longer than 24h.
+	factory.CreateTestLogScore(t, serverID, oldSampleMonitor, 20, 1, &rtt, now.Add(-30*time.Hour))
+	factory.CreateTestLogScore(t, serverID, oldSampleMonitor, 20, 1, &rtt, now)
+
+	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
+		ServerID:            serverID,
+		SampleWindowSeconds: (24 * time.Hour).Seconds(),
+	})
 	if err != nil {
 		t.Fatalf("GetMonitorPriority() error = %v", err)
 	}
@@ -93,5 +88,51 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	}
 	if got := rows[ri]; got.AvgRtt != 25 {
 		t.Errorf("responding monitor: AvgRtt = %d, want 25", got.AvgRtt)
+	}
+
+	counts := []struct {
+		name   string
+		window time.Duration
+		want   int64
+	}{
+		{"24h window leaves out the 30h-old sample", 24 * time.Hour, 1},
+		{"72h window counts the 30h-old sample", 72 * time.Hour, 2},
+	}
+	for _, tt := range counts {
+		t.Run(tt.name, func(t *testing.T) {
+			rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
+				ServerID:            serverID,
+				SampleWindowSeconds: tt.window.Seconds(),
+			})
+			testutil.AssertNoError(t, err, "GetMonitorPriority")
+			var got int64 = -1
+			for _, r := range rows {
+				if r.ID == oldSampleMonitor {
+					got = r.Count
+				}
+			}
+			testutil.AssertEqual(t, tt.want, got, "sample count for the monitor with an old sample")
+		})
+	}
+}
+
+// cleanupServerAccount deletes one server's rows and the monitors and
+// account that own them, and nothing else.
+func cleanupServerAccount(t *testing.T, tdb *testutil.TestDB, serverID, accountID int64) {
+	t.Helper()
+	stmts := []struct {
+		sql string
+		id  int64
+	}{
+		{"DELETE FROM log_scores WHERE server_id = $1", serverID},
+		{"DELETE FROM server_scores WHERE server_id = $1", serverID},
+		{"DELETE FROM servers WHERE id = $1", serverID},
+		{"DELETE FROM monitors WHERE account_id = $1", accountID},
+		{"DELETE FROM accounts WHERE id = $1", accountID},
+	}
+	for _, s := range stmts {
+		if _, err := tdb.Exec(tdb.Context(), s.sql, s.id); err != nil {
+			t.Logf("cleanup %q: %v", s.sql, err)
+		}
 	}
 }

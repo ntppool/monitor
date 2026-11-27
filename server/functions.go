@@ -191,13 +191,14 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	}
 
 	p := ntpdb.GetServersParams{
-		MonitorID:              monitor.ID,
-		IpVersion:              ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
-		IntervalSeconds:        interval.Seconds(),
-		IntervalSecondsTesting: settings.IntervalTesting.Seconds(),
-		IntervalSecondsAll:     settings.IntervalAll.Seconds(),
-		Limit:                  settings.BatchSize,
-		Offset:                 0,
+		MonitorID:                monitor.ID,
+		IpVersion:                ntpdb.ServersIpVersion(monitor.IpVersion.MonitorsIpVersion.String()),
+		IntervalSeconds:          interval.Seconds(),
+		IntervalSecondsTesting:   settings.IntervalTesting.Seconds(),
+		IntervalSecondsCandidate: settings.IntervalCandidate.Seconds(),
+		IntervalSecondsAll:       settings.IntervalAll.Seconds(),
+		Limit:                    settings.BatchSize,
+		Offset:                   0,
 	}
 
 	now := time.Now()
@@ -214,10 +215,17 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	}
 
 	var list *ServerListResponse
+	var rows []ntpdb.GetServersRow
 	err = database.WithTransaction(ctx, srv.db, func(ctx context.Context, db ntpdb.QuerierTx) error {
-		servers, err := db.GetServers(ctx, p)
+		var err error
+		rows, err = db.GetServers(ctx, p)
 		if err != nil {
 			return err
+		}
+
+		servers := make([]ntpdb.Server, len(rows))
+		for i, row := range rows {
+			servers[i] = row.Server
 		}
 
 		span.AddEvent("GetServers DB select", otrace.WithAttributes(attribute.Int("serverCount", len(servers))))
@@ -274,6 +282,10 @@ func (srv *Server) GetServers(ctx context.Context, monID string) (*ServerListRes
 	if err != nil {
 		return nil, err
 	}
+
+	ipVersion := monitor.IpVersion.MonitorsIpVersion.String()
+	recordHandouts(srv.m, ipVersion, rows, time.Now())
+	span.SetAttributes(handoutSpanAttributes(rows)...)
 
 	return list, nil
 }

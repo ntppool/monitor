@@ -17,6 +17,15 @@ type MonitorSettings struct {
 	IntervalAll     timeutil.Duration `json:"interval_all"`
 	BatchSize       int32             `json:"batch_size"`
 
+	// IntervalCandidate is how often a candidate (or paused) row is
+	// handed out for testing. The api also spreads a new server's first
+	// candidate probes over one interval.
+	IntervalCandidate timeutil.Duration `json:"interval_candidate"`
+
+	// SampleWindow is the trailing window over which the selector counts
+	// log_scores.
+	SampleWindow timeutil.Duration `json:"sample_window"`
+
 	// AllowLeapAnnouncements turns off the score penalty for responses
 	// announcing a leap second (LI=1 or LI=2). Set it if a real leap
 	// second is ever scheduled.
@@ -32,9 +41,14 @@ const (
 	DefaultIntervalAll     = 60 * time.Second
 	DefaultBatchSize       = int32(10)
 
-	minIntervalActive  = 20 * time.Second
-	minIntervalTesting = 60 * time.Second
-	minIntervalAll     = 10 * time.Second
+	DefaultIntervalCandidate = 2 * time.Hour
+	DefaultSampleWindow      = 24 * time.Hour
+
+	minIntervalActive    = 20 * time.Second
+	minIntervalTesting   = 60 * time.Second
+	minIntervalAll       = 10 * time.Second
+	minIntervalCandidate = 10 * time.Minute
+	minSampleWindow      = time.Hour
 )
 
 // WithDefaults returns a copy of s with defaults applied where the
@@ -49,6 +63,12 @@ func (s MonitorSettings) WithDefaults() MonitorSettings {
 	if s.IntervalAll.Duration < minIntervalAll {
 		s.IntervalAll = timeutil.Duration{Duration: DefaultIntervalAll}
 	}
+	if s.IntervalCandidate.Duration < minIntervalCandidate {
+		s.IntervalCandidate = timeutil.Duration{Duration: DefaultIntervalCandidate}
+	}
+	if s.SampleWindow.Duration < minSampleWindow {
+		s.SampleWindow = timeutil.Duration{Duration: DefaultSampleWindow}
+	}
 	if s.BatchSize <= 0 {
 		s.BatchSize = DefaultBatchSize
 	}
@@ -59,9 +79,9 @@ func (s MonitorSettings) WithDefaults() MonitorSettings {
 //
 // The historical floors (32, 9) are the statistical minimums originally
 // chosen for promotion confidence. ThresholdPercent expresses the desired
-// "monitor has been running for this fraction of the 24h sample window"
+// "monitor has been running for this fraction of the sample window"
 // liveness signal. The effective threshold is min(historicalFloor,
-// ceil(ThresholdPercent * maxSamplesIn24h)) with an absolute floor so a
+// ceil(ThresholdPercent * maxSamplesInWindow)) with an absolute floor so a
 // pathological interval cannot drop the bar to zero.
 const (
 	HistoricalMinForActive  int64 = 32
@@ -69,49 +89,37 @@ const (
 
 	ThresholdPercent = 0.80
 	AbsoluteFloor    = int64(8)
-
-	// candidatePollInterval matches the hardcoded "OR queue_ts < NOW() -
-	// INTERVAL 120 minute" branch in the GetServers query, which is the
-	// effective cadence cap for candidate-status server_scores rows.
-	candidatePollInterval = 120 * time.Minute
-
-	// SampleWindow is the trailing window over which log_scores are
-	// counted in the GetMonitorPriority query.
-	SampleWindow = 24 * time.Hour
 )
 
 // MaxSamplesInWindow returns the largest number of samples a single
-// monitor can produce for a single server in SampleWindow, given that the
+// monitor can produce for a single server in window, given that the
 // re-query interval is at least `interval`.
-func MaxSamplesInWindow(interval time.Duration) int64 {
+func MaxSamplesInWindow(interval, window time.Duration) int64 {
 	if interval <= 0 {
 		return 0
 	}
-	return int64(SampleWindow / interval)
+	return int64(window / interval)
 }
 
 // RequiredCountForActive returns the minimum log_scores count required in
-// the 24h window for a testing monitor to be eligible for promotion to
+// the sample window for a testing monitor to be eligible for promotion to
 // active, given the configured interval_testing.
-func RequiredCountForActive(intervalTesting time.Duration) int64 {
-	return computeThreshold(intervalTesting, HistoricalMinForActive)
+func RequiredCountForActive(intervalTesting, window time.Duration) int64 {
+	return computeThreshold(intervalTesting, window, HistoricalMinForActive)
 }
 
 // RequiredCountForTesting returns the minimum log_scores count required
-// for a candidate monitor to be eligible for promotion to testing.
-//
-// Candidates are not gated by interval_testing — they fall through to the
-// hardcoded 120-minute branch in GetServers — so this value is effectively
-// static unless that hardcoded cap changes.
-func RequiredCountForTesting() int64 {
-	return computeThreshold(candidatePollInterval, HistoricalMinForTesting)
+// for a candidate monitor to be eligible for promotion to testing, given
+// the configured interval_candidate.
+func RequiredCountForTesting(intervalCandidate, window time.Duration) int64 {
+	return computeThreshold(intervalCandidate, window, HistoricalMinForTesting)
 }
 
-func computeThreshold(interval time.Duration, historicalFloor int64) int64 {
+func computeThreshold(interval, window time.Duration, historicalFloor int64) int64 {
 	if interval <= 0 {
 		return historicalFloor
 	}
-	max := MaxSamplesInWindow(interval)
+	max := MaxSamplesInWindow(interval, window)
 	if max <= 0 {
 		return AbsoluteFloor
 	}

@@ -14,14 +14,6 @@ const (
 	baseTestingTarget          = 5 // Base number of testing monitors
 	minGloballyActiveInTesting = 4 // Minimum globally active monitors in testing pool
 	bootStrapModeLimit         = 4 // If active monitors <= this, add new ones faster
-	// minCountForTesting/Active are the historical sample-count floors.
-	// When a monitorsettings.Watcher is attached to the Selector, the
-	// effective thresholds are computed dynamically from interval_testing
-	// via (*Selector).minCountForTesting / .minCountForActive. These
-	// constants remain the fallback used by unit tests that construct a
-	// Selector without a settings watcher.
-	minCountForTesting = 9  // candidate -> testing
-	minCountForActive  = 32 // testing -> active
 )
 
 // replacementType defines the type of performance-based replacement

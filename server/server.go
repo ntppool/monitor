@@ -200,6 +200,8 @@ func (srv *Server) Run() error {
 
 	g, _ := errgroup.WithContext(ctx)
 
+	go srv.trackQueueGauges(ctx, 5*time.Minute)
+
 	server := &http.Server{
 		Addr: listen,
 

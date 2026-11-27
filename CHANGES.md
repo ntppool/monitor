@@ -8,6 +8,9 @@
 - **Needs api migration 051**: Run the api migration that adds `log_scores.status` before deploying `monitor-api` and `monitor-scorer`. Without the column `monitor-api` fails every result submit and the scorer fails to read scores.
 
 ### Server
+- `GetServers` hands out only rows with status `candidate`, `testing`, `active` or `paused`. Candidates and paused rows are due after `interval_candidate` (setting, default 2h, was a fixed 120 minutes); active and testing rows of a down server stay at 120 minutes.
+- New `sample_window` setting (default 24h) in `system_settings("monitors")`: how far back the selector counts samples. It and `interval_candidate` set the selector's sample-count thresholds. A value below the minimum (1h for `sample_window`, 10m for `interval_candidate`) falls back to the default.
+- New metrics `queue_handouts_total`, `queue_handout_interval_seconds`, `queue_live_servers` and `queue_interval_seconds`. The interval histogram leaves out active and testing rows of down servers, which run on the fixed 120 minutes.
 - Fix: `monitor-api` sends `info` when the merged config has no `otlp_log_level`. Clearing a debug override now returns the agent to `info` when there's no system-level setting.
 - Fix: `monitor-api` treats an agent as offline when its last "online" MQTT status is more than 15 minutes old. Before, an agent whose "offline" status was missed stayed listed until `monitor-api` restarted, so `/monitors/online`, metrics discovery and ad hoc NTP checks kept using it, and the Prometheus scrape through `/monitors/metrics` got a 502 after 8 seconds about 1,400 times a day for each such agent.
 - `monitors_connected` is computed from the client list at scrape time, so it drops when an agent goes stale. The metric name and labels are unchanged.

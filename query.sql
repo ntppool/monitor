@@ -185,24 +185,32 @@ INSERT INTO log_scores
 RETURNING id;
 
 -- name: GetServers :many
-SELECT s.*
+SELECT sqlc.embed(s), ss.status, ss.queue_ts AS prev_queue_ts,
+    (ss.status IN ('active', 'testing') AND ss.score_raw <= -90)::boolean AS down
     FROM servers s
-    LEFT JOIN server_scores ss
-        ON (s.id = ss.server_id)
-WHERE (monitor_id = sqlc.arg('monitor_id')
+    JOIN server_scores ss ON (s.id = ss.server_id)
+WHERE ss.monitor_id = sqlc.arg('monitor_id')
     AND s.ip_version = sqlc.arg('ip_version')
-    AND (ss.queue_ts IS NULL
+    AND ((ss.queue_ts IS NULL AND ss.status IN ('candidate', 'testing', 'active', 'paused'))
           OR (ss.score_raw > -90 AND ss.status = 'active'
-               AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds')))
+              AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds')))
           OR (ss.score_raw > -90 AND ss.status = 'testing'
               AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds_testing')))
-          OR (ss.queue_ts < NOW() - INTERVAL '120 minutes'))
+          OR (ss.status IN ('candidate', 'paused')
+              AND ss.queue_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds_candidate')))
+          OR (ss.status IN ('active', 'testing') AND ss.score_raw <= -90
+              AND ss.queue_ts < NOW() - INTERVAL '120 minutes'))
     AND (s.score_ts IS NULL OR
         (s.score_ts < NOW() - make_interval(secs => sqlc.arg('interval_seconds_all'))))
-    AND (deletion_on IS NULL OR deletion_on > NOW()))
+    AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
 ORDER BY ss.queue_ts
-LIMIT $1
-OFFSET $2;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
+-- name: CountLiveServers :many
+SELECT ip_version, count(*) AS servers
+    FROM servers
+WHERE deletion_on IS NULL OR deletion_on > NOW()
+GROUP BY ip_version;
 
 -- name: GetMonitorPriority :many
 SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
@@ -223,9 +231,9 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   INNER JOIN monitors m ON m.id = ls.monitor_id
   LEFT JOIN server_scores ss ON (ss.server_id = ls.server_id AND ss.monitor_id = ls.monitor_id)
   LEFT JOIN accounts a ON (m.account_id = a.id)
-  WHERE ls.server_id = $1
+  WHERE ls.server_id = sqlc.arg('server_id')
     AND m.type = 'monitor'
-    AND ls.ts > NOW() - INTERVAL '24 hours'
+    AND ls.ts > NOW() - make_interval(secs => sqlc.arg('sample_window_seconds')::float8)
   GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
   ORDER BY healthy DESC, monitor_priority, avg_step DESC, avg_rtt;
