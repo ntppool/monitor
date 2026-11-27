@@ -214,6 +214,7 @@ func TestApplyRule6BootstrapPromotion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create selection context
 			selCtx := selectionContext{
+				budget: unlimitedBudget(),
 				server: &serverInfo{
 					ID:        1,
 					AccountID: Ptr(int64(999)), // Different from monitor accounts
@@ -342,6 +343,7 @@ func TestApplyRule6BootstrapPromotion_EdgeCases(t *testing.T) {
 			testingMonitors, candidateMonitors, accountLimits := tt.setup()
 
 			selCtx := selectionContext{
+				budget: unlimitedBudget(),
 				server: &serverInfo{
 					ID:        1,
 					AccountID: Ptr(int64(999)),
@@ -373,6 +375,51 @@ func TestApplyRule6BootstrapPromotion_EdgeCases(t *testing.T) {
 	}
 }
 
+// TestApplyRule6BootstrapPromotion_SkipsCandidatesWithoutSamples checks that
+// candidates that haven't reported in the sample window aren't promoted.
+func TestApplyRule6BootstrapPromotion_SkipsCandidatesWithoutSamples(t *testing.T) {
+	sl := &Selector{log: slog.Default()}
+
+	withoutSamples := func(id, accountID int64) evaluatedMonitor {
+		em := createHealthyCandidate(id, accountID)
+		em.monitor.HasMetrics = false
+		em.monitor.IsHealthy = false
+		return em
+	}
+
+	candidates := []evaluatedMonitor{
+		withoutSamples(1, 100),
+		createHealthyCandidate(2, 101),
+		withoutSamples(3, 102),
+		withoutSamples(4, 103),
+	}
+	limits := map[int64]*accountLimit{
+		100: {AccountID: 100, MaxPerServer: 3},
+		101: {AccountID: 101, MaxPerServer: 3},
+		102: {AccountID: 102, MaxPerServer: 3},
+		103: {AccountID: 103, MaxPerServer: 3},
+	}
+	selCtx := selectionContext{
+		budget: unlimitedBudget(),
+		server: &serverInfo{
+			ID:        1,
+			AccountID: Ptr(int64(999)),
+			IP:        "192.0.2.100",
+			IPVersion: "4",
+		},
+		emergencyOverride: true,
+	}
+
+	result := sl.applyRule6BootstrapPromotion(context.Background(), selCtx, nil, candidates, limits, 0, 0)
+
+	if len(result.changes) != 1 {
+		t.Fatalf("expected 1 promotion, got %d: %+v", len(result.changes), result.changes)
+	}
+	if got := result.changes[0].monitorID; got != 2 {
+		t.Errorf("promoted monitor %d, want 2 (the only candidate with samples)", got)
+	}
+}
+
 // Helper functions for creating test data
 
 func createHealthyCandidate(id int64, accountID int64) evaluatedMonitor {
@@ -382,6 +429,7 @@ func createHealthyCandidate(id int64, accountID int64) evaluatedMonitor {
 			AccountID:    Ptr(accountID),
 			GlobalStatus: ntpdb.MonitorsStatusActive,
 			IsHealthy:    true,
+			HasMetrics:   true,
 		},
 		currentViolation: &constraintViolation{
 			Type: violationNone,
@@ -401,6 +449,7 @@ func createUnhealthyCandidate(id int64, accountID int64) evaluatedMonitor {
 			AccountID:    Ptr(accountID),
 			GlobalStatus: status,
 			IsHealthy:    false,
+			HasMetrics:   true,
 		},
 		currentViolation: &constraintViolation{
 			Type: violationNone,

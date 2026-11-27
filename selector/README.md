@@ -30,6 +30,14 @@ Monitor status changes applied by the selector.
 - `excess active demotion`, `excess testing monitors`
 - `bootstrap: promoting healthy candidate` and the `emergency promotion` variants
 
+#### `selector_promotions_limited_total`
+**Type**: Counter
+**Labels**: `to_status`, `kind`
+
+Server reviews where the daily promotion budget refused a promotion, at
+most once per review for each `to_status` and `kind` (`fill`, `health`,
+`performance`). Rate it to see replacements skipped by the limit.
+
 ### Constraint Violations
 
 #### `selector_constraint_violations_total`
@@ -155,6 +163,16 @@ refreshes coalesced via `singleflight`.
 When a testing or candidate monitor is skipped for insufficient samples,
 the selector emits a `Debug`-level log line with the monitor id, the
 observed count, and the required threshold.
+
+## Review Cadence
+
+A server is reviewed 2h after a review without changes (`review_every`),
+4h after one that changed a status (`review_after_change`) and 1h while it
+is in bootstrap mode (`review_bootstrap`). A bootstrap server that looks
+bad (more than half of its active monitors with samples are unhealthy) uses
+the normal times, since more reviews won't help. The values are in
+`system_settings("monitors")`; a value below 1m falls back to the default.
+Deleted servers aren't reviewed.
 
 ## Implementation Notes
 

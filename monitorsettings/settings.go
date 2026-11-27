@@ -26,6 +26,26 @@ type MonitorSettings struct {
 	// log_scores.
 	SampleWindow timeutil.Duration `json:"sample_window"`
 
+	// PromotionWindow is the trailing window over which the selector
+	// counts a server's promotions across each status boundary.
+	PromotionWindow timeutil.Duration `json:"promotion_window"`
+
+	// HealthPromotions is how many health replacements and fills the
+	// selector allows per server and boundary within PromotionWindow.
+	HealthPromotions int `json:"health_promotions"`
+
+	// ReviewEvery is how long after a review without changes the
+	// selector reviews a server again.
+	ReviewEvery timeutil.Duration `json:"review_every"`
+
+	// ReviewAfterChange is the time until the next review after a review
+	// that changed a status.
+	ReviewAfterChange timeutil.Duration `json:"review_after_change"`
+
+	// ReviewBootstrap is the time until the next review of a server in
+	// bootstrap mode, where it needs monitors quickly.
+	ReviewBootstrap timeutil.Duration `json:"review_bootstrap"`
+
 	// AllowLeapAnnouncements turns off the score penalty for responses
 	// announcing a leap second (LI=1 or LI=2). Set it if a real leap
 	// second is ever scheduled.
@@ -43,12 +63,19 @@ const (
 
 	DefaultIntervalCandidate = 2 * time.Hour
 	DefaultSampleWindow      = 24 * time.Hour
+	DefaultPromotionWindow   = 24 * time.Hour
+	DefaultHealthPromotions  = 3
+	DefaultReviewEvery       = 2 * time.Hour
+	DefaultReviewAfterChange = 4 * time.Hour
+	DefaultReviewBootstrap   = time.Hour
 
 	minIntervalActive    = 20 * time.Second
 	minIntervalTesting   = 60 * time.Second
 	minIntervalAll       = 10 * time.Second
 	minIntervalCandidate = 10 * time.Minute
 	minSampleWindow      = time.Hour
+	minPromotionWindow   = time.Hour
+	minReview            = time.Minute
 )
 
 // WithDefaults returns a copy of s with defaults applied where the
@@ -68,6 +95,21 @@ func (s MonitorSettings) WithDefaults() MonitorSettings {
 	}
 	if s.SampleWindow.Duration < minSampleWindow {
 		s.SampleWindow = timeutil.Duration{Duration: DefaultSampleWindow}
+	}
+	if s.PromotionWindow.Duration < minPromotionWindow {
+		s.PromotionWindow = timeutil.Duration{Duration: DefaultPromotionWindow}
+	}
+	if s.ReviewEvery.Duration < minReview {
+		s.ReviewEvery = timeutil.Duration{Duration: DefaultReviewEvery}
+	}
+	if s.ReviewAfterChange.Duration < minReview {
+		s.ReviewAfterChange = timeutil.Duration{Duration: DefaultReviewAfterChange}
+	}
+	if s.ReviewBootstrap.Duration < minReview {
+		s.ReviewBootstrap = timeutil.Duration{Duration: DefaultReviewBootstrap}
+	}
+	if s.HealthPromotions <= 0 {
+		s.HealthPromotions = DefaultHealthPromotions
 	}
 	if s.BatchSize <= 0 {
 		s.BatchSize = DefaultBatchSize

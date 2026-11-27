@@ -99,11 +99,12 @@ func TestFilterMonitorsByGlobalStatus(t *testing.T) {
 
 func TestFilterBootstrapCandidates(t *testing.T) {
 	monitors := []evaluatedMonitor{
-		{monitor: monitorCandidate{ID: 1, GlobalStatus: ntpdb.MonitorsStatusActive, IsHealthy: true}},
-		{monitor: monitorCandidate{ID: 2, GlobalStatus: ntpdb.MonitorsStatusActive, IsHealthy: false}},
-		{monitor: monitorCandidate{ID: 3, GlobalStatus: ntpdb.MonitorsStatusTesting, IsHealthy: true}},
-		{monitor: monitorCandidate{ID: 4, GlobalStatus: ntpdb.MonitorsStatusTesting, IsHealthy: false}},
-		{monitor: monitorCandidate{ID: 5, GlobalStatus: ntpdb.MonitorsStatusPaused, IsHealthy: true}}, // Should be filtered out
+		{monitor: monitorCandidate{ID: 1, GlobalStatus: ntpdb.MonitorsStatusActive, IsHealthy: true, HasMetrics: true}},
+		{monitor: monitorCandidate{ID: 2, GlobalStatus: ntpdb.MonitorsStatusActive, IsHealthy: false, HasMetrics: true}},
+		{monitor: monitorCandidate{ID: 3, GlobalStatus: ntpdb.MonitorsStatusTesting, IsHealthy: true, HasMetrics: true}},
+		{monitor: monitorCandidate{ID: 4, GlobalStatus: ntpdb.MonitorsStatusTesting, IsHealthy: false, HasMetrics: true}},
+		{monitor: monitorCandidate{ID: 5, GlobalStatus: ntpdb.MonitorsStatusPaused, IsHealthy: true, HasMetrics: true}}, // Should be filtered out
+		{monitor: monitorCandidate{ID: 6, GlobalStatus: ntpdb.MonitorsStatusActive, IsHealthy: false}},                  // no samples, filtered out
 	}
 
 	healthy, other := filterBootstrapCandidates(monitors)
@@ -184,6 +185,7 @@ func TestAttemptPromotion(t *testing.T) {
 				toStatus:          ntpdb.ServerScoresStatusTesting,
 				baseReason:        "candidate to testing",
 				emergencyReason:   "emergency promotion to testing: zero active monitors",
+				budget:            unlimitedBudget(),
 			},
 			expected: promotionResult{
 				success:          true,
@@ -203,6 +205,7 @@ func TestAttemptPromotion(t *testing.T) {
 				toStatus:          ntpdb.ServerScoresStatusActive,
 				baseReason:        "promotion to active",
 				emergencyReason:   "emergency promotion: zero active monitors",
+				budget:            unlimitedBudget(),
 			},
 			expected: promotionResult{
 				success:          true,
@@ -222,6 +225,7 @@ func TestAttemptPromotion(t *testing.T) {
 				toStatus:          ntpdb.ServerScoresStatusTesting,
 				baseReason:        "candidate to testing",
 				emergencyReason:   "emergency promotion to testing: zero active monitors",
+				budget:            unlimitedBudget(),
 			},
 			expected: promotionResult{
 				success:          true,

@@ -31,6 +31,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				Priority:     activePriorities[i],
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -47,6 +48,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				Priority:     testingPriorities[i],
 				IsHealthy:    true,
+				HasMetrics:   true,
 				Count:        monitorsettings.HistoricalMinForActive, // Ensure testing monitors can be promoted to active
 			},
 			recommendedState: candidateIn,
@@ -58,6 +60,7 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	accountLimits := make(map[int64]*accountLimit)
 
 	selCtx := selectionContext{
+		budget:            newPromotionBudget(ntpdb.GetServerPromotionCountsRow{}, serverMode{}, 3),
 		evaluatedMonitors: evaluatedMonitors,
 		server:            server,
 		accountLimits:     accountLimits,
@@ -107,8 +110,9 @@ func TestRule3_ActiveTestingReplacement(t *testing.T) {
 	}
 	swaps = promotions // Each swap consists of one promotion and one demotion
 
-	if swaps == 0 {
-		t.Errorf("Expected some active-testing swaps, got 0")
+	// The daily budget allows one performance replacement per review
+	if swaps != 1 {
+		t.Errorf("Expected 1 active-testing swap, got %d", swaps)
 		return
 	}
 

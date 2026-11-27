@@ -102,6 +102,13 @@ func TestWithDefaults(t *testing.T) {
 
 		IntervalCandidate: timeutil.Duration{Duration: 4 * time.Hour},
 		SampleWindow:      timeutil.Duration{Duration: 72 * time.Hour},
+
+		PromotionWindow:  timeutil.Duration{Duration: 48 * time.Hour},
+		HealthPromotions: 5,
+
+		ReviewEvery:       timeutil.Duration{Duration: 3 * time.Hour},
+		ReviewAfterChange: timeutil.Duration{Duration: 6 * time.Hour},
+		ReviewBootstrap:   timeutil.Duration{Duration: 30 * time.Minute},
 	}
 	out := in.WithDefaults()
 	if out != in {
@@ -157,6 +164,67 @@ func TestWithDefaultsCandidateAndWindow(t *testing.T) {
 			got := s.WithDefaults()
 			testutil.AssertEqual(t, tt.wantCandidate, got.IntervalCandidate.Duration, "IntervalCandidate for %s", tt.raw)
 			testutil.AssertEqual(t, tt.wantWindow, got.SampleWindow.Duration, "SampleWindow for %s", tt.raw)
+		})
+	}
+}
+
+// A promotion_window below the minimum or a health_promotions that isn't
+// positive must fall back to the default, never refuse every promotion.
+func TestWithDefaultsPromotionBudget(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		wantWindow time.Duration
+		wantLimit  int
+	}{
+		{"missing", `{}`, DefaultPromotionWindow, DefaultHealthPromotions},
+		{"window 0s", `{"promotion_window": "0s"}`, DefaultPromotionWindow, DefaultHealthPromotions},
+		{"window 30m", `{"promotion_window": "30m"}`, DefaultPromotionWindow, DefaultHealthPromotions},
+		{"window 1h kept", `{"promotion_window": "1h"}`, time.Hour, DefaultHealthPromotions},
+		{"window 48h kept", `{"promotion_window": "48h"}`, 48 * time.Hour, DefaultHealthPromotions},
+		{"limit 0", `{"health_promotions": 0}`, DefaultPromotionWindow, DefaultHealthPromotions},
+		{"limit -2", `{"health_promotions": -2}`, DefaultPromotionWindow, DefaultHealthPromotions},
+		{"limit 1 kept", `{"health_promotions": 1}`, DefaultPromotionWindow, 1},
+		{"limit 6 kept", `{"health_promotions": 6}`, DefaultPromotionWindow, 6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var s MonitorSettings
+			testutil.AssertNoError(t, json.Unmarshal([]byte(tt.raw), &s), "Unmarshal(%s)", tt.raw)
+			got := s.WithDefaults()
+			testutil.AssertEqual(t, tt.wantWindow, got.PromotionWindow.Duration, "PromotionWindow for %s", tt.raw)
+			testutil.AssertEqual(t, tt.wantLimit, got.HealthPromotions, "HealthPromotions for %s", tt.raw)
+		})
+	}
+}
+
+// A review interval below one minute must fall back to the default, never
+// review a server on every poll.
+func TestWithDefaultsReview(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		wantEvery  time.Duration
+		wantChange time.Duration
+		wantBoot   time.Duration
+	}{
+		{"missing", `{}`, DefaultReviewEvery, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"every 0s", `{"review_every": "0s"}`, DefaultReviewEvery, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"every 30s", `{"review_every": "30s"}`, DefaultReviewEvery, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"every 1m kept", `{"review_every": "1m"}`, time.Minute, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"change 59s", `{"review_after_change": "59s"}`, DefaultReviewEvery, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"change 8h kept", `{"review_after_change": "8h"}`, DefaultReviewEvery, 8 * time.Hour, DefaultReviewBootstrap},
+		{"bootstrap 10s", `{"review_bootstrap": "10s"}`, DefaultReviewEvery, DefaultReviewAfterChange, DefaultReviewBootstrap},
+		{"bootstrap 15m kept", `{"review_bootstrap": "15m"}`, DefaultReviewEvery, DefaultReviewAfterChange, 15 * time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var s MonitorSettings
+			testutil.AssertNoError(t, json.Unmarshal([]byte(tt.raw), &s), "Unmarshal(%s)", tt.raw)
+			got := s.WithDefaults()
+			testutil.AssertEqual(t, tt.wantEvery, got.ReviewEvery.Duration, "ReviewEvery for %s", tt.raw)
+			testutil.AssertEqual(t, tt.wantChange, got.ReviewAfterChange.Duration, "ReviewAfterChange for %s", tt.raw)
+			testutil.AssertEqual(t, tt.wantBoot, got.ReviewBootstrap.Duration, "ReviewBootstrap for %s", tt.raw)
 		})
 	}
 }

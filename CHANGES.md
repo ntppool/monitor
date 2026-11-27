@@ -18,6 +18,22 @@
 - Fix: `monitor-api` exits with an error when the MQTT setup fails (for example the CA pool can't be loaded), instead of crashing with a nil pointer
 - `log_scores` records the status (`candidate`, `testing`, `active`) the monitor had for the server when it submitted the result. The scorer's own rows leave it empty.
 
+### Selector
+- The selector reviews every `server_scores` row of a server, also rows without samples in the `sample_window`. An active or testing row that stopped reporting is demoted by the usual rules; the bootstrap rule only promotes candidates that have samples. A server whose active rows have no samples doesn't count as "looks bad".
+- Promotions are limited per server and per boundary (candidate to testing, testing to active) over `promotion_window` (default 24h), counted from `server_scores_status_log`. The first matching row decides; demotions are never limited:
+
+  | promotion | allowed when the count is |
+  |---|---|
+  | any, server looks bad (more than half of the active rows with samples are unhealthy) | 0 |
+  | any, bootstrap mode (4 or fewer active rows) | not limited |
+  | performance replacement (both healthy) | 0 |
+  | health replacement (replaced monitor unhealthy) or fill | below `health_promotions` (default 3) |
+
+- New settings `promotion_window` (default 24h, minimum 1h) and `health_promotions` (default 3) in `system_settings("monitors")`.
+- Servers are reviewed every 2h (`review_every`), 4h after a change (`review_after_change`) and every 1h in bootstrap mode (`review_bootstrap`). It was 20 minutes, and 60 after a change. A value below 1m falls back to the default.
+- Servers with `deletion_on` in the past aren't reviewed.
+- New metric `selector_promotions_limited_total{to_status, kind}`: reviews where the limit refused a promotion.
+
 ### Agent
 - Fix: The agent reports itself offline when it stops. Before, a normal stop sent no "offline" status, so `monitor-api` listed the agent as online until the status went stale (15 minutes) and again after each `monitor-api` restart for up to a day.
 - Fix: The agent no longer logs "Failed to disconnect MQTT: context canceled" on every stop

@@ -262,6 +262,20 @@ END;
 $$;
 
 
+--
+-- Name: set_server_scores_status_since(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.set_server_scores_status_since() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.status_since := now();
+    RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -1073,7 +1087,8 @@ CREATE TABLE public.server_scores (
     constraint_violation_type character varying(50),
     constraint_violation_since timestamp with time zone,
     last_constraint_check timestamp with time zone,
-    pause_reason character varying(20)
+    pause_reason character varying(20),
+    status_since timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -3070,6 +3085,13 @@ CREATE INDEX server_scores_status_log_server_monitor_ts ON public.server_scores_
 
 
 --
+-- Name: server_scores_status_log_server_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX server_scores_status_log_server_ts ON public.server_scores_status_log USING btree (server_id, ts);
+
+
+--
 -- Name: users_username_lower_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3102,6 +3124,13 @@ CREATE TRIGGER server_scores_status_log_insert_delete AFTER INSERT OR DELETE ON 
 --
 
 CREATE TRIGGER server_scores_status_log_update AFTER UPDATE OF status ON public.server_scores FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION public.log_server_scores_status();
+
+
+--
+-- Name: server_scores server_scores_status_since; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER server_scores_status_since BEFORE UPDATE OF status ON public.server_scores FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION public.set_server_scores_status_since();
 
 
 --

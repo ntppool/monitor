@@ -139,6 +139,7 @@ func TestRule2SafetyThreshold(t *testing.T) {
 					monitor: monitorCandidate{
 						ID:           int64(i + 1),
 						ServerStatus: ntpdb.ServerScoresStatusActive,
+						HasMetrics:   true,
 					},
 					recommendedState: state,
 				}
@@ -155,6 +156,7 @@ func TestRule2SafetyThreshold(t *testing.T) {
 					monitor: monitorCandidate{
 						ID:           int64(i + 100),
 						ServerStatus: ntpdb.ServerScoresStatusTesting,
+						HasMetrics:   true,
 					},
 					recommendedState: state,
 				}
@@ -221,6 +223,7 @@ func TestRule2SafetyWithEmergency(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   true,
 				IsHealthy:    false,
 			},
 			recommendedState: candidateOut, // all marked for removal
@@ -233,6 +236,7 @@ func TestRule2SafetyWithEmergency(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				HasMetrics:   true,
 				IsHealthy:    false,
 			},
 			recommendedState: candidateOut, // all marked for removal
@@ -289,6 +293,7 @@ func TestRule2MixedConstraintAndPerformance(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   true,
 				IsHealthy:    i >= 4, // Last 3 are healthy
 			},
 			recommendedState: state,
@@ -302,6 +307,7 @@ func TestRule2MixedConstraintAndPerformance(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				HasMetrics:   true,
 				IsHealthy:    true,
 			},
 			recommendedState: candidateIn,
@@ -375,6 +381,7 @@ func TestRule2ConstraintViolationsAlwaysRemoved(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   true,
 			},
 			recommendedState: state,
 			currentViolation: violation,
@@ -393,6 +400,7 @@ func TestRule2ConstraintViolationsAlwaysRemoved(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				HasMetrics:   true,
 			},
 			recommendedState: state,
 			currentViolation: violation,
@@ -466,6 +474,7 @@ func TestRule2NormalOperationNotAffected(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 1),
 				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   true,
 			},
 			recommendedState: state,
 		}
@@ -481,6 +490,7 @@ func TestRule2NormalOperationNotAffected(t *testing.T) {
 			monitor: monitorCandidate{
 				ID:           int64(i + 100),
 				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				HasMetrics:   true,
 			},
 			recommendedState: state,
 		}

@@ -25,7 +25,7 @@ func TestCheckAccountConstraintsIterative(t *testing.T) {
 		return ntpdb.GetMonitorPriorityRow{
 			ID:              id,
 			AccountID:       pgtype.Int8{Int64: accountID, Valid: true},
-			Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: status, Valid: true},
+			Status:          status,
 			MonitorPriority: priority,
 			AccountFlags:    createAccountFlags(limit),
 		}
@@ -171,7 +171,7 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 			{
 				ID:              1,
 				AccountID:       pgtype.Int8{Valid: false}, // no account
-				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				Status:          ntpdb.ServerScoresStatusActive,
 				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
 			},
@@ -182,19 +182,19 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("monitors_without_status", func(t *testing.T) {
+	t.Run("candidate_monitors_exempt", func(t *testing.T) {
 		monitors := []ntpdb.GetMonitorPriorityRow{
 			{
 				ID:              1,
 				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
-				Status:          ntpdb.NullServerScoresStatus{Valid: false}, // no status
+				Status:          ntpdb.ServerScoresStatusCandidate,
 				MonitorPriority: 10,
 				AccountFlags:    createAccountFlags(2),
 			},
 		}
 		violations := sl.checkAccountConstraintsIterative(monitors, server)
 		if len(violations) != 0 {
-			t.Errorf("expected no violations for monitors without status, got %d", len(violations))
+			t.Errorf("expected no violations for candidate monitors, got %d", len(violations))
 		}
 	})
 
@@ -203,21 +203,21 @@ func TestCheckAccountConstraintsIterative_EdgeCases(t *testing.T) {
 			{
 				ID:              1,
 				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
-				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				Status:          ntpdb.ServerScoresStatusActive,
 				MonitorPriority: 10,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              2,
 				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
-				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				Status:          ntpdb.ServerScoresStatusActive,
 				MonitorPriority: 20,
 				AccountFlags:    nil, // no flags
 			},
 			{
 				ID:              3,
 				AccountID:       pgtype.Int8{Int64: 100, Valid: true},
-				Status:          ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+				Status:          ntpdb.ServerScoresStatusActive,
 				MonitorPriority: 30,
 				AccountFlags:    nil, // no flags
 			},

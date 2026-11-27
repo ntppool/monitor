@@ -10,7 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.ntppool.org/common/database"
 	"go.ntppool.org/monitor/ntpdb"
+	"go.ntppool.org/monitor/testutil"
 )
 
 // Test helpers for integration tests
@@ -486,4 +488,101 @@ func TestPromotionHelperIntegration(t *testing.T) {
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
 		(s[:len(substr)] == substr || containsString(s[1:], substr)))
+}
+
+// A paused row that has no recent samples (a monitor that stopped reporting
+// while paused, or never reported) is still seen by the selector, so Rule 7
+// can unpause it once its constraint no longer applies.
+func TestPausedRowWithoutSamplesUnpauses(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+
+	factory := testutil.NewDataFactory(tdb)
+
+	// Ids outside 1000-9999 (CleanupTestData's range); delete only our rows.
+	const (
+		serverAccountID  = 92000
+		monitorAccountID = 92001
+		serverID         = 92002
+		activeMonitorID  = 92003
+		oldSampleID      = 92004
+		neverSampledID   = 92005
+	)
+	cleanup := func() {
+		stmts := []string{
+			"DELETE FROM log_scores WHERE server_id = 92002",
+			"DELETE FROM server_scores WHERE server_id = 92002",
+			"DELETE FROM server_scores_status_log WHERE server_id = 92002",
+			"DELETE FROM servers WHERE id = 92002",
+			"DELETE FROM monitors WHERE id IN (92003, 92004, 92005)",
+			"DELETE FROM accounts WHERE id IN (92000, 92001)",
+		}
+		for _, q := range stmts {
+			if _, err := tdb.Exec(tdb.Context(), q); err != nil {
+				t.Logf("cleanup %q: %v", q, err)
+			}
+		}
+	}
+	cleanup()
+	defer cleanup()
+
+	now := time.Now()
+	accountID := int64(serverAccountID)
+
+	factory.CreateTestAccount(t, serverAccountID, "server-account")
+	factory.CreateTestAccount(t, monitorAccountID, "monitor-account")
+	factory.CreateTestServer(t, serverID, "192.0.2.202", "v4", &accountID)
+
+	// One healthy active monitor keeps the server out of the emergency block
+	// that stops all changes when no monitor is healthy.
+	factory.CreateTestMonitor(t, activeMonitorID, "active.test", monitorAccountID, "198.51.100.202", "active")
+	factory.CreateTestServerScore(t, serverID, activeMonitorID, "active", 20)
+	rtt := int32(25000)
+	for i := range 5 {
+		factory.CreateTestLogScore(t, serverID, activeMonitorID, 20, 1, &rtt, now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	// Paused for an account constraint that no longer applies (the monitor's
+	// account differs from the server's): one with only a 30h old sample,
+	// one that never had a sample.
+	for id, ip := range map[int64]string{oldSampleID: "203.0.113.202", neverSampledID: "203.0.113.203"} {
+		factory.CreateTestMonitor(t, id, "paused.test", monitorAccountID, ip, "active")
+		factory.CreateTestServerScore(t, serverID, id, "paused", 0)
+		_, err := tdb.Exec(tdb.Context(), `UPDATE server_scores
+			SET pause_reason = 'constraint', constraint_violation_type = 'account',
+			    constraint_violation_since = $3, last_constraint_check = $3
+			WHERE server_id = $1 AND monitor_id = $2`, serverID, id, now.Add(-48*time.Hour))
+		if err != nil {
+			t.Fatalf("mark monitor %d paused: %v", id, err)
+		}
+	}
+	factory.CreateTestLogScore(t, serverID, oldSampleID, 20, 1, &rtt, now.Add(-30*time.Hour))
+
+	sl := &Selector{ctx: tdb.Context(), log: testutil.NewTestLogger(t).Logger()}
+
+	var outcome reviewOutcome
+	err := database.WithTransaction(tdb.Context(), tdb.Queries(), func(ctx context.Context, tx ntpdb.QuerierTx) error {
+		var err error
+		outcome, err = sl.processServer(ctx, tx, serverID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("processServer: %v", err)
+	}
+	if !outcome.Changed {
+		t.Error("processServer made no changes")
+	}
+
+	for _, id := range []int64{oldSampleID, neverSampledID} {
+		var status string
+		err := tdb.QueryRow(tdb.Context(),
+			"SELECT status::text FROM server_scores WHERE server_id = $1 AND monitor_id = $2",
+			serverID, id).Scan(&status)
+		if err != nil {
+			t.Fatalf("read status of monitor %d: %v", id, err)
+		}
+		if status != string(ntpdb.ServerScoresStatusCandidate) {
+			t.Errorf("monitor %d status = %q, want candidate", id, status)
+		}
+	}
 }

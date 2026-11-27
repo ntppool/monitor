@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"go.ntppool.org/monitor/monitorsettings"
 	"go.ntppool.org/monitor/ntpdb"
 )
 
@@ -423,5 +424,201 @@ func TestCalculateSafetyLimits_ConstraintInteractions(t *testing.T) {
 					tt.shouldAllowChanges, actualAllowsChanges, tt.scenario)
 			}
 		})
+	}
+}
+
+// budgetScenario builds a server with the given number of healthy active
+// monitors, testing monitors at testingPriority and candidates at
+// candidatePriority (lower is better). Candidates and testing monitors have
+// enough samples to be promoted.
+func budgetScenario(active, testing, candidates, testingPriority, candidatePriority int) []evaluatedMonitor {
+	var rows []evaluatedMonitor
+	add := func(id int64, status ntpdb.ServerScoresStatus, priority int, count int64) {
+		rows = append(rows, evaluatedMonitor{
+			monitor: monitorCandidate{
+				ID:           id,
+				ServerStatus: status,
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				Priority:     priority,
+				IsHealthy:    true,
+				HasMetrics:   true,
+				Count:        count,
+			},
+			recommendedState: candidateIn,
+			currentViolation: &constraintViolation{Type: violationNone},
+		})
+	}
+	for i := 0; i < active; i++ {
+		add(int64(i+1), ntpdb.ServerScoresStatusActive, 10+i, 100)
+	}
+	for i := 0; i < testing; i++ {
+		add(int64(i+10), ntpdb.ServerScoresStatusTesting, testingPriority, 20)
+	}
+	for i := 0; i < candidates; i++ {
+		add(int64(i+20), ntpdb.ServerScoresStatusCandidate, candidatePriority, 20)
+	}
+	return rows
+}
+
+func countChanges(changes []statusChange, from, to ntpdb.ServerScoresStatus, reason string) int {
+	n := 0
+	for _, c := range changes {
+		if c.fromStatus == from && c.toStatus == to && (reason == "" || c.reason == reason) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestSelectionRulesPromotionBudget(t *testing.T) {
+	const (
+		candidate = ntpdb.ServerScoresStatusCandidate
+		testing_  = ntpdb.ServerScoresStatusTesting
+	)
+
+	tests := []struct {
+		name   string
+		rows   []evaluatedMonitor
+		counts ntpdb.GetServerPromotionCountsRow
+		// candidate -> testing promotions with the given reason
+		reason string
+		want   int
+	}{
+		{
+			// both candidates are far better than the testing monitors, but a
+			// performance replacement is allowed only while nothing was
+			// promoted into testing: the second sees the first
+			name:   "two performance replacements in one review give one",
+			rows:   budgetScenario(7, 5, 2, 100, 50),
+			counts: ntpdb.GetServerPromotionCountsRow{},
+			reason: "replacement promotion",
+			want:   1,
+		},
+		{
+			name:   "performance replacement refused after a promotion in the window",
+			rows:   budgetScenario(7, 5, 2, 100, 50),
+			counts: ntpdb.GetServerPromotionCountsRow{IntoTesting: 1},
+			reason: "replacement promotion",
+			want:   0,
+		},
+		{
+			name:   "fill refused at the daily limit",
+			rows:   budgetScenario(7, 2, 3, 100, 100),
+			counts: ntpdb.GetServerPromotionCountsRow{IntoTesting: 3},
+			reason: "candidate to testing",
+			want:   0,
+		},
+		{
+			name:   "fill allowed below the daily limit",
+			rows:   budgetScenario(7, 2, 3, 100, 100),
+			counts: ntpdb.GetServerPromotionCountsRow{IntoTesting: 1},
+			reason: "candidate to testing",
+			want:   2,
+		},
+		{
+			name:   "fills stop at the limit within one review",
+			rows:   budgetScenario(7, 2, 3, 100, 100),
+			counts: ntpdb.GetServerPromotionCountsRow{IntoTesting: 2},
+			reason: "candidate to testing",
+			want:   1,
+		},
+		{
+			name:   "bootstrap mode is not limited",
+			rows:   budgetScenario(3, 2, 3, 100, 100),
+			counts: ntpdb.GetServerPromotionCountsRow{IntoTesting: 9},
+			reason: "candidate to testing",
+			want:   2, // Rule 5 fills at most 2 per review
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sl := &Selector{log: slog.Default()}
+			changes := sl.applySelectionRules(
+				context.Background(), tt.rows, &serverInfo{ID: 1982},
+				map[int64]*accountLimit{}, nil, sl.promotionBudgetFor(tt.counts, tt.rows),
+			)
+			if got := countChanges(changes, candidate, testing_, tt.reason); got != tt.want {
+				t.Errorf("%q promotions = %d, want %d; changes: %+v", tt.reason, got, tt.want, changes)
+			}
+		})
+	}
+}
+
+// A testing -> active swap is a promotion into active; the demotion of the
+// active monitor does not count as a promotion into testing.
+func TestRule3SwapCountsAsPromotionIntoActiveOnly(t *testing.T) {
+	sl := &Selector{log: slog.Default()}
+	rows := budgetScenario(7, 3, 0, 40, 0)
+	for i := range rows {
+		// the testing monitors are much better than the active ones
+		if rows[i].monitor.ServerStatus == ntpdb.ServerScoresStatusTesting {
+			rows[i].monitor.Priority = 5
+			rows[i].monitor.Count = monitorsettings.HistoricalMinForActive
+		} else {
+			rows[i].monitor.Priority = 100 + i
+		}
+	}
+	var active, testing []evaluatedMonitor
+	for _, em := range rows {
+		if em.monitor.ServerStatus == ntpdb.ServerScoresStatusActive {
+			active = append(active, em)
+		} else {
+			testing = append(testing, em)
+		}
+	}
+
+	budget := newPromotionBudget(ntpdb.GetServerPromotionCountsRow{}, serverMode{}, 3)
+	selCtx := selectionContext{
+		budget:            budget,
+		evaluatedMonitors: rows,
+		server:            &serverInfo{ID: 1982},
+		limits:            changeLimits{promotions: 4, activeRemovals: 2, testingRemovals: 2},
+		targetNumber:      targetActiveMonitors,
+	}
+
+	result := sl.applyRule3TestingToActivePromotion(
+		context.Background(), selCtx, testing, active, map[int64]*accountLimit{}, 7, 3,
+	)
+
+	swaps := countChanges(result.changes, ntpdb.ServerScoresStatusTesting, ntpdb.ServerScoresStatusActive, "")
+	if swaps != 1 {
+		t.Fatalf("swaps = %d, want 1 (a second performance replacement is refused); changes: %+v", swaps, result.changes)
+	}
+	if got := countChanges(result.changes, ntpdb.ServerScoresStatusActive, ntpdb.ServerScoresStatusTesting, ""); got != 1 {
+		t.Errorf("active demotions = %d, want 1", got)
+	}
+	if budget.intoActive != 1 || budget.intoTesting != 0 {
+		t.Errorf("budget counts into active %d, into testing %d; want 1 and 0", budget.intoActive, budget.intoTesting)
+	}
+}
+
+// With no testing monitors both Rule 5 and Rule 6 promote candidates. A
+// candidate gets at most one change, and the budget counts it once.
+func TestSelectionRulesNoDuplicatePromotion(t *testing.T) {
+	sl := &Selector{log: slog.Default()}
+	rows := budgetScenario(6, 0, 3, 100, 100)
+	budget := sl.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, rows)
+	changes := sl.applySelectionRules(
+		context.Background(), rows, &serverInfo{ID: 1982},
+		map[int64]*accountLimit{}, nil, budget,
+	)
+
+	seen := map[int64]int{}
+	for _, c := range changes {
+		seen[c.monitorID]++
+		if seen[c.monitorID] > 1 {
+			t.Errorf("monitor %d has %d changes; changes: %+v", c.monitorID, seen[c.monitorID], changes)
+		}
+	}
+	promoted := countChanges(changes, ntpdb.ServerScoresStatusCandidate, ntpdb.ServerScoresStatusTesting, "")
+	if promoted != 3 {
+		t.Errorf("candidate -> testing promotions = %d, want 3; changes: %+v", promoted, changes)
+	}
+	if budget.intoTesting != int64(promoted) {
+		t.Errorf("budget counts %d promotions into testing, want %d", budget.intoTesting, promoted)
+	}
+	if r := budget.refused(); len(r) != 0 {
+		t.Errorf("refusals = %+v, want none", r)
 	}
 }

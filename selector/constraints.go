@@ -136,13 +136,13 @@ func (sl *Selector) checkNetworkDiversityConstraint(
 			continue
 		}
 
-		// Skip if no IP or status
-		if !existing.MonitorIp.Valid || !existing.Status.Valid {
+		// Skip if no IP
+		if !existing.MonitorIp.Valid {
 			continue
 		}
 
 		// Only check active and testing monitors
-		existingStatus := existing.Status.ServerScoresStatus
+		existingStatus := existing.Status
 		if existingStatus != ntpdb.ServerScoresStatusActive &&
 			existingStatus != ntpdb.ServerScoresStatusTesting {
 			continue
@@ -374,13 +374,11 @@ func (sl *Selector) buildAccountLimitsFromMonitors(monitors []ntpdb.GetMonitorPr
 		}
 
 		// Count active/testing monitors
-		if monitor.Status.Valid {
-			switch monitor.Status.ServerScoresStatus {
-			case ntpdb.ServerScoresStatusActive:
-				limits[accountID].ActiveCount++
-			case ntpdb.ServerScoresStatusTesting:
-				limits[accountID].TestingCount++
-			}
+		switch monitor.Status {
+		case ntpdb.ServerScoresStatusActive:
+			limits[accountID].ActiveCount++
+		case ntpdb.ServerScoresStatusTesting:
+			limits[accountID].TestingCount++
 		}
 	}
 
@@ -405,13 +403,13 @@ func (sl *Selector) checkAccountConstraintsIterative(
 	accountGroups := make(map[int64]map[ntpdb.ServerScoresStatus][]monitorInfo)
 
 	for _, monitor := range monitors {
-		// Skip monitors without accounts or status
-		if !monitor.AccountID.Valid || !monitor.Status.Valid {
+		// Skip monitors without accounts
+		if !monitor.AccountID.Valid {
 			continue
 		}
 
 		accountID := monitor.AccountID.Int64
-		status := monitor.Status.ServerScoresStatus
+		status := monitor.Status
 
 		// Only check active and testing monitors (candidates are exempt)
 		if status != ntpdb.ServerScoresStatusActive && status != ntpdb.ServerScoresStatusTesting {

@@ -99,7 +99,7 @@ func TestDynamicTestingPoolSizing(t *testing.T) {
 			accountLimits := make(map[int64]*accountLimit)
 
 			// Run the selection rules
-			changes := sl.applySelectionRules(ctx, monitors, server, accountLimits, []ntpdb.GetMonitorPriorityRow{})
+			changes := sl.applySelectionRules(ctx, monitors, server, accountLimits, []ntpdb.GetMonitorPriorityRow{}, sl.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, monitors))
 
 			// Count demotions from testing to candidate
 			demotions := 0
@@ -218,7 +218,7 @@ func TestDynamicTestingPoolWithConstraints(t *testing.T) {
 	// Current testing = 3, so no demotions expected
 	// But monitor 3 should be demoted due to violation (handled by constraint logic)
 
-	changes := sl.applySelectionRules(ctx, monitors, server, accountLimits, []ntpdb.GetMonitorPriorityRow{})
+	changes := sl.applySelectionRules(ctx, monitors, server, accountLimits, []ntpdb.GetMonitorPriorityRow{}, sl.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, monitors))
 
 	// Count different types of demotions
 	constraintDemotions := 0

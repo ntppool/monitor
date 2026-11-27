@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go.ntppool.org/common/database"
@@ -87,12 +86,12 @@ func (cmd SimulateCmd) Run(ctx context.Context, parent ParentConfig) error {
 	// Run simulation within read-only transaction
 	db := ntpdb.New(dbconn)
 
-	var changed bool
+	var outcome reviewOutcome
 	err = database.WithReadOnlyTransaction(ctx, db, func(ctx context.Context, txDB ntpdb.QuerierTx) error {
 		log.InfoContext(ctx, "simulating server processing", "serverID", cmd.ServerID)
 
 		var err error
-		changed, err = sl.ProcessServerSimulation(ctx, txDB, cmd.ServerID)
+		outcome, err = sl.ProcessServerSimulation(ctx, txDB, cmd.ServerID)
 		if err != nil {
 			return fmt.Errorf("simulation failed: %w", err)
 		}
@@ -104,9 +103,9 @@ func (cmd SimulateCmd) Run(ctx context.Context, parent ParentConfig) error {
 
 	log.InfoContext(ctx, "simulation completed",
 		"serverID", cmd.ServerID,
-		"wouldHaveChanged", changed)
+		"wouldHaveChanged", outcome.Changed)
 
-	if changed {
+	if outcome.Changed {
 		fmt.Printf("✓ Simulation complete: Changes would be applied for server %d\n", cmd.ServerID)
 	} else {
 		fmt.Printf("✓ Simulation complete: No changes needed for server %d\n", cmd.ServerID)
@@ -160,40 +159,22 @@ func run(ctx context.Context, configFile string, continuous bool, metricsPort in
 		log.InfoContext(ctx, "processing single server", "serverID", *serverID)
 
 		db := ntpdb.New(sl.dbconn)
-		var changed bool
+		var outcome reviewOutcome
 		err := database.WithTransaction(ctx, db, func(ctx context.Context, db ntpdb.QuerierTx) error {
 			var err error
-			changed, err = sl.processServer(ctx, db, *serverID)
+			outcome, err = sl.processServer(ctx, db, *serverID)
 			if err != nil {
 				return fmt.Errorf("failed to process server %d: %w", *serverID, err)
 			}
 
 			// Update review timestamp like the main Run() method does
-			if changed {
-				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
-					ServerID:   *serverID,
-					NextReview: pgtype.Timestamptz{Time: time.Now().Add(60 * time.Minute), Valid: true},
-				})
-				if err != nil {
-					return err
-				}
-			} else {
-				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
-					ServerID:   *serverID,
-					NextReview: pgtype.Timestamptz{Time: time.Now().Add(20 * time.Minute), Valid: true},
-				})
-				if err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return sl.scheduleNextReview(ctx, db, *serverID, outcome)
 		})
 		if err != nil {
 			return err
 		}
 
-		if changed {
+		if outcome.Changed {
 			log.InfoContext(ctx, "server processing completed with changes", "serverID", *serverID)
 		} else {
 			log.InfoContext(ctx, "server processing completed without changes", "serverID", *serverID)
@@ -329,29 +310,20 @@ func (sl *Selector) Run() (int, error) {
 
 		count = 0
 		for _, serverID := range ids {
-			changed, err := sl.processServer(ctx, db, serverID)
+			outcome, err := sl.processServer(ctx, db, serverID)
 			if err != nil {
 				// todo: rollback transaction here? Save that we did a review anyway?
 				sl.log.Warn("could not process selection of monitors", "serverID", serverID, "err", err)
 			}
 			count++
 
-			if changed {
-				err := db.UpdateServersMonitorReviewChanged(ctx, ntpdb.UpdateServersMonitorReviewChangedParams{
-					ServerID:   serverID,
-					NextReview: pgtype.Timestamptz{Time: time.Now().Add(60 * time.Minute), Valid: true},
-				})
-				if err != nil {
-					return err
-				}
-			} else {
-				err := db.UpdateServersMonitorReview(ctx, ntpdb.UpdateServersMonitorReviewParams{
-					ServerID:   serverID,
-					NextReview: pgtype.Timestamptz{Time: time.Now().Add(20 * time.Minute), Valid: true},
-				})
-				if err != nil {
-					return err
-				}
+			// A failed review is scheduled like one without changes. That
+			// holds for errors that leave the transaction usable. A SQL
+			// error inside processServer aborts the pgx transaction, so the
+			// schedule call fails too and Run returns the error with the
+			// whole batch rolled back.
+			if err := sl.scheduleNextReview(ctx, db, serverID, outcome); err != nil {
+				return err
 			}
 		}
 
@@ -365,18 +337,35 @@ func (sl *Selector) Run() (int, error) {
 }
 
 // ProcessServerSimulation runs the selection algorithm for a single server in simulation mode
-func (sl *Selector) ProcessServerSimulation(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (bool, error) {
+func (sl *Selector) ProcessServerSimulation(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (reviewOutcome, error) {
 	return sl.processServer(ctx, db, serverID)
 }
 
-func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (bool, error) {
+// skipUnknownStatuses drops rows whose server_scores status isn't known to
+// this version, logging each one.
+func (sl *Selector) skipUnknownStatuses(rows []ntpdb.GetMonitorPriorityRow, serverID int64) []ntpdb.GetMonitorPriorityRow {
+	known := make([]ntpdb.GetMonitorPriorityRow, 0, len(rows))
+	for _, row := range rows {
+		if !knownServerStatus(row.Status) {
+			sl.log.Warn("skipping monitor with unknown server status",
+				"serverID", serverID,
+				"monitorID", row.ID,
+				"status", row.Status)
+			continue
+		}
+		known = append(known, row)
+	}
+	return known
+}
+
+func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serverID int64) (reviewOutcome, error) {
 	start := time.Now()
 	sl.log.Debug("processing server", "serverID", serverID)
 
 	// Step 1: Load server information
 	server, err := sl.loadServerInfo(ctx, db, serverID)
 	if err != nil {
-		return false, fmt.Errorf("failed to load server info: %w", err)
+		return reviewOutcome{}, fmt.Errorf("failed to load server info: %w", err)
 	}
 
 	// Step 2: Get all assigned monitors
@@ -385,8 +374,12 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		SampleWindowSeconds: sl.sampleWindow().Seconds(),
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to get monitor priority: %w", err)
+		return reviewOutcome{}, fmt.Errorf("failed to get monitor priority: %w", err)
 	}
+
+	// Rows with a status this version doesn't know (written by a newer
+	// version) are left alone, before any constraint is checked
+	assignedMonitors = sl.skipUnknownStatuses(assignedMonitors, serverID)
 
 	// No longer loading available monitors - only work with assigned monitors
 
@@ -431,8 +424,25 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		})
 	}
 
-	// Step 6: Apply selection rules
-	changes := sl.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, assignedMonitors)
+	// Step 6: Apply selection rules, limited by the promotions of the last
+	// promotion_window
+	promotionCounts, err := db.GetServerPromotionCounts(ctx, ntpdb.GetServerPromotionCountsParams{
+		ServerID:      serverID,
+		WindowSeconds: sl.currentSettings().PromotionWindow.Duration.Seconds(),
+	})
+	if err != nil {
+		return reviewOutcome{}, fmt.Errorf("failed to get server promotion counts: %w", err)
+	}
+	budget := sl.promotionBudgetFor(promotionCounts, evaluatedMonitors)
+	changes := sl.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, assignedMonitors, budget)
+	if sl.metrics != nil {
+		for _, r := range budget.refused() {
+			sl.metrics.TrackPromotionLimited(r.to, r.kind)
+		}
+	}
+	// The mode is of the server as it was found; it also sets the time of the
+	// next review
+	mode := budget.mode
 
 	// Step 7: Execute changes
 	// Create a map from monitor ID to monitor candidate for metrics tracking
@@ -532,5 +542,5 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		"appliedChanges", changeCount,
 		"failedChanges", failedChanges)
 
-	return changeCount > 0, nil
+	return reviewOutcome{Changed: changeCount > 0, Mode: mode}, nil
 }

@@ -125,7 +125,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				{
 					ID:        2,
 					MonitorIp: pgtype.Text{String: "10.0.0.1", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -139,12 +139,12 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				{
 					ID:        2,
 					MonitorIp: pgtype.Text{String: "192.168.2.20", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 				{
 					ID:        3,
 					MonitorIp: pgtype.Text{String: "192.168.3.30", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -159,7 +159,7 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				{
 					ID:        2,
 					MonitorIp: pgtype.Text{String: "2001:db8:5678::1", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -173,12 +173,12 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				{
 					ID:        2,
 					MonitorIp: pgtype.Text{String: "2001:db8:1234:1::1", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 				{
 					ID:        3,
 					MonitorIp: pgtype.Text{String: "2001:db8:1234:2::1", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -193,12 +193,12 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 				{
 					ID:        2,
 					MonitorIp: pgtype.Text{String: "192.168.2.20", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 				{
 					ID:        3,
 					MonitorIp: pgtype.Text{String: "192.168.3.30", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+					Status:    ntpdb.ServerScoresStatusTesting,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -210,14 +210,14 @@ func TestCheckNetworkDiversityConstraint(t *testing.T) {
 			monitorIP: "192.168.1.10",
 			existingMonitors: []ntpdb.GetMonitorPriorityRow{
 				{
-					ID:        100,                                             // Same ID as the monitor being checked
+					ID:        100,                                              // Same ID as the monitor being checked
 					MonitorIp: pgtype.Text{String: "192.168.1.10", Valid: true}, // Same IP
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 				{
 					ID:        101,
 					MonitorIp: pgtype.Text{String: "10.0.0.1", Valid: true}, // Different network
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusActive, Valid: true},
+					Status:    ntpdb.ServerScoresStatusActive,
 				},
 			},
 			targetState: ntpdb.ServerScoresStatusActive,
@@ -299,7 +299,7 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 					ID:        2,
 					AccountID: pgtype.Int8{Int64: 2, Valid: true},
 					MonitorIp: pgtype.Text{String: "192.168.1.20", Valid: true}, // Same /24 subnet
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+					Status:    ntpdb.ServerScoresStatusTesting,
 				},
 			},
 			emergencyOverride: true,
@@ -317,7 +317,7 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 					ID:        2,
 					AccountID: pgtype.Int8{Int64: 1, Valid: true}, // Same account
 					MonitorIp: pgtype.Text{String: "10.0.0.2", Valid: true},
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+					Status:    ntpdb.ServerScoresStatusTesting,
 				},
 			},
 			emergencyOverride: true,
@@ -357,7 +357,7 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 					ID:        2,
 					AccountID: pgtype.Int8{Int64: 2, Valid: true},
 					MonitorIp: pgtype.Text{String: "192.168.1.20", Valid: true}, // Same /24 subnet
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+					Status:    ntpdb.ServerScoresStatusTesting,
 				},
 			},
 			emergencyOverride: false,
@@ -386,7 +386,7 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 					ID:        2,
 					AccountID: pgtype.Int8{Int64: 2, Valid: true},
 					MonitorIp: pgtype.Text{String: "192.168.1.20", Valid: true}, // Same /24 subnet
-					Status:    ntpdb.NullServerScoresStatus{ServerScoresStatus: ntpdb.ServerScoresStatusTesting, Valid: true},
+					Status:    ntpdb.ServerScoresStatusTesting,
 				},
 			},
 			emergencyOverride: true,
@@ -406,8 +406,8 @@ func TestCanPromoteToTestingEmergencyOverride(t *testing.T) {
 
 func TestIsUnchangeableConstraint(t *testing.T) {
 	tests := []struct {
-		name           string
-		violationType  constraintViolationType
+		name             string
+		violationType    constraintViolationType
 		wantUnchangeable bool
 	}{
 		{
@@ -455,10 +455,10 @@ func TestShouldCheckConstraintResolution(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name            string
-		monitor         monitorCandidate
-		pauseReason     pauseReason
-		wantCheck       bool
+		name        string
+		monitor     monitorCandidate
+		pauseReason pauseReason
+		wantCheck   bool
 	}{
 		{
 			name: "non_paused_monitor_should_not_check",
@@ -544,10 +544,10 @@ func TestCheckConstraintResolution(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		monitor          monitorCandidate
-		server           *serverInfo
-		wantResolved     bool
+		name         string
+		monitor      monitorCandidate
+		server       *serverInfo
+		wantResolved bool
 	}{
 		{
 			name: "non_paused_monitor_should_not_resolve",

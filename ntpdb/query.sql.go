@@ -97,54 +97,61 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     -- NULL when a monitor has no rtt samples at all for the server
     coalesce(avg(ls.rtt) / 1000, 0)::integer as avg_rtt,
     coalesce(round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step))))), 0)::integer as monitor_priority,
-    avg(ls.step)::float8 as avg_step,
-    CASE WHEN avg(ls.step) < 0 THEN false ELSE true END as healthy,
+    coalesce(avg(ls.step), 0)::float8 as avg_step,
+    (count(ls.id) > 0 AND coalesce(avg(ls.step), 0) >= 0)::boolean as healthy,
     m.status as monitor_status, ss.status as status,
-    count(*) as count,
+    ss.status_since,
+    count(ls.id) as count,
     a.flags as account_flags,
     ss.constraint_violation_type,
     ss.constraint_violation_since,
     ss.last_constraint_check,
     ss.pause_reason
-  FROM log_scores ls
-  INNER JOIN monitors m ON m.id = ls.monitor_id
-  LEFT JOIN server_scores ss ON (ss.server_id = ls.server_id AND ss.monitor_id = ls.monitor_id)
+  FROM server_scores ss
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  LEFT JOIN log_scores ls ON (
+    ls.server_id = ss.server_id
+    AND ls.monitor_id = ss.monitor_id
+    AND ls.ts > NOW() - make_interval(secs => $1::float8)
+  )
   LEFT JOIN accounts a ON (m.account_id = a.id)
-  WHERE ls.server_id = $1
+  WHERE ss.server_id = $2
     AND m.type = 'monitor'
-    AND ls.ts > NOW() - make_interval(secs => $2::float8)
-  GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+  GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, ss.status_since, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
-  ORDER BY healthy DESC, monitor_priority, avg_step DESC, avg_rtt
+  ORDER BY (count(ls.id) > 0) DESC, healthy DESC, monitor_priority, avg_step DESC, avg_rtt
 `
 
 type GetMonitorPriorityParams struct {
-	ServerID            int64   `json:"server_id"`
 	SampleWindowSeconds float64 `json:"sample_window_seconds"`
+	ServerID            int64   `json:"server_id"`
 }
 
 type GetMonitorPriorityRow struct {
-	ID                       int64                  `json:"id"`
-	IDToken                  pgtype.Text            `json:"id_token"`
-	TlsName                  pgtype.Text            `json:"tls_name"`
-	AccountID                pgtype.Int8            `json:"account_id"`
-	MonitorIp                pgtype.Text            `json:"monitor_ip"`
-	AvgRtt                   int32                  `json:"avg_rtt"`
-	MonitorPriority          int32                  `json:"monitor_priority"`
-	AvgStep                  float64                `json:"avg_step"`
-	Healthy                  bool                   `json:"healthy"`
-	MonitorStatus            MonitorsStatus         `json:"monitor_status"`
-	Status                   NullServerScoresStatus `json:"status"`
-	Count                    int64                  `json:"count"`
-	AccountFlags             *json.RawMessage       `json:"account_flags"`
-	ConstraintViolationType  pgtype.Text            `json:"constraint_violation_type"`
-	ConstraintViolationSince pgtype.Timestamptz     `json:"constraint_violation_since"`
-	LastConstraintCheck      pgtype.Timestamptz     `json:"last_constraint_check"`
-	PauseReason              pgtype.Text            `json:"pause_reason"`
+	ID                       int64              `json:"id"`
+	IDToken                  pgtype.Text        `json:"id_token"`
+	TlsName                  pgtype.Text        `json:"tls_name"`
+	AccountID                pgtype.Int8        `json:"account_id"`
+	MonitorIp                pgtype.Text        `json:"monitor_ip"`
+	AvgRtt                   int32              `json:"avg_rtt"`
+	MonitorPriority          int32              `json:"monitor_priority"`
+	AvgStep                  float64            `json:"avg_step"`
+	Healthy                  bool               `json:"healthy"`
+	MonitorStatus            MonitorsStatus     `json:"monitor_status"`
+	Status                   ServerScoresStatus `json:"status"`
+	StatusSince              pgtype.Timestamptz `json:"status_since"`
+	Count                    int64              `json:"count"`
+	AccountFlags             *json.RawMessage   `json:"account_flags"`
+	ConstraintViolationType  pgtype.Text        `json:"constraint_violation_type"`
+	ConstraintViolationSince pgtype.Timestamptz `json:"constraint_violation_since"`
+	LastConstraintCheck      pgtype.Timestamptz `json:"last_constraint_check"`
+	PauseReason              pgtype.Text        `json:"pause_reason"`
 }
 
+// Starts from server_scores so rows without recent samples are returned too
+// (count 0, not healthy, sorted after every row with samples).
 func (q *Queries) GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error) {
-	rows, err := q.db.Query(ctx, getMonitorPriority, arg.ServerID, arg.SampleWindowSeconds)
+	rows, err := q.db.Query(ctx, getMonitorPriority, arg.SampleWindowSeconds, arg.ServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +171,7 @@ func (q *Queries) GetMonitorPriority(ctx context.Context, arg GetMonitorPriority
 			&i.Healthy,
 			&i.MonitorStatus,
 			&i.Status,
+			&i.StatusSince,
 			&i.Count,
 			&i.AccountFlags,
 			&i.ConstraintViolationType,
@@ -610,8 +618,40 @@ func (q *Queries) GetServerIP(ctx context.Context, ip string) (Server, error) {
 	return i, err
 }
 
+const getServerPromotionCounts = `-- name: GetServerPromotionCounts :one
+SELECT
+    (count(*) FILTER (WHERE l.old_status = 'candidate' AND l.new_status = 'testing'))::bigint AS into_testing,
+    (count(*) FILTER (WHERE l.old_status = 'testing' AND l.new_status = 'active'))::bigint AS into_active
+  FROM server_scores_status_log l
+  INNER JOIN monitors m ON m.id = l.monitor_id
+  WHERE l.server_id = $1
+    AND m.type = 'monitor'
+    AND l.op = 'update'
+    AND l.ts > NOW() - make_interval(secs => $2::float8)
+`
+
+type GetServerPromotionCountsParams struct {
+	ServerID      int64   `json:"server_id"`
+	WindowSeconds float64 `json:"window_seconds"`
+}
+
+type GetServerPromotionCountsRow struct {
+	IntoTesting int64 `json:"into_testing"`
+	IntoActive  int64 `json:"into_active"`
+}
+
+// Promotions across each status boundary on a server within the window. A
+// swap's demotion (active -> testing, testing -> candidate) is not counted.
+// Only regular monitors count; scorer rows are not handed out by the selector.
+func (q *Queries) GetServerPromotionCounts(ctx context.Context, arg GetServerPromotionCountsParams) (GetServerPromotionCountsRow, error) {
+	row := q.db.QueryRow(ctx, getServerPromotionCounts, arg.ServerID, arg.WindowSeconds)
+	var i GetServerPromotionCountsRow
+	err := row.Scan(&i.IntoTesting, &i.IntoActive)
+	return i, err
+}
+
 const getServerScore = `-- name: GetServerScore :one
-SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since, last_constraint_check, pause_reason FROM server_scores
+SELECT id, monitor_id, server_id, score_ts, score_raw, stratum, status, queue_ts, created_on, modified_on, constraint_violation_type, constraint_violation_since, last_constraint_check, pause_reason, status_since FROM server_scores
   WHERE
     server_id = $1 AND
     monitor_id = $2
@@ -640,6 +680,7 @@ func (q *Queries) GetServerScore(ctx context.Context, arg GetServerScoreParams) 
 		&i.ConstraintViolationSince,
 		&i.LastConstraintCheck,
 		&i.PauseReason,
+		&i.StatusSince,
 	)
 	return i, err
 }
@@ -736,9 +777,11 @@ func (q *Queries) GetServers(ctx context.Context, arg GetServersParams) ([]GetSe
 }
 
 const getServersMonitorReview = `-- name: GetServersMonitorReview :many
-SELECT server_id FROM servers_monitor_review
-WHERE (next_review <= NOW() OR next_review IS NULL)
-ORDER BY next_review
+SELECT r.server_id FROM servers_monitor_review r
+  INNER JOIN servers s ON s.id = r.server_id
+WHERE (r.next_review <= NOW() OR r.next_review IS NULL)
+  AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+ORDER BY r.next_review
 LIMIT 10
 `
 

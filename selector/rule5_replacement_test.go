@@ -31,6 +31,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				RTT:          float64(10 + i*5), // RTT 10, 15, 20, 25, 30, 35, 40
 				Priority:     int(10 + i*5),     // Priority matches RTT for consistency
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -48,6 +49,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				RTT:          testingRTTs[i],
 				Priority:     int(testingRTTs[i]), // Priority matches RTT for consistency
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -66,6 +68,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 				RTT:          candidateRTTs[i],
 				Priority:     candidatePriorities[i], // 50%+ better than corresponding testing monitors
 				IsHealthy:    true,
+				HasMetrics:   true,
 				Count:        monitorsettings.HistoricalMinForTesting, // Ensure candidates meet minimum data points requirement
 			},
 			recommendedState: candidateIn,
@@ -76,7 +79,7 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, evaluatedMonitors))
 
 	// Debug: Log scenario setup
 	activeCount := 0
@@ -133,9 +136,10 @@ func TestRule5_CandidateToTestingReplacement(t *testing.T) {
 			replacementPromotions, replacementDemotions)
 	}
 
-	// Should have at least some replacements (candidates are better than worst testing monitors)
-	if replacementPromotions == 0 {
-		t.Errorf("Expected some replacement promotions, got 0")
+	// The candidates are better than the worst testing monitors, but the
+	// daily budget allows one performance replacement per review
+	if replacementPromotions != 1 {
+		t.Errorf("Expected 1 replacement promotion, got %d", replacementPromotions)
 	}
 
 	t.Logf("Replacement operations: %d promotions, %d demotions", replacementPromotions, replacementDemotions)
@@ -161,6 +165,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -176,6 +181,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*5), // RTT 50, 55, 60, 65, 70
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -191,6 +197,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(80 + i*10), // RTT 80, 90, 100 - worse than all testing
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -200,7 +207,7 @@ func TestRule5_NoReplacementWhenTestingBetter(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, evaluatedMonitors))
 
 	// Should have no replacements since candidates are worse than testing monitors
 	replacementPromotions := 0
@@ -244,6 +251,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -259,6 +267,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*5),
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -274,6 +283,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(60 + i*5),
 				IsHealthy:    true,
+				HasMetrics:   true,
 				Count:        monitorsettings.HistoricalMinForTesting, // Ensure candidates meet minimum data points requirement
 			},
 			recommendedState: candidateIn,
@@ -284,7 +294,7 @@ func TestRule5_CapacityPromotionStillWorks(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, evaluatedMonitors))
 
 	// Should have capacity-based promotions (testing pool has room)
 	capacityPromotions := 0
@@ -327,6 +337,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(10 + i*5),
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -344,6 +355,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 				GlobalStatus: ntpdb.MonitorsStatusActive,
 				RTT:          float64(50 + i*10),
 				IsHealthy:    true,
+				HasMetrics:   true,
 			},
 			recommendedState: candidateIn,
 			currentViolation: &constraintViolation{Type: violationNone},
@@ -361,6 +373,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 			RTT:          30, // Better than testing monitors but same account
 			Priority:     30, // Priority matches RTT
 			IsHealthy:    true,
+			HasMetrics:   true,
 		},
 		recommendedState: candidateIn,
 		currentViolation: &constraintViolation{Type: violationNone},
@@ -377,7 +390,7 @@ func TestRule5_ConstraintRespectedInReplacements(t *testing.T) {
 		},
 	}
 
-	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, evaluatedMonitors))
 
 	// Should have no replacements due to account constraint violation
 	replacementPromotions := 0
@@ -407,7 +420,35 @@ func TestCandidateOutperformsTestingMonitor(t *testing.T) {
 		testingHealthy    bool
 		testingPriority   int
 		expectedResult    bool
+		// candidateSilent and testingSilent mark rows without samples; they
+		// report priority 0 and are never healthy
+		candidateSilent bool
+		testingSilent   bool
 	}{
+		{
+			name:              "silent candidate never outperforms a row with samples",
+			candidatePriority: 0,
+			testingHealthy:    true,
+			testingPriority:   100,
+			expectedResult:    false, // priority 0 is not a real measurement
+			candidateSilent:   true,
+		},
+		{
+			name:              "silent candidate vs unhealthy testing with samples",
+			candidatePriority: 0,
+			testingHealthy:    false,
+			testingPriority:   100,
+			expectedResult:    false,
+			candidateSilent:   true,
+		},
+		{
+			name:              "candidate with samples outperforms silent testing",
+			candidateHealthy:  true,
+			candidatePriority: 100,
+			testingPriority:   0,
+			expectedResult:    true,
+			testingSilent:     true,
+		},
 		{
 			name:              "healthy candidate vs unhealthy testing",
 			candidateHealthy:  true,
@@ -470,14 +511,16 @@ func TestCandidateOutperformsTestingMonitor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := evaluatedMonitor{
 				monitor: monitorCandidate{
-					IsHealthy: tc.candidateHealthy,
-					Priority:  tc.candidatePriority,
+					IsHealthy:  tc.candidateHealthy,
+					Priority:   tc.candidatePriority,
+					HasMetrics: !tc.candidateSilent,
 				},
 			}
 			testing := evaluatedMonitor{
 				monitor: monitorCandidate{
-					IsHealthy: tc.testingHealthy,
-					Priority:  tc.testingPriority,
+					IsHealthy:  tc.testingHealthy,
+					Priority:   tc.testingPriority,
+					HasMetrics: !tc.testingSilent,
 				},
 			}
 
@@ -514,6 +557,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     10,
 			RTT:          9.17, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        131, // From SQL data
 		},
 		recommendedState: candidateIn,
@@ -531,6 +575,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     1,    // Excellent performance
 			RTT:          0.32, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        249, // From SQL data - well above minCountForTesting
 		},
 		recommendedState: candidateIn,
@@ -547,6 +592,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     11,
 			RTT:          10.14, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        12, // From SQL data - meets minCountForTesting (9)
 		},
 		recommendedState: candidateIn,
@@ -569,6 +615,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     20,   // Made worse than monitor 160 to trigger replacement
 			RTT:          7.76, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        235,
 		},
 		recommendedState: candidateIn,
@@ -588,6 +635,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     16,
 			RTT:          14.60, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        221,
 		},
 		recommendedState: candidateIn,
@@ -604,6 +652,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     17,
 			RTT:          15.89, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        71,
 		},
 		recommendedState: candidateIn,
@@ -627,6 +676,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 				Priority:     10 + i*2,
 				RTT:          float64(10 + i*2),
 				IsHealthy:    true,
+				HasMetrics:   true,
 				Count:        100,
 			},
 			recommendedState: candidateIn,
@@ -647,6 +697,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     25,   // Worse than monitor 160 (priority 11)
 			RTT:          9.82, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        324,
 		},
 		recommendedState: candidateIn,
@@ -662,6 +713,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 			Priority:     30,    // Much worse than monitor 106 (priority 1)
 			RTT:          16.76, // From SQL data
 			IsHealthy:    true,
+			HasMetrics:   true,
 			Count:        71,
 		},
 		recommendedState: candidateIn,
@@ -704,7 +756,7 @@ func TestRule5_RealWorldAccount351Scenario(t *testing.T) {
 		},
 	}
 
-	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, evaluatedMonitors))
 
 	// Debug logging
 	t.Logf("=== Real World Account 351 Scenario Test ===")

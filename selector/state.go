@@ -52,6 +52,38 @@ func (nsl newStatusList) IsOutOfOrder() (int64, int64, bool) {
 	return best, replace, true
 }
 
+// knownServerStatus reports whether this version of the selector knows how to
+// handle a server_scores status. Rows with other statuses (written by a newer
+// version, for example) are left alone.
+func knownServerStatus(s ntpdb.ServerScoresStatus) bool {
+	switch s {
+	case ntpdb.ServerScoresStatusCandidate,
+		ntpdb.ServerScoresStatusTesting,
+		ntpdb.ServerScoresStatusActive,
+		ntpdb.ServerScoresStatusPaused:
+		return true
+	}
+	return false
+}
+
+// inService reports whether a server_scores status is active or testing.
+func inService(s ntpdb.ServerScoresStatus) bool {
+	return s == ntpdb.ServerScoresStatusActive || s == ntpdb.ServerScoresStatusTesting
+}
+
+// withSamples returns the monitors that have samples in the sample window.
+// Safeguards that compare against the number of monitors available use it,
+// so rows that have not reported (candidates, paused rows) don't change them.
+func withSamples(ms []evaluatedMonitor) []evaluatedMonitor {
+	out := make([]evaluatedMonitor, 0, len(ms))
+	for _, em := range ms {
+		if em.monitor.HasMetrics {
+			out = append(out, em)
+		}
+	}
+	return out
+}
+
 // determineState determines the appropriate candidate state based on global status and constraints
 func (sl *Selector) determineState(
 	monitor *monitorCandidate,
@@ -104,6 +136,11 @@ func (sl *Selector) determineState(
 	// STEP 3: Apply constraint validation (only for globally active/testing monitors)
 	if violation.Type != violationNone {
 		// All constraint violations trigger gradual removal
+		return candidateOut
+	}
+
+	// STEP 3.5: Active or testing monitors that stopped reporting are demoted
+	if !monitor.HasMetrics && inService(monitor.ServerStatus) {
 		return candidateOut
 	}
 

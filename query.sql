@@ -213,35 +213,57 @@ WHERE deletion_on IS NULL OR deletion_on > NOW()
 GROUP BY ip_version;
 
 -- name: GetMonitorPriority :many
+-- Starts from server_scores so rows without recent samples are returned too
+-- (count 0, not healthy, sorted after every row with samples).
 SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     -- rtt is NULL for timeouts and implausible values, so the average is
     -- NULL when a monitor has no rtt samples at all for the server
     coalesce(avg(ls.rtt) / 1000, 0)::integer as avg_rtt,
     coalesce(round((avg(ls.rtt) / 1000) * (1 + (2 * (1 - avg(ls.step))))), 0)::integer as monitor_priority,
-    avg(ls.step)::float8 as avg_step,
-    CASE WHEN avg(ls.step) < 0 THEN false ELSE true END as healthy,
+    coalesce(avg(ls.step), 0)::float8 as avg_step,
+    (count(ls.id) > 0 AND coalesce(avg(ls.step), 0) >= 0)::boolean as healthy,
     m.status as monitor_status, ss.status as status,
-    count(*) as count,
+    ss.status_since,
+    count(ls.id) as count,
     a.flags as account_flags,
     ss.constraint_violation_type,
     ss.constraint_violation_since,
     ss.last_constraint_check,
     ss.pause_reason
-  FROM log_scores ls
-  INNER JOIN monitors m ON m.id = ls.monitor_id
-  LEFT JOIN server_scores ss ON (ss.server_id = ls.server_id AND ss.monitor_id = ls.monitor_id)
-  LEFT JOIN accounts a ON (m.account_id = a.id)
-  WHERE ls.server_id = sqlc.arg('server_id')
-    AND m.type = 'monitor'
+  FROM server_scores ss
+  INNER JOIN monitors m ON m.id = ss.monitor_id
+  LEFT JOIN log_scores ls ON (
+    ls.server_id = ss.server_id
+    AND ls.monitor_id = ss.monitor_id
     AND ls.ts > NOW() - make_interval(secs => sqlc.arg('sample_window_seconds')::float8)
-  GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, a.flags,
+  )
+  LEFT JOIN accounts a ON (m.account_id = a.id)
+  WHERE ss.server_id = sqlc.arg('server_id')
+    AND m.type = 'monitor'
+  GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, ss.status_since, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
-  ORDER BY healthy DESC, monitor_priority, avg_step DESC, avg_rtt;
+  ORDER BY (count(ls.id) > 0) DESC, healthy DESC, monitor_priority, avg_step DESC, avg_rtt;
+
+-- name: GetServerPromotionCounts :one
+-- Promotions across each status boundary on a server within the window. A
+-- swap's demotion (active -> testing, testing -> candidate) is not counted.
+-- Only regular monitors count; scorer rows are not handed out by the selector.
+SELECT
+    (count(*) FILTER (WHERE l.old_status = 'candidate' AND l.new_status = 'testing'))::bigint AS into_testing,
+    (count(*) FILTER (WHERE l.old_status = 'testing' AND l.new_status = 'active'))::bigint AS into_active
+  FROM server_scores_status_log l
+  INNER JOIN monitors m ON m.id = l.monitor_id
+  WHERE l.server_id = sqlc.arg('server_id')
+    AND m.type = 'monitor'
+    AND l.op = 'update'
+    AND l.ts > NOW() - make_interval(secs => sqlc.arg('window_seconds')::float8);
 
 -- name: GetServersMonitorReview :many
-SELECT server_id FROM servers_monitor_review
-WHERE (next_review <= NOW() OR next_review IS NULL)
-ORDER BY next_review
+SELECT r.server_id FROM servers_monitor_review r
+  INNER JOIN servers s ON s.id = r.server_id
+WHERE (r.next_review <= NOW() OR r.next_review IS NULL)
+  AND (s.deletion_on IS NULL OR s.deletion_on > NOW())
+ORDER BY r.next_review
 LIMIT 10;
 
 -- name: UpdateServersMonitorReview :exec

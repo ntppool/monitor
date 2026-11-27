@@ -116,8 +116,85 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	}
 }
 
-// cleanupServerAccount deletes one server's rows and the monitors and
-// account that own them, and nothing else.
+// GetMonitorPriority starts from server_scores: rows without samples in the
+// window come back too (count 0, not healthy, after every row with samples),
+// and monitors of type 'score' stay out.
+func TestGetMonitorPriority_RowsWithoutSamples(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+
+	factory := testutil.NewDataFactory(tdb)
+
+	const (
+		accountID     = 90150
+		serverID      = 90151
+		activeID      = 90152
+		candidateID   = 90153
+		pausedOldID   = 90154
+		scoreMonitor  = 90155
+		unusedMonitor = 90156 // no server_scores row for this server
+	)
+
+	cleanupServerAccount(t, tdb, serverID, accountID)
+	defer cleanupServerAccount(t, tdb, serverID, accountID)
+
+	now := time.Now()
+
+	factory.CreateTestAccount(t, accountID, "test@example.com")
+	factory.CreateTestServer(t, serverID, "192.0.2.70", "v4", nil)
+	factory.CreateTestMonitor(t, activeID, "active.test", accountID, "192.0.2.71", "active")
+	factory.CreateTestMonitor(t, candidateID, "candidate.test", accountID, "192.0.2.72", "active")
+	factory.CreateTestMonitor(t, pausedOldID, "paused.test", accountID, "192.0.2.73", "active")
+	factory.CreateTestMonitorWithType(t, scoreMonitor, "scorer.test", accountID, "192.0.2.74", "active", "score")
+	factory.CreateTestMonitor(t, unusedMonitor, "unused.test", accountID, "192.0.2.75", "active")
+	factory.CreateTestServerScore(t, serverID, activeID, "active", 20)
+	factory.CreateTestServerScore(t, serverID, candidateID, "candidate", 0)
+	factory.CreateTestServerScore(t, serverID, pausedOldID, "paused", 0)
+	factory.CreateTestServerScore(t, serverID, scoreMonitor, "active", 20)
+
+	rtt := int32(25000)
+	for i := 0; i < 10; i++ {
+		factory.CreateTestLogScore(t, serverID, activeID, 20, 1, &rtt, now.Add(-time.Duration(i)*time.Minute))
+		factory.CreateTestLogScore(t, serverID, scoreMonitor, 20, 1, &rtt, now.Add(-time.Duration(i)*time.Minute))
+	}
+	// log_scores rows of a monitor with no server_scores row are not returned
+	factory.CreateTestLogScore(t, serverID, unusedMonitor, 20, 1, &rtt, now)
+	factory.CreateTestLogScore(t, serverID, pausedOldID, 20, 1, &rtt, now.Add(-30*time.Hour))
+
+	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
+		ServerID:            serverID,
+		SampleWindowSeconds: (24 * time.Hour).Seconds(),
+	})
+	testutil.AssertNoError(t, err, "GetMonitorPriority")
+	testutil.AssertEqual(t, 3, len(rows), "number of rows (no score monitor, no monitor without server_scores row)")
+
+	if rows[0].ID != activeID {
+		t.Fatalf("first row = monitor %d, want the active one with samples (%d)", rows[0].ID, activeID)
+	}
+	testutil.AssertEqual(t, int64(10), rows[0].Count, "count of the active row")
+	testutil.AssertTrue(t, rows[0].Healthy, "active row with samples is healthy")
+	testutil.AssertEqual(t, ntpdb.ServerScoresStatusActive, rows[0].Status, "status of the active row")
+	testutil.AssertTrue(t, rows[0].StatusSince.Valid, "status_since is set")
+
+	wantStatus := map[int64]ntpdb.ServerScoresStatus{
+		candidateID: ntpdb.ServerScoresStatusCandidate,
+		pausedOldID: ntpdb.ServerScoresStatusPaused,
+	}
+	for _, r := range rows[1:] {
+		want, ok := wantStatus[r.ID]
+		if !ok {
+			t.Errorf("unexpected row for monitor %d", r.ID)
+			continue
+		}
+		testutil.AssertEqual(t, want, r.Status, "status of monitor %d", r.ID)
+		testutil.AssertEqual(t, int64(0), r.Count, "count of monitor %d", r.ID)
+		testutil.AssertTrue(t, !r.Healthy, "monitor %d without samples is not healthy", r.ID)
+		testutil.AssertEqual(t, float64(0), r.AvgStep, "avg_step of monitor %d", r.ID)
+	}
+}
+
+// cleanupServerAccount deletes one server's rows, including its status log,
+// and the monitors and account that own them, and nothing else.
 func cleanupServerAccount(t *testing.T, tdb *testutil.TestDB, serverID, accountID int64) {
 	t.Helper()
 	stmts := []struct {
@@ -126,6 +203,7 @@ func cleanupServerAccount(t *testing.T, tdb *testutil.TestDB, serverID, accountI
 	}{
 		{"DELETE FROM log_scores WHERE server_id = $1", serverID},
 		{"DELETE FROM server_scores WHERE server_id = $1", serverID},
+		{"DELETE FROM server_scores_status_log WHERE server_id = $1", serverID},
 		{"DELETE FROM servers WHERE id = $1", serverID},
 		{"DELETE FROM monitors WHERE account_id = $1", accountID},
 		{"DELETE FROM accounts WHERE id = $1", accountID},
@@ -134,5 +212,18 @@ func cleanupServerAccount(t *testing.T, tdb *testutil.TestDB, serverID, accountI
 		if _, err := tdb.Exec(tdb.Context(), s.sql, s.id); err != nil {
 			t.Logf("cleanup %q: %v", s.sql, err)
 		}
+	}
+}
+
+// setServerScoreStatus sets the status of one server_scores row.
+func setServerScoreStatus(t *testing.T, tdb *testutil.TestDB, serverID, monitorID int64, status ntpdb.ServerScoresStatus) {
+	t.Helper()
+	err := tdb.Queries().UpdateServerScoreStatus(tdb.Context(), ntpdb.UpdateServerScoreStatusParams{
+		Status:    status,
+		MonitorID: monitorID,
+		ServerID:  serverID,
+	})
+	if err != nil {
+		t.Fatalf("UpdateServerScoreStatus(%d, %d, %s) error = %v", serverID, monitorID, status, err)
 	}
 }

@@ -19,14 +19,17 @@ type promotionRequest struct {
 	toStatus          ntpdb.ServerScoresStatus
 	baseReason        string
 	emergencyReason   string
+	kind              promotionKind
+	budget            *promotionBudget
 }
 
 // promotionResult represents the outcome of a promotion attempt
 type promotionResult struct {
 	change           *statusChange
 	success          bool
-	activeIncrement  int // +1 if promoting to active, -1 if demoting from active, 0 otherwise
-	testingIncrement int // +1 if promoting to testing, -1 if demoting from testing, 0 otherwise
+	budgetRefused    bool // the constraints allowed it, the promotion budget did not
+	activeIncrement  int  // +1 if promoting to active, -1 if demoting from active, 0 otherwise
+	testingIncrement int  // +1 if promoting to testing, -1 if demoting from testing, 0 otherwise
 }
 
 // attemptPromotion attempts to promote a monitor and returns the result with count changes
@@ -45,6 +48,13 @@ func (sl *Selector) attemptPromotion(req promotionRequest) promotionResult {
 	if !canPromote {
 		return promotionResult{success: false}
 	}
+
+	// The daily budget comes after the constraint checks, so a promotion the
+	// constraints block is not counted as refused by the budget
+	if !req.budget.allow(req.toStatus, req.kind) {
+		return promotionResult{success: false, budgetRefused: true}
+	}
+	req.budget.record(req.toStatus)
 
 	reason := req.baseReason
 	if req.emergencyOverride {
@@ -90,6 +100,26 @@ func (sl *Selector) attemptPromotion(req promotionRequest) promotionResult {
 	}
 }
 
+// withoutChanged returns the monitors that have no change in changes, so a
+// later rule doesn't plan a second change for a monitor already changed in
+// this review.
+func withoutChanged(monitors []evaluatedMonitor, changes []statusChange) []evaluatedMonitor {
+	if len(changes) == 0 {
+		return monitors
+	}
+	changed := make(map[int64]bool, len(changes))
+	for _, c := range changes {
+		changed[c.monitorID] = true
+	}
+	out := make([]evaluatedMonitor, 0, len(monitors))
+	for _, em := range monitors {
+		if !changed[em.monitor.ID] {
+			out = append(out, em)
+		}
+	}
+	return out
+}
+
 // getEmergencyReason returns the appropriate emergency reason text
 func getEmergencyReason(baseReason string, toStatus ntpdb.ServerScoresStatus, isBootstrap bool) string {
 	prefix := "emergency promotion"
@@ -119,13 +149,15 @@ func filterMonitorsByGlobalStatus(monitors []evaluatedMonitor, status ntpdb.Moni
 }
 
 // filterBootstrapCandidates separates candidate monitors into healthy and other categories
-// Only returns monitors that are eligible for bootstrap (globally active or testing)
+// Only returns monitors that are eligible for bootstrap (globally active or
+// testing, with samples in the sample window)
 func filterBootstrapCandidates(monitors []evaluatedMonitor) (healthy, other []evaluatedMonitor) {
 	for _, em := range monitors {
 		isEligible := em.monitor.GlobalStatus == ntpdb.MonitorsStatusActive ||
 			em.monitor.GlobalStatus == ntpdb.MonitorsStatusTesting
 
-		if !isEligible {
+		// A candidate that has not reported recently isn't promoted to start monitoring
+		if !isEligible || !em.monitor.HasMetrics {
 			continue
 		}
 
@@ -140,7 +172,18 @@ func filterBootstrapCandidates(monitors []evaluatedMonitor) (healthy, other []ev
 
 // monitorOutperformsMonitor compares performance between two monitors using the database-calculated priority
 // Returns true if the better monitor significantly outperforms the worse monitor
+//
+// A row without samples reports priority 0, the best possible value, so
+// samples decide first: a row without samples never outperforms one with
+// samples, and any row with samples outperforms one without.
 func (sl *Selector) monitorOutperformsMonitor(ctx context.Context, better, worse evaluatedMonitor) bool {
+	if !better.monitor.HasMetrics {
+		return false
+	}
+	if !worse.monitor.HasMetrics {
+		return true
+	}
+
 	// First compare by health - healthy monitors are always better than unhealthy
 	if better.monitor.IsHealthy && !worse.monitor.IsHealthy {
 		sl.log.DebugContext(ctx, "monitor outperforms by health",

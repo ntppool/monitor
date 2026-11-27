@@ -312,4 +312,5 @@ type ServerScore struct {
 	ConstraintViolationSince pgtype.Timestamptz `json:"constraint_violation_since"`
 	LastConstraintCheck      pgtype.Timestamptz `json:"last_constraint_check"`
 	PauseReason              pgtype.Text        `json:"pause_reason"`
+	StatusSince              pgtype.Timestamptz `json:"status_since"`
 }

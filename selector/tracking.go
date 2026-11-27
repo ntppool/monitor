@@ -196,7 +196,12 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	candidate := monitorCandidate{
 		ID:           row.ID,
 		GlobalStatus: row.MonitorStatus,
-		HasMetrics:   true, // If in GetMonitorPriority results, it has metrics
+		// Rows without samples in the sample window have count 0
+		HasMetrics:   row.Count > 0,
+		ServerStatus: row.Status,
+	}
+	if row.StatusSince.Valid {
+		candidate.StatusSince = row.StatusSince.Time
 	}
 
 	// ID Token for metrics
@@ -218,14 +223,6 @@ func convertMonitorPriorityToCandidate(row ntpdb.GetMonitorPriorityRow) monitorC
 	// Monitor IP
 	if row.MonitorIp.Valid {
 		candidate.IP = row.MonitorIp.String
-	}
-
-	// Server status
-	if row.Status.Valid {
-		candidate.ServerStatus = row.Status.ServerScoresStatus
-	} else {
-		// This should not happen - all monitors in GetMonitorPriority should have a status
-		candidate.ServerStatus = ntpdb.ServerScoresStatusCandidate
 	}
 
 	// Health status

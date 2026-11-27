@@ -17,6 +17,8 @@ type Querier interface {
 	DeleteServerScore(ctx context.Context, arg DeleteServerScoreParams) error
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (int64, error)
+	// Starts from server_scores so rows without recent samples are returned too
+	// (count 0, not healthy, sorted after every row with samples).
 	GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error)
 	GetMonitorServerStatusCounts(ctx context.Context) ([]GetMonitorServerStatusCountsRow, error)
 	GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error)
@@ -33,6 +35,10 @@ type Querier interface {
 	GetScorers(ctx context.Context) ([]GetScorersRow, error)
 	GetServer(ctx context.Context, id int64) (Server, error)
 	GetServerIP(ctx context.Context, ip string) (Server, error)
+	// Promotions across each status boundary on a server within the window. A
+	// swap's demotion (active -> testing, testing -> candidate) is not counted.
+	// Only regular monitors count; scorer rows are not handed out by the selector.
+	GetServerPromotionCounts(ctx context.Context, arg GetServerPromotionCountsParams) (GetServerPromotionCountsRow, error)
 	GetServerScore(ctx context.Context, arg GetServerScoreParams) (ServerScore, error)
 	GetServers(ctx context.Context, arg GetServersParams) ([]GetServersRow, error)
 	GetServersMonitorReview(ctx context.Context) ([]int64, error)

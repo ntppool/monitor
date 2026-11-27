@@ -19,6 +19,9 @@ type Metrics struct {
 	// Constraint violation metrics
 	ConstraintViolations *prometheus.CounterVec
 
+	// Promotions the daily per-server budget refused
+	PromotionsLimited *prometheus.CounterVec
+
 	// Selection algorithm performance
 	ProcessDuration   prometheus.Histogram
 	MonitorsEvaluated prometheus.Counter
@@ -47,6 +50,14 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 				Help: "Total number of server reviews where a monitor was in constraint violation",
 			},
 			[]string{"monitor_id_token", "monitor_tls_name", "constraint_type"},
+		),
+
+		PromotionsLimited: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "selector_promotions_limited_total",
+				Help: "Total number of server reviews where the promotion budget refused a promotion, by target status and kind",
+			},
+			[]string{"to_status", "kind"},
 		),
 
 		ProcessDuration: prometheus.NewHistogram(
@@ -93,6 +104,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	reg.MustRegister(
 		m.StatusChanges,
 		m.ConstraintViolations,
+		m.PromotionsLimited,
 		m.ProcessDuration,
 		m.MonitorsEvaluated,
 		m.ChangesApplied,
@@ -153,6 +165,12 @@ func (m *Metrics) TrackConstraintViolation(
 		tlsName,
 		string(constraintType),
 	).Inc()
+}
+
+// TrackPromotionLimited records a promotion the budget refused during a
+// server review
+func (m *Metrics) TrackPromotionLimited(to ntpdb.ServerScoresStatus, kind promotionKind) {
+	m.PromotionsLimited.WithLabelValues(string(to), kind.String()).Inc()
 }
 
 // TrackServerMonitorCounts records the number of monitors in each status

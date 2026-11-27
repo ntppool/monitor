@@ -521,6 +521,35 @@ func (_d QuerierTxWithTracing) GetServerIP(ctx context.Context, ip string) (s1 S
 	return _d.QuerierTx.GetServerIP(ctx, ip)
 }
 
+// GetServerPromotionCounts implements QuerierTx
+func (_d QuerierTxWithTracing) GetServerPromotionCounts(ctx context.Context, arg GetServerPromotionCountsParams) (g1 GetServerPromotionCountsRow, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetServerPromotionCounts")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"g1":  g1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetServerPromotionCounts(ctx, arg)
+}
+
 // GetServerScore implements QuerierTx
 func (_d QuerierTxWithTracing) GetServerScore(ctx context.Context, arg GetServerScoreParams) (s1 ServerScore, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetServerScore")

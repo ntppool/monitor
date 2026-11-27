@@ -109,6 +109,46 @@ func TestDetermineState(t *testing.T) {
 			want: candidateOut,
 		},
 		{
+			name: "active_monitor_without_samples_is_candidate_out",
+			monitor: monitorCandidate{
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   false,
+			},
+			violation: constraintViolation{Type: violationNone},
+			want:      candidateOut,
+		},
+		{
+			name: "testing_monitor_without_samples_is_candidate_out",
+			monitor: monitorCandidate{
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				ServerStatus: ntpdb.ServerScoresStatusTesting,
+				HasMetrics:   false,
+			},
+			violation: constraintViolation{Type: violationNone},
+			want:      candidateOut,
+		},
+		{
+			name: "blocked_active_monitor_without_samples_stays_blocked",
+			monitor: monitorCandidate{
+				GlobalStatus: ntpdb.MonitorsStatusPaused,
+				ServerStatus: ntpdb.ServerScoresStatusActive,
+				HasMetrics:   false,
+			},
+			violation: constraintViolation{Type: violationNone},
+			want:      candidateBlock,
+		},
+		{
+			name: "candidate_without_samples_is_candidate_in",
+			monitor: monitorCandidate{
+				GlobalStatus: ntpdb.MonitorsStatusActive,
+				ServerStatus: ntpdb.ServerScoresStatusCandidate,
+				HasMetrics:   false,
+			},
+			violation: constraintViolation{Type: violationNone},
+			want:      candidateIn,
+		},
+		{
 			name: "unhealthy_monitor_is_candidate_out",
 			monitor: monitorCandidate{
 				GlobalStatus: ntpdb.MonitorsStatusActive,

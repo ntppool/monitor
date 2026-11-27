@@ -35,7 +35,7 @@ func TestRule15_ActiveExcessDemotion(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, activeMonitors))
 
 	// Debug: Log all changes
 	t.Logf("Total changes: %d", len(changes))
@@ -105,7 +105,7 @@ func TestRule15_EmergencyOverrideBlocked(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, testingMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, testingMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, testingMonitors))
 
 	// Should have promotions (emergency override) but no active→testing demotions from Rule 1.5 (Active Excess Demotion)
 	promotions := 0
@@ -151,7 +151,7 @@ func TestRule15_SafetyCheck(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, activeMonitors))
 
 	// Should not demote the only active monitor
 	activeDemotions := 0
@@ -223,7 +223,7 @@ func TestRule15_WithCandidatePromotion(t *testing.T) {
 	server := &serverInfo{ID: 1486}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, allMonitors))
 
 	// Count changes by type
 	activeDemotions := 0
@@ -295,7 +295,7 @@ func TestRule15_SkipsBlockedMonitor(t *testing.T) {
 	server := &serverInfo{ID: 1982}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, activeMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, activeMonitors))
 
 	t.Logf("Total changes: %d", len(changes))
 	for _, change := range changes {
@@ -378,7 +378,7 @@ func TestRule5_TestingCapacityLimit(t *testing.T) {
 	server := &serverInfo{ID: 1065}
 	accountLimits := make(map[int64]*accountLimit)
 
-	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil)
+	changes := s.applySelectionRules(ctx, allMonitors, server, accountLimits, nil, s.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, allMonitors))
 
 	// Count changes by type
 	candidatePromotions := 0

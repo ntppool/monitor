@@ -65,6 +65,7 @@ type selectionContext struct {
 	limits            changeLimits
 	targetNumber      int
 	emergencyOverride bool
+	budget            *promotionBudget
 }
 
 // workingState tracks counts and limits during selection processing
@@ -145,12 +146,24 @@ func (sl *Selector) applyRule1ImmediateBlocking(
 	return changes
 }
 
+// isMandatoryRemoval reports whether a candidateOut monitor is removed like a
+// constraint violation, not held back by the safe threshold: it has a
+// violation, or it is active or testing and has no samples. A silent row
+// provides no monitoring, so keeping it to stay above the threshold
+// protects nothing; the per-review removal limits still apply.
+func isMandatoryRemoval(em evaluatedMonitor) bool {
+	if em.currentViolation != nil && em.currentViolation.Type != violationNone {
+		return true
+	}
+	return !em.monitor.HasMetrics && inService(em.monitor.ServerStatus)
+}
+
 // analyzeSafetyViolations analyzes monitors to categorize removal reasons
 func (sl *Selector) analyzeSafetyViolations(monitors []evaluatedMonitor) safetyCheckResult {
 	result := safetyCheckResult{}
 	for _, em := range monitors {
 		if em.recommendedState == candidateOut {
-			if em.currentViolation != nil && em.currentViolation.Type != violationNone {
+			if isMandatoryRemoval(em) {
 				result.constraintViolations++
 			} else {
 				result.performanceIssues++
@@ -245,7 +258,7 @@ func (sl *Selector) applyRemovals(
 		}
 
 		// Skip performance-based removals if only allowing constraint removals
-		if skipPerformance && (em.currentViolation == nil || em.currentViolation.Type == violationNone) {
+		if skipPerformance && !isMandatoryRemoval(em) {
 			continue
 		}
 
@@ -407,6 +420,8 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 				toStatus:          ntpdb.ServerScoresStatusActive,
 				baseReason:        "promotion to active",
 				emergencyReason:   getEmergencyReason("promotion to active", ntpdb.ServerScoresStatusActive, false),
+				kind:              promotionFill,
+				budget:            selCtx.budget,
 			}
 
 			if result := sl.attemptPromotion(req); result.success {
@@ -418,11 +433,13 @@ func (sl *Selector) applyRule3TestingToActivePromotion(
 		}
 	}
 
-	// Phase 2: Performance-based replacement (new logic)
+	// Phase 2: Performance-based replacement (new logic). Testing monitors
+	// promoted in Phase 1 can't be promoted again as replacers.
 	remainingBudget := selCtx.limits.promotions - len(changes)
-	if remainingBudget > 0 && len(testingMonitors) > 0 && len(activeMonitors) > 0 {
+	replacers := withoutChanged(testingMonitors, changes)
+	if remainingBudget > 0 && len(replacers) > 0 && len(activeMonitors) > 0 {
 		replacementChanges := sl.attemptPerformanceReplacement(
-			ctx, selCtx, testingMonitors, activeMonitors,
+			ctx, selCtx, replacers, activeMonitors,
 			workingAccountLimits, remainingBudget, testingToActive,
 		)
 		changes = append(changes, replacementChanges...)
@@ -520,6 +537,8 @@ func (sl *Selector) applyRule5CandidateToTestingPromotion(
 				toStatus:          ntpdb.ServerScoresStatusTesting,
 				baseReason:        "candidate to testing",
 				emergencyReason:   getEmergencyReason("candidate to testing", ntpdb.ServerScoresStatusTesting, false),
+				kind:              promotionFill,
+				budget:            selCtx.budget,
 			}
 
 			if result := sl.attemptPromotion(req); result.success {
@@ -654,19 +673,30 @@ func (sl *Selector) applyRule6BootstrapPromotion(
 ) ruleResult {
 	var changes []statusChange
 
-	// Bootstrap case - if no testing monitors exist, promote candidates to reach target
-	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 {
+	// Bootstrap case - if no testing monitors exist, promote candidates to reach target.
+	// Candidates without samples aren't eligible, so the log lines and the
+	// check below count only the eligible ones.
+	var healthyCandidates, otherCandidates []evaluatedMonitor
+	if len(testingMonitors) == 0 {
+		// Sort candidates by health first, then by global status
+		healthyCandidates, otherCandidates = filterBootstrapCandidates(candidateMonitors)
+	}
+	eligibleCandidates := len(healthyCandidates) + len(otherCandidates)
+
+	if len(testingMonitors) == 0 && len(candidateMonitors) > 0 && eligibleCandidates == 0 {
+		sl.log.DebugContext(ctx, "bootstrap: no testing monitors and no eligible candidates",
+			"candidates", len(candidateMonitors))
+	}
+
+	if eligibleCandidates > 0 {
 		// In bootstrap scenario, we can promote up to baseTestingTarget at once
 		bootstrapPromotions := baseTestingTarget
 		promoted := 0
 
 		sl.log.Info("bootstrap: no testing monitors, promoting candidates to start monitoring",
-			"candidatesAvailable", len(candidateMonitors),
+			"candidatesAvailable", eligibleCandidates,
 			"baseTestingTarget", baseTestingTarget,
 			"bootstrapPromotions", bootstrapPromotions)
-
-		// Sort candidates by health first, then by global status
-		healthyCandidates, otherCandidates := filterBootstrapCandidates(candidateMonitors)
 
 		// Bootstrap candidate groups: healthy first, then others
 		bootstrapGroups := []struct {
@@ -698,6 +728,8 @@ func (sl *Selector) applyRule6BootstrapPromotion(
 					toStatus:          ntpdb.ServerScoresStatusTesting,
 					baseReason:        baseReason,
 					emergencyReason:   getEmergencyReason(baseReason, ntpdb.ServerScoresStatusTesting, true),
+					kind:              promotionFill,
+					budget:            selCtx.budget,
 				}
 
 				if result := sl.attemptPromotion(req); result.success {
@@ -708,9 +740,9 @@ func (sl *Selector) applyRule6BootstrapPromotion(
 			}
 		}
 
-		if promoted == 0 && len(candidateMonitors) > 0 {
-			sl.log.Warn("bootstrap: unable to promote any candidates due to constraints",
-				"candidatesAvailable", len(candidateMonitors))
+		if promoted == 0 {
+			sl.log.Warn("bootstrap: unable to promote any candidates due to constraints or the promotion budget",
+				"candidatesAvailable", eligibleCandidates)
 		}
 	}
 
@@ -904,6 +936,7 @@ func (sl *Selector) applySelectionRules(
 	server *serverInfo,
 	accountLimits map[int64]*accountLimit,
 	assignedMonitors []ntpdb.GetMonitorPriorityRow,
+	budget *promotionBudget,
 ) []statusChange {
 	// Categorize monitors by current status
 	var (
@@ -926,19 +959,27 @@ func (sl *Selector) applySelectionRules(
 		}
 	}
 
-	// Initialize working state and limits
+	// Initialize working state and limits. Safeguards that compare against the
+	// number of monitors available only look at rows with samples; candidate
+	// and paused rows that haven't reported would otherwise change them.
+	sampled := withSamples(evaluatedMonitors)
 	targetNumber := targetActiveMonitors
-	limits := calculateChangeLimits(len(activeMonitors), sl.countBlocked(evaluatedMonitors))
-	state := sl.initializeWorkingCounts(activeMonitors, testingMonitors, evaluatedMonitors)
+	limits := calculateChangeLimits(len(activeMonitors), sl.countBlocked(sampled))
+	state := sl.initializeWorkingCounts(activeMonitors, testingMonitors, sampled)
 	emergencyOverride := (len(activeMonitors) == 0)
 
 	// Apply safety limits and emergency safeguards
-	state = sl.calculateSafetyLimits(ctx, state, targetNumber, limits, evaluatedMonitors)
+	state = sl.calculateSafetyLimits(ctx, state, targetNumber, limits, sampled)
 
-	// Check if there are any constraint violations to process
+	// Check if there are any constraint violations to process. Active and
+	// testing rows without samples count: demoting them is the cleanup the
+	// emergency check below must not block.
 	hasConstraintViolations := false
 	for _, em := range evaluatedMonitors {
-		if em.recommendedState == candidateOut {
+		if em.recommendedState != candidateOut {
+			continue
+		}
+		if em.monitor.HasMetrics || inService(em.monitor.ServerStatus) {
 			hasConstraintViolations = true
 			break
 		}
@@ -948,7 +989,7 @@ func (sl *Selector) applySelectionRules(
 	// 1. We need more monitors than exist AND
 	// 2. We have no healthy monitors to work with AND
 	// 3. There are no constraint violations to clean up
-	emergencyBlockAll := targetNumber > len(evaluatedMonitors) &&
+	emergencyBlockAll := targetNumber > len(sampled) &&
 		state.healthyActive == 0 && state.healthyTesting == 0 &&
 		!hasConstraintViolations
 
@@ -987,6 +1028,7 @@ func (sl *Selector) applySelectionRules(
 		limits:            limits,
 		targetNumber:      targetNumber,
 		emergencyOverride: emergencyOverride,
+		budget:            budget,
 	}
 
 	var allChanges []statusChange
@@ -1057,8 +1099,9 @@ func (sl *Selector) applySelectionRules(
 	rule7Changes := sl.applyRule7ConstraintResolution(ctx, selCtx, pausedMonitors)
 	allChanges = append(allChanges, rule7Changes...)
 
-	// Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates
-	rule6Result := sl.applyRule6BootstrapPromotion(ctx, selCtx, testingMonitors, candidateMonitors, workingAccountLimits, state.activeCount, state.testingCount)
+	// Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates.
+	// Candidates Rule 5 already promoted are left out so they aren't promoted twice.
+	rule6Result := sl.applyRule6BootstrapPromotion(ctx, selCtx, testingMonitors, withoutChanged(candidateMonitors, allChanges), workingAccountLimits, state.activeCount, state.testingCount)
 	allChanges = append(allChanges, rule6Result.changes...)
 	state.testingCount = rule6Result.testingCount
 
@@ -1503,6 +1546,13 @@ func (sl *Selector) attemptPerformanceReplacement(
 				}
 			}
 
+			// Replacing an unhealthy monitor is limited less than replacing
+			// a healthy one with a better one
+			kind := promotionPerformance
+			if !targetMonitor.monitor.IsHealthy {
+				kind = promotionHealth
+			}
+
 			// Now test if the replacer can be promoted with the updated limits
 			replacerReq := promotionRequest{
 				monitor:           &replacerMonitor.monitor,
@@ -1514,6 +1564,8 @@ func (sl *Selector) attemptPerformanceReplacement(
 				toStatus:          replacerToStatus,
 				baseReason:        replacerPromoteReason,
 				emergencyReason:   getEmergencyReason(replacerPromoteReason, replacerToStatus, false),
+				kind:              kind,
+				budget:            selCtx.budget,
 			}
 
 			if promotionResult := sl.attemptPromotion(replacerReq); promotionResult.success {
@@ -1551,8 +1603,17 @@ func (sl *Selector) attemptPerformanceReplacement(
 
 				break // Move to next target monitor
 			} else {
-				sl.log.InfoContext(
-					ctx, "performance-based swap blocked by constraints",
+				// A budget refusal repeats on every review until the
+				// window passes, and the loop tries every pair, so it
+				// logs at debug
+				msg := "performance-based swap blocked by constraints"
+				level := slog.LevelInfo
+				if promotionResult.budgetRefused {
+					msg = "performance-based swap refused by promotion budget"
+					level = slog.LevelDebug
+				}
+				sl.log.LogAttrs(
+					ctx, level, msg,
 					slog.Uint64("replacerMonitorID", uint64(replacerMonitor.monitor.ID)),
 					slog.Uint64("targetMonitorID", uint64(targetMonitor.monitor.ID)),
 					slog.Int("replacer_priority", replacerMonitor.monitor.Priority),

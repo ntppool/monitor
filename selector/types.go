@@ -45,7 +45,8 @@ type monitorCandidate struct {
 	IP                       string
 	GlobalStatus             ntpdb.MonitorsStatus
 	ServerStatus             ntpdb.ServerScoresStatus
-	HasMetrics               bool
+	HasMetrics               bool      // has samples in the sample window (Count > 0)
+	StatusSince              time.Time // when the server status last changed
 	IsHealthy                bool
 	RTT                      float64
 	Priority                 int   // Database-calculated monitor priority (RTT + step accuracy)
