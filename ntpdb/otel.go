@@ -665,6 +665,35 @@ func (_d QuerierTxWithTracing) GetSystemSetting(ctx context.Context, key string)
 	return _d.QuerierTx.GetSystemSetting(ctx, key)
 }
 
+// GetTrialStartedSince implements QuerierTx
+func (_d QuerierTxWithTracing) GetTrialStartedSince(ctx context.Context, arg GetTrialStartedSinceParams) (b1 bool, err error) {
+	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.GetTrialStartedSince")
+	defer func() {
+		if _d._spanDecorator != nil {
+			_d._spanDecorator(_span, map[string]interface{}{
+				"ctx": ctx,
+				"arg": arg}, map[string]interface{}{
+				"b1":  b1,
+				"err": err})
+		} else if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// ErrNoRows is not an error condition, just indicates no data found
+				return
+			}
+
+			_span.RecordError(err)
+			_span.SetStatus(_codes.Error, err.Error())
+			_span.SetAttributes(
+				attribute.String("event", "error"),
+				attribute.String("message", err.Error()),
+			)
+		}
+
+		_span.End()
+	}()
+	return _d.QuerierTx.GetTrialStartedSince(ctx, arg)
+}
+
 // InsertLogScore implements QuerierTx
 func (_d QuerierTxWithTracing) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (i1 int64, err error) {
 	ctx, _span := otel.Tracer(_d._instance).Start(ctx, "QuerierTx.InsertLogScore")

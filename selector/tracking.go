@@ -46,7 +46,10 @@ func (sl *Selector) trackConstraintViolations(
 			newViolationType = pgtype.Text{String: violationType, Valid: true}
 
 			// Check if this is an unchangeable constraint that should result in paused status
-			if isUnchangeableConstraint(violation.Type) && monitor.ServerStatus != ntpdb.ServerScoresStatusPaused {
+			// A reserve row has no work to stop; it only can't start a trial.
+			if isUnchangeableConstraint(violation.Type) &&
+				monitor.ServerStatus != ntpdb.ServerScoresStatusPaused &&
+				monitor.ServerStatus != ntpdb.ServerScoresStatusReserve {
 				shouldPause = true
 				shouldUpdate = true
 			}

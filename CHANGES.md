@@ -5,7 +5,11 @@
 ### Upgrade notes
 - **Minimum agent version v4.0.5**: `monitor-api` refuses API calls from agents older than v4.0.5, with an error the agent logs telling the operator to upgrade. Those agents stop testing until they are upgraded. Agents before v4.0.5 republish their MQTT status only once an hour, so `monitor-api` would list them as offline most of the time.
 - **Agent metrics endpoints removed**: `monitor-api` no longer serves `/monitors/metrics` and `/monitors/metrics/discovery`. They let Prometheus scrape agents through MQTT, but agents since v4.0.0 send their metrics over OTLP and answered the scrape with an empty body. Remove any Prometheus job that uses them. The agent still answers the `metrics` MQTT request with an empty reply, so rolling `monitor-api` back to an older version keeps working.
-- **Deploy the selector before `monitor-api`**: `monitor-api` no longer hands out `paused` rows, so they stop getting samples. Only the selector from this release reviews rows without samples, so with an older selector paused rows would never be unpaused.
+- **Deploy order**: api migration 056, then `monitor-api` and the selector from this release (`monitor-api` first or together), then api migration 057, then the api placement release.
+  - 056 adds the `reserve` status to `server_scores_status`; the selector must know it before it writes any.
+  - `monitor-api` first: `monitor-api` v4.2.4 hands out every row with a `queue_ts` older than 120 minutes whatever its status, so it would give `reserve` rows work every 2h once the selector writes them. This release's `monitor-api` hands out only `candidate`, `testing` and `active` rows. With it deployed first, `paused` rows just stay paused until the new selector, the only one that reviews rows without samples, unpauses them.
+  - 057 sets `interval_candidate` to 4h and needs the selector's `candidate_window`; the api placement release starts placing rows.
+  - Rollback: a selector from before this release doesn't skip `reserve` rows, and no earlier release skips unknown statuses, so don't roll the selector back while `reserve` rows exist. Roll back api migration 057 (`interval_candidate` back to 2h) first: a selector without `candidate_window` needs 8 samples over 24h and a 4h interval gives only 6, so no candidate would be promoted to testing.
 - **Needs api migration 051**: Run the api migration that adds `log_scores.status` before deploying `monitor-api` and `monitor-scorer`. Without the column `monitor-api` fails every result submit and the scorer fails to read scores.
 
 ### Server
@@ -20,6 +24,16 @@
 - `log_scores` records the status (`candidate`, `testing`, `active`) the monitor had for the server when it submitted the result. The scorer's own rows leave it empty.
 
 ### Selector
+- New server status `reserve`: a monitor that is not a candidate, testing or active on a server. `GetServers` hands out no work for it. Rule 7 unpauses a resolved row to `reserve` (was `candidate`).
+- Candidate trials. A server keeps `candidate_pool` (30) candidates and starts a trial every `trial_every` (12h) by making one random `reserve` row a candidate. The trial rule runs last in a review and uses only `status_since`, the status log and sample counts:
+  1. a blocked candidate (global status, or a conflict a promotion to testing would hit that moving can resolve: network diversity, account limit) goes to `reserve`, reason `reserve: blocked`
+  2. a candidate past its trial (`candidate_window`) with too few samples goes to `reserve`, reason `trial_end`
+  3. candidates past their trial beyond the pool go to `reserve`, last ranked first, reason `trial_end`
+  4. if no trial started within `trial_every`, one `reserve` row becomes a candidate, reason `trial_start`
+
+  Rules 1-3 move at most 20 candidates per review.
+- Candidates are counted over `candidate_window` (default 72h, minimum 1h) instead of `sample_window`; the candidate to testing threshold uses it. New settings in `system_settings("monitors")`: `candidate_pool` (default 30), `trial_every` (default 12h, minimum 1h) and `candidate_window` (default 72h, minimum 1h).
+- `selector_server_monitors` leaves out `reserve` rows (they get no work; `selector_monitor_servers` counts them per monitor) and has more buckets between 20 and 200. The pause logic skips `reserve` rows.
 - The selector reviews every `server_scores` row of a server, also rows without samples in the `sample_window`. An active or testing row that stopped reporting is demoted by the usual rules; the bootstrap rule only promotes candidates that have samples. A server whose active rows have no samples doesn't count as "looks bad".
 - Promotions are limited per server and per boundary (candidate to testing, testing to active) over `promotion_window` (default 24h), counted from `server_scores_status_log`. The first matching row decides; demotions are never limited:
 

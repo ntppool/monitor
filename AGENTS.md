@@ -623,8 +623,10 @@ For complex changes, break work into distinct phases:
 - Rule 5: Candidate to testing promotion
 - Rule 2.5: Testing pool management
 - Rule 6: Bootstrap promotion
+- Rule 7: Unpause resolved paused rows, to `reserve`
+- Trial rule (runs last): candidates to `reserve`, one `reserve` row to candidate per `trial_every`
 
-Rules 3 and 5 enforce a minimum sample count over the trailing
-`sample_window` (default 24h). The thresholds are derived from
+Rule 3 enforces a minimum sample count over the trailing `sample_window`
+(default 24h), Rule 5 over `candidate_window` (default 72h). The thresholds are derived from
 `interval_testing` and `interval_candidate` by `monitorsettings`. See `selector/README.md`
 section "Promotion Sample-Count Thresholds" for the formula and table.

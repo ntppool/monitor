@@ -69,8 +69,9 @@ drop out.
 **Type**: Histogram
 **Labels**: `status`
 
-Number of monitors in each status on a server, observed each time the
-server is reviewed.
+Number of monitors in each status (`active`, `testing`, `candidate`,
+`paused`, `reserve`) on a server, observed each time the server is
+reviewed.
 
 ### Processing
 
@@ -119,17 +120,20 @@ histogram_quantile(0.95, rate(selector_process_duration_seconds_bucket[5m]))
 ## Promotion Sample-Count Thresholds
 
 Rule 3 (testing → active) and Rule 5 (candidate → testing) each require a
-minimum number of `log_scores` rows per (monitor, server) within the
-trailing sample window before a promotion is allowed. The window is the
-`sample_window` setting (default 24h), which the selector passes to the
-`GetMonitorPriority` SQL query; the thresholds live in `monitorsettings`.
+minimum number of `log_scores` rows per (monitor, server) within a trailing
+window before a promotion is allowed. The window is the `sample_window`
+setting (default 24h) for testing and active rows and the `candidate_window`
+setting (default 72h) for candidates. The selector passes both to the
+`GetMonitorPriority` SQL query, with `max(sample_window, candidate_window)`
+as the bound on the `log_scores` join; the thresholds live in
+`monitorsettings`.
 
 The thresholds are derived from the system-wide `monitors` setting so they
 scale with the configured polling cadence:
 
 ```
 required = min(historicalFloor, ceil(0.80 × maxSamplesInWindow))
-maxSamplesInWindow = sample_window / pollInterval
+maxSamplesInWindow = window / pollInterval
 ```
 
 with an absolute floor of 8. `historicalFloor` is 32 for testing → active
@@ -139,8 +143,10 @@ and 9 for candidate → testing.
 
 - **testing → active**: `interval_testing` from `system_settings("monitors")`.
 - **candidate → testing**: `interval_candidate` from
-  `system_settings("monitors")` (default 2h), the cadence at which
-  `GetServers` hands out candidate and paused rows.
+  `system_settings("monitors")` (default 2h, 4h once the api sets it), the
+  cadence at which `GetServers` hands out candidates. The window is
+  `candidate_window`: at 4h over 72h that is 18 possible samples,
+  `ceil(0.80 × 18)` is 15, so the threshold stays at the floor of 9.
 
 Resulting thresholds at various `interval_testing` values, with the
 default 24h `sample_window`:
@@ -163,6 +169,41 @@ refreshes coalesced via `singleflight`.
 When a testing or candidate monitor is skipped for insufficient samples,
 the selector emits a `Debug`-level log line with the monitor id, the
 observed count, and the required threshold.
+
+## Reserve Tier and Candidate Trials
+
+A server keeps `candidate_pool` candidates (default 30) plus the ones on
+trial. Every other monitor has the status `reserve`: `GetServers` hands
+out no work for it, and no rule counts it except Rule 7 and the trial
+rule. A candidate is on trial for `candidate_window` (default 72h) from its
+`status_since`.
+
+Rule 7 unpauses a row whose constraint has resolved to `reserve`. The trial
+rule runs last in a review, after Rule 6, so a candidate promoted earlier is
+neither moved nor counted in the pool. It uses only `status_since`, the
+status log and the sample counts, never health:
+
+1. A candidate that is blocked (global status not active or testing, or a
+   violation the selector can resolve) goes to `reserve`, reason
+   `reserve: blocked`. Violations are the ones a promotion to testing would
+   hit (network diversity, account limit), checked as `canPromoteToTesting`
+   does, for candidate and reserve rows alike. A candidate with an unchangeable violation (same
+   account, same subnet) is left to the pause logic.
+2. A candidate past its trial with fewer samples than the
+   `candidate → testing` threshold goes to `reserve`, reason `trial_end`.
+3. Candidates past their trial beyond `candidate_pool` go to `reserve`, last
+   ranked first, reason `trial_end`.
+4. When no trial started within `trial_every` (default 12h), one random
+   `reserve` row without a violation, of a globally active or testing
+   monitor, becomes a candidate, reason `trial_start`. A trial start is a
+   status log row `insert` as candidate or `update` from `reserve` to
+   candidate; a testing row demoted to candidate isn't one, and neither is
+   the row a scorer inserts for itself.
+
+Rules 1-3 move at most 20 candidates per review (`maxReserveMovesPerReview`).
+A server with many candidates past their trial is brought down to the pool
+over several reviews. Rows with a status this version doesn't know are
+skipped.
 
 ## Review Cadence
 

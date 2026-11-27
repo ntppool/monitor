@@ -112,10 +112,13 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   LEFT JOIN log_scores ls ON (
     ls.server_id = ss.server_id
     AND ls.monitor_id = ss.monitor_id
-    AND ls.ts > NOW() - make_interval(secs => $1::float8)
+    AND ls.ts > NOW() - make_interval(secs => GREATEST($1::float8, $2::float8))
+    AND ls.ts > NOW() - CASE ss.status
+        WHEN 'candidate' THEN make_interval(secs => $1::float8)
+        ELSE make_interval(secs => $2::float8) END
   )
   LEFT JOIN accounts a ON (m.account_id = a.id)
-  WHERE ss.server_id = $2
+  WHERE ss.server_id = $3
     AND m.type = 'monitor'
   GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, ss.status_since, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
@@ -123,8 +126,9 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
 `
 
 type GetMonitorPriorityParams struct {
-	SampleWindowSeconds float64 `json:"sample_window_seconds"`
-	ServerID            int64   `json:"server_id"`
+	CandidateWindowSeconds float64 `json:"candidate_window_seconds"`
+	SampleWindowSeconds    float64 `json:"sample_window_seconds"`
+	ServerID               int64   `json:"server_id"`
 }
 
 type GetMonitorPriorityRow struct {
@@ -149,9 +153,11 @@ type GetMonitorPriorityRow struct {
 }
 
 // Starts from server_scores so rows without recent samples are returned too
-// (count 0, not healthy, sorted after every row with samples).
+// (count 0, not healthy, sorted after every row with samples). Samples are
+// counted over candidate_window for candidates and sample_window for other
+// rows; the larger of the two bounds the join.
 func (q *Queries) GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error) {
-	rows, err := q.db.Query(ctx, getMonitorPriority, arg.SampleWindowSeconds, arg.ServerID)
+	rows, err := q.db.Query(ctx, getMonitorPriority, arg.CandidateWindowSeconds, arg.SampleWindowSeconds, arg.ServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -814,6 +820,36 @@ func (q *Queries) GetSystemSetting(ctx context.Context, key string) ([]byte, err
 	var value []byte
 	err := row.Scan(&value)
 	return value, err
+}
+
+const getTrialStartedSince = `-- name: GetTrialStartedSince :one
+SELECT EXISTS (
+    SELECT 1
+      FROM server_scores_status_log l
+      WHERE l.server_id = $1
+        AND l.ts > NOW() - make_interval(secs => $2::float8)
+        AND ((l.op = 'insert' AND l.new_status = 'candidate')
+          OR (l.op = 'update' AND l.old_status = 'reserve' AND l.new_status = 'candidate'))
+        AND NOT EXISTS (
+            SELECT 1 FROM monitors m
+              WHERE m.id = l.monitor_id AND m.type <> 'monitor')
+)::boolean AS started
+`
+
+type GetTrialStartedSinceParams struct {
+	ServerID     int64   `json:"server_id"`
+	SinceSeconds float64 `json:"since_seconds"`
+}
+
+// Whether a candidate trial started on the server within the window: a row
+// inserted as a candidate, or a reserve row made a candidate. A testing row
+// demoted to candidate is not a trial, and neither is the row a scorer
+// inserts for itself (with the default status candidate).
+func (q *Queries) GetTrialStartedSince(ctx context.Context, arg GetTrialStartedSinceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, getTrialStartedSince, arg.ServerID, arg.SinceSeconds)
+	var started bool
+	err := row.Scan(&started)
+	return started, err
 }
 
 const insertLogScore = `-- name: InsertLogScore :one

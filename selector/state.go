@@ -60,7 +60,8 @@ func knownServerStatus(s ntpdb.ServerScoresStatus) bool {
 	case ntpdb.ServerScoresStatusCandidate,
 		ntpdb.ServerScoresStatusTesting,
 		ntpdb.ServerScoresStatusActive,
-		ntpdb.ServerScoresStatusPaused:
+		ntpdb.ServerScoresStatusPaused,
+		ntpdb.ServerScoresStatusReserve:
 		return true
 	}
 	return false

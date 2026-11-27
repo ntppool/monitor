@@ -5,11 +5,14 @@ package selector
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.ntppool.org/common/database"
 	"go.ntppool.org/monitor/ntpdb"
 	"go.ntppool.org/monitor/testutil"
@@ -64,6 +67,69 @@ func createTestLogScore(t *testing.T, db *pgxpool.Pool, serverID, monitorID int6
 	_, err := db.Exec(context.Background(), query, serverID, monitorID, ts, score, offset, rttVal)
 	if err != nil {
 		t.Fatalf("Failed to create test log score: %v", err)
+	}
+}
+
+// cleanupReviewServer deletes a server, its monitors and accounts, and
+// their rows, for tests that use ids outside CleanupTestData's range.
+func cleanupReviewServer(t *testing.T, tdb *testutil.TestDB, serverID int64, monitorIDs, accountIDs []int64) {
+	t.Helper()
+	stmts := []struct {
+		q   string
+		arg any
+	}{
+		{"DELETE FROM log_scores WHERE server_id = $1", serverID},
+		{"DELETE FROM server_scores WHERE server_id = $1", serverID},
+		{"DELETE FROM server_scores_status_log WHERE server_id = $1", serverID},
+		{"DELETE FROM servers WHERE id = $1", serverID},
+		{"DELETE FROM monitors WHERE id = ANY($1)", monitorIDs},
+		{"DELETE FROM accounts WHERE id = ANY($1)", accountIDs},
+	}
+	for _, st := range stmts {
+		if _, err := tdb.Exec(tdb.Context(), st.q, st.arg); err != nil {
+			t.Logf("cleanup %q: %v", st.q, err)
+		}
+	}
+}
+
+// newTestSelector returns a selector without a settings watcher.
+func newTestSelector(t *testing.T, tdb *testutil.TestDB) *Selector {
+	t.Helper()
+	return &Selector{ctx: tdb.Context(), log: testutil.NewTestLogger(t).Logger()}
+}
+
+// reviewServer runs one review of the server in a transaction.
+func reviewServer(t *testing.T, tdb *testutil.TestDB, serverID int64) reviewOutcome {
+	t.Helper()
+	return reviewServerWith(t, tdb, newTestSelector(t, tdb), serverID)
+}
+
+// reviewServerWith runs one review of the server with sl in a transaction.
+func reviewServerWith(t *testing.T, tdb *testutil.TestDB, sl *Selector, serverID int64) reviewOutcome {
+	t.Helper()
+	var outcome reviewOutcome
+	err := database.WithTransaction(tdb.Context(), tdb.Queries(), func(ctx context.Context, tx ntpdb.QuerierTx) error {
+		var err error
+		outcome, err = sl.processServer(ctx, tx, serverID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("processServer: %v", err)
+	}
+	return outcome
+}
+
+// assertServerStatuses checks the server_scores status of each monitor.
+func assertServerStatuses(t *testing.T, tdb *testutil.TestDB, serverID int64, want map[int64]ntpdb.ServerScoresStatus) {
+	t.Helper()
+	for id, wantStatus := range want {
+		row, err := tdb.Queries().GetServerScore(tdb.Context(), ntpdb.GetServerScoreParams{ServerID: serverID, MonitorID: id})
+		if err != nil {
+			t.Fatalf("read status of monitor %d: %v", id, err)
+		}
+		if row.Status != wantStatus {
+			t.Errorf("monitor %d status = %q, want %q", id, row.Status, wantStatus)
+		}
 	}
 }
 
@@ -509,19 +575,9 @@ func TestPausedRowWithoutSamplesUnpauses(t *testing.T) {
 		neverSampledID   = 92005
 	)
 	cleanup := func() {
-		stmts := []string{
-			"DELETE FROM log_scores WHERE server_id = 92002",
-			"DELETE FROM server_scores WHERE server_id = 92002",
-			"DELETE FROM server_scores_status_log WHERE server_id = 92002",
-			"DELETE FROM servers WHERE id = 92002",
-			"DELETE FROM monitors WHERE id IN (92003, 92004, 92005)",
-			"DELETE FROM accounts WHERE id IN (92000, 92001)",
-		}
-		for _, q := range stmts {
-			if _, err := tdb.Exec(tdb.Context(), q); err != nil {
-				t.Logf("cleanup %q: %v", q, err)
-			}
-		}
+		cleanupReviewServer(t, tdb, serverID,
+			[]int64{activeMonitorID, oldSampleID, neverSampledID},
+			[]int64{serverAccountID, monitorAccountID})
 	}
 	cleanup()
 	defer cleanup()
@@ -558,31 +614,205 @@ func TestPausedRowWithoutSamplesUnpauses(t *testing.T) {
 	}
 	factory.CreateTestLogScore(t, serverID, oldSampleID, 20, 1, &rtt, now.Add(-30*time.Hour))
 
-	sl := &Selector{ctx: tdb.Context(), log: testutil.NewTestLogger(t).Logger()}
-
-	var outcome reviewOutcome
-	err := database.WithTransaction(tdb.Context(), tdb.Queries(), func(ctx context.Context, tx ntpdb.QuerierTx) error {
-		var err error
-		outcome, err = sl.processServer(ctx, tx, serverID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("processServer: %v", err)
-	}
-	if !outcome.Changed {
+	if !reviewServer(t, tdb, serverID).Changed {
 		t.Error("processServer made no changes")
 	}
 
-	for _, id := range []int64{oldSampleID, neverSampledID} {
-		var status string
-		err := tdb.QueryRow(tdb.Context(),
-			"SELECT status::text FROM server_scores WHERE server_id = $1 AND monitor_id = $2",
-			serverID, id).Scan(&status)
-		if err != nil {
-			t.Fatalf("read status of monitor %d: %v", id, err)
+	assertServerStatuses(t, tdb, serverID, map[int64]ntpdb.ServerScoresStatus{
+		oldSampleID:    ntpdb.ServerScoresStatusReserve,
+		neverSampledID: ntpdb.ServerScoresStatusReserve,
+	})
+}
+
+// A review moves a candidate past its trial without samples to reserve, starts
+// a trial with a reserve row, and leaves a reserve row with an unchangeable
+// violation alone: it isn't paused and doesn't start a trial.
+func TestReviewWithReserveRows(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+
+	factory := testutil.NewDataFactory(tdb)
+
+	// Ids outside 1000-9999 (CleanupTestData's range); delete only our rows.
+	const (
+		serverAccountID  = 93100
+		monitorAccountID = 93101
+		serverID         = 93102
+		activeID         = 93103
+		silentCandidate  = 93104
+		sameAccountID    = 93105
+		freeReserveID    = 93106
+	)
+	cleanup := func() {
+		cleanupReviewServer(t, tdb, serverID,
+			[]int64{activeID, silentCandidate, sameAccountID, freeReserveID},
+			[]int64{serverAccountID, monitorAccountID})
+	}
+	cleanup()
+	defer cleanup()
+
+	now := time.Now()
+	accountID := int64(serverAccountID)
+
+	factory.CreateTestAccount(t, serverAccountID, "server-account")
+	factory.CreateTestAccount(t, monitorAccountID, "monitor-account")
+	factory.CreateTestServer(t, serverID, "192.0.2.212", "v4", &accountID)
+
+	factory.CreateTestMonitor(t, activeID, "active.test", monitorAccountID, "198.51.100.212", "active")
+	factory.CreateTestServerScore(t, serverID, activeID, "active", 20)
+	rtt := int32(25000)
+	for i := range 5 {
+		factory.CreateTestLogScore(t, serverID, activeID, 20, 1, &rtt, now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	factory.CreateTestMonitor(t, silentCandidate, "silent.test", monitorAccountID, "203.0.113.212", "active")
+	factory.CreateTestServerScore(t, serverID, silentCandidate, "candidate", 0)
+	factory.CreateTestMonitor(t, sameAccountID, "same-account.test", serverAccountID, "203.0.113.213", "active")
+	factory.CreateTestServerScore(t, serverID, sameAccountID, "reserve", 0)
+	factory.CreateTestMonitor(t, freeReserveID, "free.test", monitorAccountID, "203.0.113.214", "active")
+	factory.CreateTestServerScore(t, serverID, freeReserveID, "reserve", 0)
+
+	// The candidate has been one for longer than the trial; the inserts of
+	// the rows above are not trial starts of this test.
+	if _, err := tdb.Exec(tdb.Context(),
+		`UPDATE server_scores SET status_since = $2 WHERE server_id = $1 AND monitor_id = $3`,
+		serverID, now.Add(-100*time.Hour), silentCandidate); err != nil {
+		t.Fatalf("set status_since: %v", err)
+	}
+	if _, err := tdb.Exec(tdb.Context(), `DELETE FROM server_scores_status_log WHERE server_id = $1`, serverID); err != nil {
+		t.Fatalf("clear status log: %v", err)
+	}
+
+	// Only the row without a violation may be offered to the pick.
+	var offered []int
+	pick := func(n int) int {
+		offered = append(offered, n)
+		return 0
+	}
+	sl := newTestSelector(t, tdb)
+	sl.pickReserve = pick
+	if !reviewServerWith(t, tdb, sl, serverID).Changed {
+		t.Error("processServer made no changes")
+	}
+	if !slices.Equal(offered, []int{1}) {
+		t.Errorf("reserve rows offered to the trial pick = %v, want [1]", offered)
+	}
+
+	assertServerStatuses(t, tdb, serverID, map[int64]ntpdb.ServerScoresStatus{
+		activeID:        ntpdb.ServerScoresStatusActive,
+		silentCandidate: ntpdb.ServerScoresStatusReserve,
+		sameAccountID:   ntpdb.ServerScoresStatusReserve,
+		freeReserveID:   ntpdb.ServerScoresStatusCandidate,
+	})
+}
+
+// A candidate that can't be promoted to testing because a testing monitor is
+// in its network diversity prefix (/20) is moved to reserve, also on trial,
+// and a reserve row in that position doesn't start a trial.
+func TestReviewBlockedByNetworkDiversity(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+
+	factory := testutil.NewDataFactory(tdb)
+
+	// Ids outside 1000-9999 (CleanupTestData's range); delete only our rows.
+	const (
+		serverAccountID  = 93200
+		monitorAccountID = 93201
+		serverID         = 93202
+		activeID         = 93203
+		testingID        = 93204
+		candidateID      = 93205
+		reserveID        = 93206
+		freeCandidateID  = 93207
+	)
+	monitorIDs := []int64{activeID, testingID, candidateID, reserveID, freeCandidateID}
+	cleanup := func() {
+		cleanupReviewServer(t, tdb, serverID, monitorIDs, []int64{serverAccountID, monitorAccountID})
+	}
+	cleanup()
+	defer cleanup()
+
+	now := time.Now()
+	accountID := int64(serverAccountID)
+
+	factory.CreateTestAccount(t, serverAccountID, "server-account")
+	factory.CreateTestAccount(t, monitorAccountID, "monitor-account")
+	factory.CreateTestServer(t, serverID, "192.0.2.222", "v4", &accountID)
+
+	rtt := int32(25000)
+	for id, st := range map[int64]string{activeID: "active", testingID: "testing"} {
+		ip := "198.51.100.222"
+		if id == testingID {
+			ip = "203.0.113.10"
 		}
-		if status != string(ntpdb.ServerScoresStatusCandidate) {
-			t.Errorf("monitor %d status = %q, want candidate", id, status)
+		factory.CreateTestMonitor(t, id, st+".test", monitorAccountID, ip, "active")
+		factory.CreateTestServerScore(t, serverID, id, st, 20)
+		for i := range 5 {
+			factory.CreateTestLogScore(t, serverID, id, 20, 1, &rtt, now.Add(-time.Duration(i)*time.Minute))
 		}
+	}
+
+	// Both are in 203.0.113.10's /20. The candidate has just become one, so
+	// it is on trial; the freeCandidate is in another /20 and stays.
+	factory.CreateTestMonitor(t, candidateID, "blocked-candidate.test", monitorAccountID, "203.0.113.20", "active")
+	factory.CreateTestServerScore(t, serverID, candidateID, "candidate", 0)
+	factory.CreateTestMonitor(t, reserveID, "blocked-reserve.test", monitorAccountID, "203.0.113.30", "active")
+	factory.CreateTestServerScore(t, serverID, reserveID, "reserve", 0)
+	factory.CreateTestMonitor(t, freeCandidateID, "free-candidate.test", monitorAccountID, "198.18.0.40", "active")
+	factory.CreateTestServerScore(t, serverID, freeCandidateID, "candidate", 0)
+
+	// The inserts of the rows above are not trial starts of this test.
+	if _, err := tdb.Exec(tdb.Context(), `DELETE FROM server_scores_status_log WHERE server_id = $1`, serverID); err != nil {
+		t.Fatalf("clear status log: %v", err)
+	}
+
+	// No trial may start: the pick must not be called with a blocked row.
+	var offered []int
+	pick := func(n int) int {
+		offered = append(offered, n)
+		return 0
+	}
+	reg := prometheus.NewRegistry()
+	sl := newTestSelector(t, tdb)
+	sl.pickReserve = pick
+	sl.metrics = NewMetrics(reg)
+	if !reviewServerWith(t, tdb, sl, serverID).Changed {
+		t.Error("processServer made no changes")
+	}
+	if len(offered) != 0 {
+		t.Errorf("reserve rows offered to the trial pick = %v, want none", offered)
+	}
+
+	assertServerStatuses(t, tdb, serverID, map[int64]ntpdb.ServerScoresStatus{
+		activeID:        ntpdb.ServerScoresStatusActive,
+		testingID:       ntpdb.ServerScoresStatusTesting,
+		candidateID:     ntpdb.ServerScoresStatusReserve,
+		reserveID:       ntpdb.ServerScoresStatusReserve,
+		freeCandidateID: ntpdb.ServerScoresStatusCandidate,
+	})
+
+	// The status change counter has the reason of each change
+	counted := map[string]float64{}
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != "selector_status_changes_total" {
+			continue
+		}
+		for _, metric := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, lp := range metric.GetLabel() {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+			counted[labels["from_status"]+">"+labels["to_status"]+" "+labels["reason"]] += metric.GetCounter().GetValue()
+		}
+	}
+	// the blocked candidate and nothing else
+	want := map[string]float64{"candidate>reserve " + reasonReserveBlocked: 1}
+	if !maps.Equal(counted, want) {
+		t.Errorf("status changes = %v, want %v", counted, want)
 	}
 }

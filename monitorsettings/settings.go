@@ -23,7 +23,7 @@ type MonitorSettings struct {
 	IntervalCandidate timeutil.Duration `json:"interval_candidate"`
 
 	// SampleWindow is the trailing window over which the selector counts
-	// log_scores.
+	// the log_scores of rows that are not candidates (see CandidateWindow).
 	SampleWindow timeutil.Duration `json:"sample_window"`
 
 	// PromotionWindow is the trailing window over which the selector
@@ -45,6 +45,18 @@ type MonitorSettings struct {
 	// ReviewBootstrap is the time until the next review of a server in
 	// bootstrap mode, where it needs monitors quickly.
 	ReviewBootstrap timeutil.Duration `json:"review_bootstrap"`
+
+	// CandidatePool is how many candidates a server keeps after trials
+	// end. Another candidate_window / trial_every are on trial.
+	CandidatePool int `json:"candidate_pool"`
+
+	// TrialEvery is the time between the starts of two candidate trials on
+	// one server.
+	TrialEvery timeutil.Duration `json:"trial_every"`
+
+	// CandidateWindow is how long a candidate is on trial, and the trailing
+	// window over which the selector counts a candidate's log_scores.
+	CandidateWindow timeutil.Duration `json:"candidate_window"`
 
 	// AllowLeapAnnouncements turns off the score penalty for responses
 	// announcing a leap second (LI=1 or LI=2). Set it if a real leap
@@ -68,6 +80,9 @@ const (
 	DefaultReviewEvery       = 2 * time.Hour
 	DefaultReviewAfterChange = 4 * time.Hour
 	DefaultReviewBootstrap   = time.Hour
+	DefaultCandidatePool     = 30
+	DefaultTrialEvery        = 12 * time.Hour
+	DefaultCandidateWindow   = 72 * time.Hour
 
 	minIntervalActive    = 20 * time.Second
 	minIntervalTesting   = 60 * time.Second
@@ -76,6 +91,8 @@ const (
 	minSampleWindow      = time.Hour
 	minPromotionWindow   = time.Hour
 	minReview            = time.Minute
+	minTrialEvery        = time.Hour
+	minCandidateWindow   = time.Hour
 )
 
 // WithDefaults returns a copy of s with defaults applied where the
@@ -107,6 +124,15 @@ func (s MonitorSettings) WithDefaults() MonitorSettings {
 	}
 	if s.ReviewBootstrap.Duration < minReview {
 		s.ReviewBootstrap = timeutil.Duration{Duration: DefaultReviewBootstrap}
+	}
+	if s.TrialEvery.Duration < minTrialEvery {
+		s.TrialEvery = timeutil.Duration{Duration: DefaultTrialEvery}
+	}
+	if s.CandidateWindow.Duration < minCandidateWindow {
+		s.CandidateWindow = timeutil.Duration{Duration: DefaultCandidateWindow}
+	}
+	if s.CandidatePool <= 0 {
+		s.CandidatePool = DefaultCandidatePool
 	}
 	if s.HealthPromotions <= 0 {
 		s.HealthPromotions = DefaultHealthPromotions

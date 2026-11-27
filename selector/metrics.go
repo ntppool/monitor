@@ -92,8 +92,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		ServerMonitors: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    "selector_server_monitors",
-				Help:    "Number of monitors per server in each status, observed when the server is reviewed",
-				Buckets: []float64{0, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 50, 100, 200},
+				Help:    "Number of monitors per server in each status except reserve, observed when the server is reviewed",
+				Buckets: []float64{0, 1, 2, 3, 4, 5, 7, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100, 150, 200},
 			},
 			[]string{"status"},
 		),
@@ -174,12 +174,18 @@ func (m *Metrics) TrackPromotionLimited(to ntpdb.ServerScoresStatus, kind promot
 }
 
 // TrackServerMonitorCounts records the number of monitors in each status
-// for a reviewed server
-func (m *Metrics) TrackServerMonitorCounts(activeCount, testingCount, candidateCount, pausedCount int) {
-	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusActive)).Observe(float64(activeCount))
-	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusTesting)).Observe(float64(testingCount))
-	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusCandidate)).Observe(float64(candidateCount))
-	m.ServerMonitors.WithLabelValues(string(ntpdb.ServerScoresStatusPaused)).Observe(float64(pausedCount))
+// for a reviewed server; a status missing from counts is recorded as 0.
+// Reserve rows get no work and are left out; selector_monitor_servers
+// counts them per monitor.
+func (m *Metrics) TrackServerMonitorCounts(counts map[ntpdb.ServerScoresStatus]int) {
+	for _, s := range []ntpdb.ServerScoresStatus{
+		ntpdb.ServerScoresStatusActive,
+		ntpdb.ServerScoresStatusTesting,
+		ntpdb.ServerScoresStatusCandidate,
+		ntpdb.ServerScoresStatusPaused,
+	} {
+		m.ServerMonitors.WithLabelValues(string(s)).Observe(float64(counts[s]))
+	}
 }
 
 // RecordProcessingMetrics records various processing metrics for a server

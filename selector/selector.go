@@ -214,6 +214,9 @@ type Selector struct {
 	log      *slog.Logger
 	metrics  *Metrics
 	settings settingsProvider
+	// pickReserve returns a random number in [0, n) to choose the reserve
+	// row that starts a trial. Nil means rand.IntN; tests set it.
+	pickReserve func(n int) int
 }
 
 // settingsProvider is the minimal surface Selector needs from the
@@ -243,12 +246,6 @@ func (sl *Selector) currentSettings() monitorsettings.MonitorSettings {
 	return sl.settings.Current()
 }
 
-// sampleWindow returns the trailing window over which log_scores are
-// counted.
-func (sl *Selector) sampleWindow() time.Duration {
-	return sl.currentSettings().SampleWindow.Duration
-}
-
 // minCountForActive returns the per-Run sample-count threshold for the
 // testing -> active promotion, derived from the current interval_testing
 // and sample_window.
@@ -259,10 +256,10 @@ func (sl *Selector) minCountForActive() int64 {
 
 // minCountForTesting returns the sample-count threshold for the
 // candidate -> testing promotion, derived from the current
-// interval_candidate and sample_window.
+// interval_candidate and candidate_window.
 func (sl *Selector) minCountForTesting() int64 {
 	s := sl.currentSettings()
-	return monitorsettings.RequiredCountForTesting(s.IntervalCandidate.Duration, s.SampleWindow.Duration)
+	return monitorsettings.RequiredCountForTesting(s.IntervalCandidate.Duration, s.CandidateWindow.Duration)
 }
 
 // trackMonitorServerCounts refreshes the selector_monitor_servers metric
@@ -369,9 +366,11 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 	}
 
 	// Step 2: Get all assigned monitors
+	settings := sl.currentSettings()
 	assignedMonitors, err := db.GetMonitorPriority(ctx, ntpdb.GetMonitorPriorityParams{
-		ServerID:            serverID,
-		SampleWindowSeconds: sl.sampleWindow().Seconds(),
+		ServerID:               serverID,
+		SampleWindowSeconds:    settings.SampleWindow.Duration.Seconds(),
+		CandidateWindowSeconds: settings.CandidateWindow.Duration.Seconds(),
 	})
 	if err != nil {
 		return reviewOutcome{}, fmt.Errorf("failed to get monitor priority: %w", err)
@@ -417,24 +416,43 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		// Compute legacy recommendedState for backward compatibility
 		state := sl.determineState(&monitor, currentViolation)
 
-		evaluatedMonitors = append(evaluatedMonitors, evaluatedMonitor{
+		em := evaluatedMonitor{
 			monitor:          monitor,
 			currentViolation: currentViolation,
 			recommendedState: state,
-		})
+		}
+		// The trial rule judges candidate and reserve rows by what a
+		// promotion to testing would run into, the check the promotion
+		// itself makes (canPromoteToTesting).
+		if monitor.ServerStatus == ntpdb.ServerScoresStatusCandidate ||
+			monitor.ServerStatus == ntpdb.ServerScoresStatusReserve {
+			em.testingViolation = sl.checkConstraints(&monitor, server, accountLimits, ntpdb.ServerScoresStatusTesting, assignedMonitors)
+		}
+		evaluatedMonitors = append(evaluatedMonitors, em)
 	}
 
 	// Step 6: Apply selection rules, limited by the promotions of the last
 	// promotion_window
 	promotionCounts, err := db.GetServerPromotionCounts(ctx, ntpdb.GetServerPromotionCountsParams{
 		ServerID:      serverID,
-		WindowSeconds: sl.currentSettings().PromotionWindow.Duration.Seconds(),
+		WindowSeconds: settings.PromotionWindow.Duration.Seconds(),
 	})
 	if err != nil {
 		return reviewOutcome{}, fmt.Errorf("failed to get server promotion counts: %w", err)
 	}
+	trialStartedRecently, err := db.GetTrialStartedSince(ctx, ntpdb.GetTrialStartedSinceParams{
+		ServerID:     serverID,
+		SinceSeconds: settings.TrialEvery.Duration.Seconds(),
+	})
+	if err != nil {
+		return reviewOutcome{}, fmt.Errorf("failed to get trial start: %w", err)
+	}
 	budget := sl.promotionBudgetFor(promotionCounts, evaluatedMonitors)
 	changes := sl.applySelectionRules(ctx, evaluatedMonitors, server, accountLimits, assignedMonitors, budget)
+	// The trial rule runs last, also in an emergency (when the rules above
+	// change nothing): a server with only reserve rows left needs a trial to
+	// get candidates.
+	changes = append(changes, sl.applyTrialRule(ctx, sl.trialInputFor(evaluatedMonitors, changes, trialStartedRecently))...)
 	if sl.metrics != nil {
 		for _, r := range budget.refused() {
 			sl.metrics.TrackPromotionLimited(r.to, r.kind)
@@ -500,21 +518,9 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 		duration := time.Since(start).Seconds()
 
 		// Track monitor pool sizes
-		activeCount := 0
-		testingCount := 0
-		candidateCount := 0
-		pausedCount := 0
+		statusCounts := make(map[ntpdb.ServerScoresStatus]int)
 		for _, em := range evaluatedMonitors {
-			switch em.monitor.ServerStatus {
-			case ntpdb.ServerScoresStatusActive:
-				activeCount++
-			case ntpdb.ServerScoresStatusTesting:
-				testingCount++
-			case ntpdb.ServerScoresStatusCandidate:
-				candidateCount++
-			case ntpdb.ServerScoresStatusPaused:
-				pausedCount++
-			}
+			statusCounts[em.monitor.ServerStatus]++
 		}
 
 		sl.metrics.RecordProcessingMetrics(
@@ -524,12 +530,7 @@ func (sl *Selector) processServer(ctx context.Context, db ntpdb.QuerierTx, serve
 			failedChanges,
 		)
 
-		sl.metrics.TrackServerMonitorCounts(
-			activeCount,
-			testingCount,
-			candidateCount,
-			pausedCount,
-		)
+		sl.metrics.TrackServerMonitorCounts(statusCounts)
 	}
 
 	// Log summary

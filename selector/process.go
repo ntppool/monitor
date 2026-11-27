@@ -783,7 +783,7 @@ func (sl *Selector) applyRule7ConstraintResolution(
 			changes = append(changes, statusChange{
 				monitorID:  monitor.ID,
 				fromStatus: ntpdb.ServerScoresStatusPaused,
-				toStatus:   ntpdb.ServerScoresStatusCandidate,
+				toStatus:   ntpdb.ServerScoresStatusReserve,
 				reason:     "constraint resolution: unpausing resolved constraint",
 			})
 
@@ -928,8 +928,12 @@ func (sl *Selector) performFinalValidation(
 //	Rule 5 (Candidate to Testing Promotion): Promote candidates to testing (iterative constraint checking)
 //	Rule 2.5 (Testing Pool Management): Demote excess testing monitors based on dynamic target
 //	Rule 6 (Bootstrap Promotion): Bootstrap case - if no testing monitors exist, promote candidates to reach target
-//	Rule 7 (Constraint Resolution): Check paused monitors for constraint resolution
+//	Rule 7 (Constraint Resolution): Check paused monitors for constraint resolution; they go to reserve
 //	Rule 8 (Out-of-Order Optimization): Handle out-of-order situations (disabled for now)
+//
+// Reserve rows take no part in any rule but Rule 7 (as its target): they
+// are left out of every count and safeguard. The trial rule (applyTrialRule)
+// runs after these rules.
 func (sl *Selector) applySelectionRules(
 	ctx context.Context,
 	evaluatedMonitors []evaluatedMonitor,
@@ -938,7 +942,8 @@ func (sl *Selector) applySelectionRules(
 	assignedMonitors []ntpdb.GetMonitorPriorityRow,
 	budget *promotionBudget,
 ) []statusChange {
-	// Categorize monitors by current status
+	// Categorize monitors by current status. Reserve rows are dropped and
+	// evaluatedMonitors holds the others from here on.
 	var (
 		activeMonitors    []evaluatedMonitor
 		testingMonitors   []evaluatedMonitor
@@ -946,7 +951,14 @@ func (sl *Selector) applySelectionRules(
 		pausedMonitors    []evaluatedMonitor
 	)
 
-	for _, em := range evaluatedMonitors {
+	allEvaluated := evaluatedMonitors
+	evaluatedMonitors = make([]evaluatedMonitor, 0, len(allEvaluated))
+	for _, em := range allEvaluated {
+		if em.monitor.ServerStatus == ntpdb.ServerScoresStatusReserve {
+			continue
+		}
+		evaluatedMonitors = append(evaluatedMonitors, em)
+
 		switch em.monitor.ServerStatus {
 		case ntpdb.ServerScoresStatusActive:
 			activeMonitors = append(activeMonitors, em)

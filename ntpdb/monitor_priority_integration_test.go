@@ -4,6 +4,7 @@
 package ntpdb_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -61,8 +62,9 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	factory.CreateTestLogScore(t, serverID, oldSampleMonitor, 20, 1, &rtt, now)
 
 	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
-		ServerID:            serverID,
-		SampleWindowSeconds: (24 * time.Hour).Seconds(),
+		ServerID:               serverID,
+		SampleWindowSeconds:    (24 * time.Hour).Seconds(),
+		CandidateWindowSeconds: (24 * time.Hour).Seconds(),
 	})
 	if err != nil {
 		t.Fatalf("GetMonitorPriority() error = %v", err)
@@ -101,8 +103,9 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 	for _, tt := range counts {
 		t.Run(tt.name, func(t *testing.T) {
 			rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
-				ServerID:            serverID,
-				SampleWindowSeconds: tt.window.Seconds(),
+				ServerID:               serverID,
+				SampleWindowSeconds:    tt.window.Seconds(),
+				CandidateWindowSeconds: tt.window.Seconds(),
 			})
 			testutil.AssertNoError(t, err, "GetMonitorPriority")
 			var got int64 = -1
@@ -113,6 +116,67 @@ func TestGetMonitorPriority_AllRttNull(t *testing.T) {
 			}
 			testutil.AssertEqual(t, tt.want, got, "sample count for the monitor with an old sample")
 		})
+	}
+}
+
+// Candidates are counted over candidate_window, other rows over
+// sample_window.
+func TestGetMonitorPriority_CandidateWindow(t *testing.T) {
+	tdb := testutil.NewTestDB(t)
+	defer tdb.Close()
+
+	factory := testutil.NewDataFactory(tdb)
+
+	const (
+		accountID    = 90250
+		serverID     = 90251
+		candidateID  = 90252
+		activeID     = 90253
+		reserveID    = 90254
+		veryOldCandi = 90255
+	)
+
+	cleanupServerAccount(t, tdb, serverID, accountID)
+	defer cleanupServerAccount(t, tdb, serverID, accountID)
+
+	now := time.Now()
+
+	factory.CreateTestAccount(t, accountID, "test@example.com")
+	factory.CreateTestServer(t, serverID, "192.0.2.80", "v4", nil)
+	for i, id := range []int64{candidateID, activeID, reserveID, veryOldCandi} {
+		factory.CreateTestMonitor(t, id, "window.test", accountID, fmt.Sprintf("192.0.2.%d", 90+i), "active")
+	}
+	factory.CreateTestServerScore(t, serverID, candidateID, "candidate", 0)
+	factory.CreateTestServerScore(t, serverID, activeID, "active", 20)
+	factory.CreateTestServerScore(t, serverID, reserveID, "reserve", 0)
+	factory.CreateTestServerScore(t, serverID, veryOldCandi, "candidate", 0)
+
+	rtt := int32(25000)
+	// a recent sample and one 48h old for each of the first three; 80h old
+	// is outside a 72h window
+	for _, id := range []int64{candidateID, activeID, reserveID} {
+		factory.CreateTestLogScore(t, serverID, id, 20, 1, &rtt, now.Add(-time.Minute))
+		factory.CreateTestLogScore(t, serverID, id, 20, 1, &rtt, now.Add(-48*time.Hour))
+	}
+	factory.CreateTestLogScore(t, serverID, veryOldCandi, 20, 1, &rtt, now.Add(-time.Minute))
+	factory.CreateTestLogScore(t, serverID, veryOldCandi, 20, 1, &rtt, now.Add(-80*time.Hour))
+
+	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
+		ServerID:               serverID,
+		SampleWindowSeconds:    (24 * time.Hour).Seconds(),
+		CandidateWindowSeconds: (72 * time.Hour).Seconds(),
+	})
+	testutil.AssertNoError(t, err, "GetMonitorPriority")
+
+	want := map[int64]int64{
+		candidateID:  2, // counts the 48h-old sample
+		activeID:     1, // 48h is outside the sample window
+		reserveID:    1, // not a candidate: the sample window
+		veryOldCandi: 1, // 80h is outside the candidate window
+	}
+	testutil.AssertEqual(t, len(want), len(rows), "number of rows")
+	for _, r := range rows {
+		testutil.AssertEqual(t, want[r.ID], r.Count, "count of monitor %d with status %s", r.ID, r.Status)
 	}
 }
 
@@ -162,8 +226,9 @@ func TestGetMonitorPriority_RowsWithoutSamples(t *testing.T) {
 	factory.CreateTestLogScore(t, serverID, pausedOldID, 20, 1, &rtt, now.Add(-30*time.Hour))
 
 	rows, err := tdb.Queries().GetMonitorPriority(tdb.Context(), ntpdb.GetMonitorPriorityParams{
-		ServerID:            serverID,
-		SampleWindowSeconds: (24 * time.Hour).Seconds(),
+		ServerID:               serverID,
+		SampleWindowSeconds:    (24 * time.Hour).Seconds(),
+		CandidateWindowSeconds: (24 * time.Hour).Seconds(),
 	})
 	testutil.AssertNoError(t, err, "GetMonitorPriority")
 	testutil.AssertEqual(t, 3, len(rows), "number of rows (no score monitor, no monitor without server_scores row)")

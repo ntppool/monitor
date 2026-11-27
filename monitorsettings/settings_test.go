@@ -109,6 +109,10 @@ func TestWithDefaults(t *testing.T) {
 		ReviewEvery:       timeutil.Duration{Duration: 3 * time.Hour},
 		ReviewAfterChange: timeutil.Duration{Duration: 6 * time.Hour},
 		ReviewBootstrap:   timeutil.Duration{Duration: 30 * time.Minute},
+
+		CandidatePool:   20,
+		TrialEvery:      timeutil.Duration{Duration: 6 * time.Hour},
+		CandidateWindow: timeutil.Duration{Duration: 48 * time.Hour},
 	}
 	out := in.WithDefaults()
 	if out != in {
@@ -164,6 +168,40 @@ func TestWithDefaultsCandidateAndWindow(t *testing.T) {
 			got := s.WithDefaults()
 			testutil.AssertEqual(t, tt.wantCandidate, got.IntervalCandidate.Duration, "IntervalCandidate for %s", tt.raw)
 			testutil.AssertEqual(t, tt.wantWindow, got.SampleWindow.Duration, "SampleWindow for %s", tt.raw)
+		})
+	}
+}
+
+// A trial_every or candidate_window below the minimum, or a candidate_pool
+// that isn't positive, must fall back to the default.
+func TestWithDefaultsTrials(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		wantPool   int
+		wantEvery  time.Duration
+		wantWindow time.Duration
+	}{
+		{"missing", `{}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"pool 0", `{"candidate_pool": 0}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"pool -1", `{"candidate_pool": -1}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"pool 10 kept", `{"candidate_pool": 10}`, 10, DefaultTrialEvery, DefaultCandidateWindow},
+		{"every 0s", `{"trial_every": "0s"}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"every 59m", `{"trial_every": "59m"}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"every 1h kept", `{"trial_every": "1h"}`, DefaultCandidatePool, time.Hour, DefaultCandidateWindow},
+		{"window 0s", `{"candidate_window": "0s"}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"window 30m", `{"candidate_window": "30m"}`, DefaultCandidatePool, DefaultTrialEvery, DefaultCandidateWindow},
+		{"window 1h kept", `{"candidate_window": "1h"}`, DefaultCandidatePool, DefaultTrialEvery, time.Hour},
+		{"window 96h kept", `{"candidate_window": "96h"}`, DefaultCandidatePool, DefaultTrialEvery, 96 * time.Hour},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var s MonitorSettings
+			testutil.AssertNoError(t, json.Unmarshal([]byte(tt.raw), &s), "Unmarshal(%s)", tt.raw)
+			got := s.WithDefaults()
+			testutil.AssertEqual(t, tt.wantPool, got.CandidatePool, "CandidatePool for %s", tt.raw)
+			testutil.AssertEqual(t, tt.wantEvery, got.TrialEvery.Duration, "TrialEvery for %s", tt.raw)
+			testutil.AssertEqual(t, tt.wantWindow, got.CandidateWindow.Duration, "CandidateWindow for %s", tt.raw)
 		})
 	}
 }

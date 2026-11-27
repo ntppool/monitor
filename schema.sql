@@ -110,7 +110,8 @@ CREATE TYPE public.server_scores_status AS ENUM (
     'candidate',
     'testing',
     'active',
-    'paused'
+    'paused',
+    'reserve'
 );
 
 

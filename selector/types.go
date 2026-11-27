@@ -70,4 +70,9 @@ type evaluatedMonitor struct {
 	monitor          monitorCandidate
 	currentViolation *constraintViolation // Constraints for current state
 	recommendedState candidateState       // Legacy field for backward compatibility
+	// testingViolation is what a promotion to testing would run into. It is
+	// set for candidate and reserve rows only, and used by the trial rule:
+	// currentViolation of such a row is checked against its own status and
+	// doesn't see a network diversity or account limit conflict.
+	testingViolation *constraintViolation
 }

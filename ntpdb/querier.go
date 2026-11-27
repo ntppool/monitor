@@ -18,7 +18,9 @@ type Querier interface {
 	// https://github.com/kyleconroy/sqlc/issues/1965
 	GetMinLogScoreID(ctx context.Context) (int64, error)
 	// Starts from server_scores so rows without recent samples are returned too
-	// (count 0, not healthy, sorted after every row with samples).
+	// (count 0, not healthy, sorted after every row with samples). Samples are
+	// counted over candidate_window for candidates and sample_window for other
+	// rows; the larger of the two bounds the join.
 	GetMonitorPriority(ctx context.Context, arg GetMonitorPriorityParams) ([]GetMonitorPriorityRow, error)
 	GetMonitorServerStatusCounts(ctx context.Context) ([]GetMonitorServerStatusCountsRow, error)
 	GetMonitorTLSNameIP(ctx context.Context, arg GetMonitorTLSNameIPParams) (GetMonitorTLSNameIPRow, error)
@@ -43,6 +45,11 @@ type Querier interface {
 	GetServers(ctx context.Context, arg GetServersParams) ([]GetServersRow, error)
 	GetServersMonitorReview(ctx context.Context) ([]int64, error)
 	GetSystemSetting(ctx context.Context, key string) ([]byte, error)
+	// Whether a candidate trial started on the server within the window: a row
+	// inserted as a candidate, or a reserve row made a candidate. A testing row
+	// demoted to candidate is not a trial, and neither is the row a scorer
+	// inserts for itself (with the default status candidate).
+	GetTrialStartedSince(ctx context.Context, arg GetTrialStartedSinceParams) (bool, error)
 	InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error)
 	InsertScorer(ctx context.Context, arg InsertScorerParams) (int64, error)
 	InsertScorerStatus(ctx context.Context, arg InsertScorerStatusParams) error

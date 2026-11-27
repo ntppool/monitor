@@ -2,6 +2,7 @@ package selector
 
 import (
 	"log/slog"
+	"slices"
 	"testing"
 
 	"go.ntppool.org/monitor/monitorsettings"
@@ -407,7 +408,8 @@ func TestKnownServerStatus(t *testing.T) {
 		{ntpdb.ServerScoresStatusTesting, true},
 		{ntpdb.ServerScoresStatusActive, true},
 		{ntpdb.ServerScoresStatusPaused, true},
-		{ntpdb.ServerScoresStatus("reserve"), false},
+		{ntpdb.ServerScoresStatusReserve, true},
+		{ntpdb.ServerScoresStatus("retired"), false},
 		{ntpdb.ServerScoresStatus(""), false},
 	}
 	for _, tt := range tests {
@@ -423,8 +425,8 @@ func TestSkipUnknownStatuses(t *testing.T) {
 	sl := &Selector{log: testLogger()}
 	rows := []ntpdb.GetMonitorPriorityRow{
 		{ID: 1, Status: ntpdb.ServerScoresStatusActive},
-		{ID: 2, Status: ntpdb.ServerScoresStatus("reserve")},
-		{ID: 3, Status: ntpdb.ServerScoresStatusCandidate},
+		{ID: 2, Status: ntpdb.ServerScoresStatus("retired")},
+		{ID: 3, Status: ntpdb.ServerScoresStatusReserve},
 		{ID: 4, Status: ntpdb.ServerScoresStatus("")},
 	}
 
@@ -486,6 +488,16 @@ func TestRowsWithoutSamplesDontMoveSafeguards(t *testing.T) {
 		return rows
 	}
 
+	// reserve rows: 150 of them, with samples (a row just moved to reserve
+	// still has them), unhealthy and healthy
+	reserves := func(sl *Selector) []evaluatedMonitor {
+		var rows []evaluatedMonitor
+		for i := range int64(150) {
+			rows = append(rows, sampledMonitor(sl, 5000+i, ntpdb.ServerScoresStatusReserve, i%2 == 0, 500))
+		}
+		return rows
+	}
+
 	tests := []struct {
 		name  string
 		build func(sl *Selector) []evaluatedMonitor
@@ -543,6 +555,13 @@ func TestRowsWithoutSamplesDontMoveSafeguards(t *testing.T) {
 				if got[i] != want[i] {
 					t.Errorf("change %d = %+v, want %+v", i, got[i], want[i])
 				}
+			}
+
+			// reserve rows change nothing
+			all = append(all, reserves(sl)...)
+			gotReserve := sl.applySelectionRules(t.Context(), all, server, map[int64]*accountLimit{}, nil, sl.promotionBudgetFor(ntpdb.GetServerPromotionCountsRow{}, all))
+			if !slices.Equal(gotReserve, want) {
+				t.Errorf("with reserve rows: changes %+v, want %+v", gotReserve, want)
 			}
 		})
 	}

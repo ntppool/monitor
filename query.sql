@@ -214,7 +214,9 @@ GROUP BY ip_version;
 
 -- name: GetMonitorPriority :many
 -- Starts from server_scores so rows without recent samples are returned too
--- (count 0, not healthy, sorted after every row with samples).
+-- (count 0, not healthy, sorted after every row with samples). Samples are
+-- counted over candidate_window for candidates and sample_window for other
+-- rows; the larger of the two bounds the join.
 SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
     -- rtt is NULL for timeouts and implausible values, so the average is
     -- NULL when a monitor has no rtt samples at all for the server
@@ -235,7 +237,10 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   LEFT JOIN log_scores ls ON (
     ls.server_id = ss.server_id
     AND ls.monitor_id = ss.monitor_id
-    AND ls.ts > NOW() - make_interval(secs => sqlc.arg('sample_window_seconds')::float8)
+    AND ls.ts > NOW() - make_interval(secs => GREATEST(sqlc.arg('candidate_window_seconds')::float8, sqlc.arg('sample_window_seconds')::float8))
+    AND ls.ts > NOW() - CASE ss.status
+        WHEN 'candidate' THEN make_interval(secs => sqlc.arg('candidate_window_seconds')::float8)
+        ELSE make_interval(secs => sqlc.arg('sample_window_seconds')::float8) END
   )
   LEFT JOIN accounts a ON (m.account_id = a.id)
   WHERE ss.server_id = sqlc.arg('server_id')
@@ -243,6 +248,23 @@ SELECT m.id, m.id_token, m.tls_name, m.account_id, m.ip as monitor_ip,
   GROUP BY m.id, m.id_token, m.tls_name, m.account_id, m.ip, m.status, ss.status, ss.status_since, a.flags,
            ss.constraint_violation_type, ss.constraint_violation_since, ss.last_constraint_check, ss.pause_reason
   ORDER BY (count(ls.id) > 0) DESC, healthy DESC, monitor_priority, avg_step DESC, avg_rtt;
+
+-- name: GetTrialStartedSince :one
+-- Whether a candidate trial started on the server within the window: a row
+-- inserted as a candidate, or a reserve row made a candidate. A testing row
+-- demoted to candidate is not a trial, and neither is the row a scorer
+-- inserts for itself (with the default status candidate).
+SELECT EXISTS (
+    SELECT 1
+      FROM server_scores_status_log l
+      WHERE l.server_id = sqlc.arg('server_id')
+        AND l.ts > NOW() - make_interval(secs => sqlc.arg('since_seconds')::float8)
+        AND ((l.op = 'insert' AND l.new_status = 'candidate')
+          OR (l.op = 'update' AND l.old_status = 'reserve' AND l.new_status = 'candidate'))
+        AND NOT EXISTS (
+            SELECT 1 FROM monitors m
+              WHERE m.id = l.monitor_id AND m.type <> 'monitor')
+)::boolean AS started;
 
 -- name: GetServerPromotionCounts :one
 -- Promotions across each status boundary on a server within the window. A
