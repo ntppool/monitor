@@ -62,6 +62,16 @@ func TestScorerRunner_FullCycle(t *testing.T) {
 		})
 		testutil.AssertNoError(t, err, "Failed to get server score")
 		testutil.AssertEqual(t, "active", string(scores.Status), "Expected server score status to be active")
+
+		// The scorer's own log_scores rows leave status empty; only
+		// monitor-api fills it in for the monitors' results.
+		var scorerRows, withStatus int
+		err = tdb.QueryRow(tdb.Context(),
+			"SELECT count(*), count(status) FROM log_scores WHERE monitor_id = $1", 2001).
+			Scan(&scorerRows, &withStatus)
+		testutil.AssertNoError(t, err, "Failed to count scorer log_scores")
+		testutil.AssertTrue(t, scorerRows > 0, "Expected the scorer to insert log_scores rows, got %d", scorerRows)
+		testutil.AssertEqual(t, 0, withStatus, "Expected scorer log_scores.status to be NULL")
 	})
 
 	t.Run("NoDataToProcess", func(t *testing.T) {

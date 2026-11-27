@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 18.4 (Postgres.app)
--- Dumped by pg_dump version 18.4 (Postgres.app)
+-- Dumped from database version 18.7 (Postgres.app)
+-- Dumped by pg_dump version 18.7 (Postgres.app)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -42,6 +42,17 @@ CREATE TYPE public.account_subscriptions_status AS ENUM (
     'canceled',
     'unpaid',
     'ended'
+);
+
+
+--
+-- Name: email_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.email_status AS ENUM (
+    'queued',
+    'sent',
+    'failed'
 );
 
 
@@ -130,7 +141,8 @@ CREATE TYPE public.service_ip_type AS ENUM (
 
 CREATE TYPE public.service_type AS ENUM (
     'dns',
-    'stripe-gw'
+    'stripe-gw',
+    'mcp-exchange'
 );
 
 
@@ -186,7 +198,6 @@ CREATE TYPE public.user_tasks_task AS ENUM (
 --
 
 CREATE TYPE public.vendor_zones_client_type AS ENUM (
-    'ntp',
     'sntp',
     'legacy'
 );
@@ -212,6 +223,43 @@ CREATE TYPE public.zone_server_counts_ip_version AS ENUM (
     'v4',
     'v6'
 );
+
+
+--
+-- Name: emails_notify_queued(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.emails_notify_queued() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM pg_notify('emails_queued', '');
+    RETURN NULL;
+END $$;
+
+
+--
+-- Name: log_server_scores_status(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.log_server_scores_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+    AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO server_scores_status_log (server_id, monitor_id, op, new_status)
+        VALUES (NEW.server_id, NEW.monitor_id, 'insert', NEW.status);
+    ELSIF TG_OP = 'UPDATE' THEN
+        INSERT INTO server_scores_status_log (server_id, monitor_id, op, old_status, new_status)
+        VALUES (NEW.server_id, NEW.monitor_id, 'update', OLD.status, NEW.status);
+    ELSIF TG_OP = 'DELETE' THEN
+        INSERT INTO server_scores_status_log (server_id, monitor_id, op, old_status)
+        VALUES (OLD.server_id, OLD.monitor_id, 'delete', OLD.status);
+    END IF;
+    RETURN NULL;
+END;
+$$;
 
 
 SET default_tablespace = '';
@@ -271,7 +319,9 @@ CREATE TABLE public.account_subscriptions (
     max_devices bigint NOT NULL,
     created_on timestamp with time zone NOT NULL,
     ended_on timestamp with time zone,
-    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    quantity bigint,
+    tiered boolean
 );
 
 
@@ -462,6 +512,48 @@ ALTER SEQUENCE public.dns_roots_id_seq OWNED BY public.dns_roots.id;
 
 
 --
+-- Name: e2e_fixture_monitors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.e2e_fixture_monitors (
+    attempt_id uuid NOT NULL,
+    ip_version smallint NOT NULL,
+    monitor_id bigint NOT NULL,
+    ip character varying(40) NOT NULL,
+    CONSTRAINT e2e_fixture_monitors_ip_version_check CHECK ((ip_version = ANY (ARRAY[4, 6])))
+);
+
+
+--
+-- Name: e2e_fixture_servers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.e2e_fixture_servers (
+    attempt_id uuid NOT NULL,
+    ordinal smallint NOT NULL,
+    server_id bigint NOT NULL,
+    ip character varying(40) NOT NULL,
+    CONSTRAINT e2e_fixture_servers_ordinal_check CHECK (((ordinal >= 0) AND (ordinal <= 3)))
+);
+
+
+--
+-- Name: e2e_fixtures; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.e2e_fixtures (
+    attempt_id uuid NOT NULL,
+    user_id bigint,
+    account_id bigint,
+    created_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    cleaned_on timestamp with time zone,
+    run_id uuid,
+    CONSTRAINT e2e_fixtures_check CHECK (((user_id IS NULL) = (account_id IS NULL))),
+    CONSTRAINT e2e_fixtures_check1 CHECK (((account_id IS NOT NULL) OR (cleaned_on IS NOT NULL)))
+);
+
+
+--
 -- Name: emails; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -482,7 +574,13 @@ CREATE TABLE public.emails (
     email_type character varying(50) NOT NULL,
     metadata jsonb,
     created_on timestamp with time zone DEFAULT now() NOT NULL,
-    modified_on timestamp with time zone DEFAULT now() NOT NULL
+    modified_on timestamp with time zone DEFAULT now() NOT NULL,
+    status public.email_status NOT NULL,
+    recipient text,
+    group_id uuid DEFAULT uuidv7() NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_attempt_at timestamp with time zone,
+    CONSTRAINT emails_queued_has_recipient CHECK (((status <> 'queued'::public.email_status) OR (recipient IS NOT NULL)))
 );
 
 
@@ -544,7 +642,8 @@ CREATE TABLE public.log_scores (
     step double precision DEFAULT '0'::double precision NOT NULL,
     "offset" double precision,
     rtt integer,
-    attributes jsonb
+    attributes jsonb,
+    status public.server_scores_status
 );
 
 
@@ -611,7 +710,8 @@ CREATE TABLE public.logs (
     type character varying(50),
     message text,
     changes jsonb,
-    created_on timestamp with time zone NOT NULL
+    created_on timestamp with time zone NOT NULL,
+    monitor_id bigint
 );
 
 
@@ -719,6 +819,51 @@ CREATE SEQUENCE public.monitors_id_seq
 --
 
 ALTER SEQUENCE public.monitors_id_seq OWNED BY public.monitors.id;
+
+
+--
+-- Name: oauth_connector_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oauth_connector_codes (
+    digest bytea NOT NULL,
+    redirect_uri text NOT NULL,
+    code_challenge text NOT NULL
+);
+
+
+--
+-- Name: oauth_connector_credentials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oauth_connector_credentials (
+    digest bytea NOT NULL,
+    grant_id uuid NOT NULL,
+    kind text NOT NULL,
+    audience text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    CONSTRAINT oauth_connector_credentials_digest_check CHECK ((octet_length(digest) = 32)),
+    CONSTRAINT oauth_connector_credentials_kind_check CHECK ((kind = ANY (ARRAY['code'::text, 'access'::text, 'refresh'::text, 'delegated'::text])))
+);
+
+
+--
+-- Name: oauth_connector_grants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oauth_connector_grants (
+    id uuid NOT NULL,
+    user_id bigint NOT NULL,
+    client_id text NOT NULL,
+    environment text NOT NULL,
+    resource text NOT NULL,
+    scope text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    CONSTRAINT oauth_connector_grants_check CHECK ((expires_at > created_at))
+);
 
 
 --
@@ -886,7 +1031,7 @@ CREATE TABLE public.server_precheck_tokens (
     account_id bigint NOT NULL,
     precheck_data jsonb NOT NULL,
     created_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    expires_on timestamp with time zone DEFAULT (CURRENT_TIMESTAMP + '00:05:00'::interval) NOT NULL,
+    expires_on timestamp with time zone NOT NULL,
     consumed boolean DEFAULT false NOT NULL
 );
 
@@ -949,6 +1094,36 @@ CREATE SEQUENCE public.server_scores_id_seq
 --
 
 ALTER SEQUENCE public.server_scores_id_seq OWNED BY public.server_scores.id;
+
+
+--
+-- Name: server_scores_status_log; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.server_scores_status_log (
+    id bigint NOT NULL,
+    server_id bigint NOT NULL,
+    monitor_id bigint NOT NULL,
+    ts timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    op text NOT NULL,
+    old_status public.server_scores_status,
+    new_status public.server_scores_status,
+    CONSTRAINT server_scores_status_log_op_check CHECK ((op = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text, 'snapshot'::text])))
+);
+
+
+--
+-- Name: server_scores_status_log_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.server_scores_status_log ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.server_scores_status_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 --
@@ -1084,7 +1259,8 @@ CREATE TABLE public.servers (
     score_raw double precision DEFAULT '0'::double precision NOT NULL,
     deletion_on date,
     flags jsonb DEFAULT '{}'::jsonb NOT NULL
-);
+)
+WITH (fillfactor='90');
 
 
 --
@@ -1340,7 +1516,8 @@ CREATE TABLE public.user_tasks (
     created_on timestamp with time zone NOT NULL,
     modified_on timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     account_id bigint,
-    state public.user_tasks_state DEFAULT 'pending'::public.user_tasks_state NOT NULL
+    state public.user_tasks_state DEFAULT 'pending'::public.user_tasks_state NOT NULL,
+    CONSTRAINT user_tasks_pending_has_owner CHECK (((state <> 'pending'::public.user_tasks_state) OR ((task = 'account_delete'::public.user_tasks_task) AND (account_id IS NOT NULL)) OR ((task = ANY (ARRAY['download'::public.user_tasks_task, 'delete'::public.user_tasks_task])) AND (user_id IS NOT NULL))))
 );
 
 
@@ -1423,7 +1600,9 @@ CREATE TABLE public.vendor_zones (
     account_id bigint,
     opensource_requested boolean DEFAULT false NOT NULL,
     opensource_approved boolean,
-    rejection_reason text
+    rejection_reason text,
+    client_type_changed_on timestamp with time zone,
+    CONSTRAINT vendor_zones_approved_on_check CHECK (((status <> 'Approved'::public.vendor_zones_status) OR (approved_on IS NOT NULL)))
 );
 
 
@@ -1796,6 +1975,46 @@ ALTER TABLE ONLY public.dns_roots
 
 
 --
+-- Name: e2e_fixture_monitors e2e_fixture_monitors_monitor_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_monitors
+    ADD CONSTRAINT e2e_fixture_monitors_monitor_id_key UNIQUE (monitor_id);
+
+
+--
+-- Name: e2e_fixture_monitors e2e_fixture_monitors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_monitors
+    ADD CONSTRAINT e2e_fixture_monitors_pkey PRIMARY KEY (attempt_id, ip_version);
+
+
+--
+-- Name: e2e_fixture_servers e2e_fixture_servers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_servers
+    ADD CONSTRAINT e2e_fixture_servers_pkey PRIMARY KEY (attempt_id, ordinal);
+
+
+--
+-- Name: e2e_fixture_servers e2e_fixture_servers_server_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_servers
+    ADD CONSTRAINT e2e_fixture_servers_server_id_key UNIQUE (server_id);
+
+
+--
+-- Name: e2e_fixtures e2e_fixtures_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixtures
+    ADD CONSTRAINT e2e_fixtures_pkey PRIMARY KEY (attempt_id);
+
+
+--
 -- Name: emails emails_message_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1828,6 +2047,14 @@ ALTER TABLE ONLY public.log_scores_archive_status
 
 
 --
+-- Name: log_scores log_scores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log_scores
+    ADD CONSTRAINT log_scores_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: logs logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1849,6 +2076,30 @@ ALTER TABLE ONLY public.monitor_registrations
 
 ALTER TABLE ONLY public.monitors
     ADD CONSTRAINT monitors_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth_connector_codes oauth_connector_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_codes
+    ADD CONSTRAINT oauth_connector_codes_pkey PRIMARY KEY (digest);
+
+
+--
+-- Name: oauth_connector_credentials oauth_connector_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_credentials
+    ADD CONSTRAINT oauth_connector_credentials_pkey PRIMARY KEY (digest);
+
+
+--
+-- Name: oauth_connector_grants oauth_connector_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_grants
+    ADD CONSTRAINT oauth_connector_grants_pkey PRIMARY KEY (id);
 
 
 --
@@ -1913,6 +2164,14 @@ ALTER TABLE ONLY public.server_precheck_tokens
 
 ALTER TABLE ONLY public.server_scores
     ADD CONSTRAINT server_scores_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: server_scores_status_log server_scores_status_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.server_scores_status_log
+    ADD CONSTRAINT server_scores_status_log_pkey PRIMARY KEY (id);
 
 
 --
@@ -2076,6 +2335,20 @@ ALTER TABLE ONLY public.zones
 
 
 --
+-- Name: accounts_url_slug_lower_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX accounts_url_slug_lower_unique ON public.accounts USING btree (lower((url_slug)::text));
+
+
+--
+-- Name: e2e_fixtures_run_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX e2e_fixtures_run_id_idx ON public.e2e_fixtures USING btree (run_id);
+
+
+--
 -- Name: idx_18134_account_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2136,13 +2409,6 @@ CREATE UNIQUE INDEX idx_18151_id_token ON public.accounts USING btree (id_token)
 --
 
 CREATE UNIQUE INDEX idx_18151_stripe_customer_id ON public.accounts USING btree (stripe_customer_id);
-
-
---
--- Name: idx_18151_url_slug_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_18151_url_slug_idx ON public.accounts USING btree (url_slug);
 
 
 --
@@ -2489,13 +2755,6 @@ CREATE UNIQUE INDEX idx_18302_ip ON public.servers USING btree (ip);
 
 
 --
--- Name: idx_18302_score_ts; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_18302_score_ts ON public.servers USING btree (score_ts);
-
-
---
 -- Name: idx_18302_server_account_fk; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2671,10 +2930,31 @@ CREATE INDEX idx_emails_email_type ON public.emails USING btree (email_type);
 
 
 --
+-- Name: idx_emails_group_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_group_id ON public.emails USING btree (group_id);
+
+
+--
 -- Name: idx_emails_message_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_emails_message_id ON public.emails USING btree (message_id);
+
+
+--
+-- Name: idx_emails_modified_on; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_modified_on ON public.emails USING btree (modified_on);
+
+
+--
+-- Name: idx_emails_queued_next_attempt; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_emails_queued_next_attempt ON public.emails USING btree (next_attempt_at) WHERE (status = 'queued'::public.email_status);
 
 
 --
@@ -2748,10 +3028,80 @@ CREATE INDEX idx_services_type ON public.services USING btree (type);
 
 
 --
--- Name: users_username_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: logs_monitor_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX users_username_unique ON public.users USING btree (username) WHERE (username IS NOT NULL);
+CREATE INDEX logs_monitor_id_idx ON public.logs USING btree (monitor_id) WHERE (monitor_id IS NOT NULL);
+
+
+--
+-- Name: oauth_connector_credentials_expiry_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX oauth_connector_credentials_expiry_idx ON public.oauth_connector_credentials USING btree (expires_at) WHERE (kind <> 'refresh'::text);
+
+
+--
+-- Name: oauth_connector_credentials_grant_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX oauth_connector_credentials_grant_idx ON public.oauth_connector_credentials USING btree (grant_id);
+
+
+--
+-- Name: oauth_connector_grants_expiry_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX oauth_connector_grants_expiry_idx ON public.oauth_connector_grants USING btree (expires_at);
+
+
+--
+-- Name: oauth_connector_grants_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX oauth_connector_grants_user_idx ON public.oauth_connector_grants USING btree (user_id);
+
+
+--
+-- Name: server_scores_status_log_server_monitor_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX server_scores_status_log_server_monitor_ts ON public.server_scores_status_log USING btree (server_id, monitor_id, ts);
+
+
+--
+-- Name: users_username_lower_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX users_username_lower_unique ON public.users USING btree (lower((username)::text)) WHERE (username IS NOT NULL);
+
+
+--
+-- Name: zones_name_lower_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX zones_name_lower_unique ON public.zones USING btree (lower((name)::text));
+
+
+--
+-- Name: emails emails_notify_queued; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER emails_notify_queued AFTER INSERT ON public.emails FOR EACH STATEMENT EXECUTE FUNCTION public.emails_notify_queued();
+
+
+--
+-- Name: server_scores server_scores_status_log_insert_delete; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER server_scores_status_log_insert_delete AFTER INSERT OR DELETE ON public.server_scores FOR EACH ROW EXECUTE FUNCTION public.log_server_scores_status();
+
+
+--
+-- Name: server_scores server_scores_status_log_update; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER server_scores_status_log_update AFTER UPDATE OF status ON public.server_scores FOR EACH ROW WHEN ((old.status IS DISTINCT FROM new.status)) EXECUTE FUNCTION public.log_server_scores_status();
 
 
 --
@@ -2859,11 +3209,27 @@ ALTER TABLE ONLY public.vendor_zones
 
 
 --
+-- Name: e2e_fixture_monitors e2e_fixture_monitors_attempt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_monitors
+    ADD CONSTRAINT e2e_fixture_monitors_attempt_id_fkey FOREIGN KEY (attempt_id) REFERENCES public.e2e_fixtures(attempt_id) ON DELETE CASCADE;
+
+
+--
+-- Name: e2e_fixture_servers e2e_fixture_servers_attempt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.e2e_fixture_servers
+    ADD CONSTRAINT e2e_fixture_servers_attempt_id_fkey FOREIGN KEY (attempt_id) REFERENCES public.e2e_fixtures(attempt_id) ON DELETE CASCADE;
+
+
+--
 -- Name: emails emails_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.emails
-    ADD CONSTRAINT emails_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id);
+    ADD CONSTRAINT emails_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id) ON DELETE SET NULL;
 
 
 --
@@ -2879,7 +3245,7 @@ ALTER TABLE ONLY public.emails
 --
 
 ALTER TABLE ONLY public.emails
-    ADD CONSTRAINT emails_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+    ADD CONSTRAINT emails_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2936,6 +3302,30 @@ ALTER TABLE ONLY public.monitors
 
 ALTER TABLE ONLY public.monitors
     ADD CONSTRAINT monitors_user_id FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: oauth_connector_codes oauth_connector_codes_digest_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_codes
+    ADD CONSTRAINT oauth_connector_codes_digest_fkey FOREIGN KEY (digest) REFERENCES public.oauth_connector_credentials(digest) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth_connector_credentials oauth_connector_credentials_grant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_credentials
+    ADD CONSTRAINT oauth_connector_credentials_grant_id_fkey FOREIGN KEY (grant_id) REFERENCES public.oauth_connector_grants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth_connector_grants oauth_connector_grants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_connector_grants
+    ADD CONSTRAINT oauth_connector_grants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -3151,6 +3541,13 @@ ALTER TABLE ONLY public.zones
 --
 
 GRANT ALL ON SCHEMA public TO ntppool;
+
+
+--
+-- Name: FUNCTION log_server_scores_status(); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.log_server_scores_status() FROM PUBLIC;
 
 
 --

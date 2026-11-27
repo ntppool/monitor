@@ -295,7 +295,7 @@ func (q *Queries) GetMonitorsTLSName(ctx context.Context, tlsName pgtype.Text) (
 }
 
 const getScorerLogScores = `-- name: GetScorerLogScores :many
-SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes FROM
+SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes, ls.status FROM
   log_scores ls,
   monitors m
 WHERE
@@ -331,6 +331,7 @@ func (q *Queries) GetScorerLogScores(ctx context.Context, arg GetScorerLogScores
 			&i.Offset,
 			&i.Rtt,
 			&i.Attributes,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -367,7 +368,7 @@ func (q *Queries) GetScorerNextLogScoreID(ctx context.Context, logScoreID int64)
 }
 
 const getScorerRecentScores = `-- name: GetScorerRecentScores :many
-SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes
+SELECT ls.id, ls.monitor_id, ls.server_id, ls.ts, ls.score, ls.step, ls."offset", ls.rtt, ls.attributes, ls.status
   FROM log_scores ls
   INNER JOIN (
     SELECT ls2.monitor_id, max(ls2.ts) as sts
@@ -419,6 +420,7 @@ func (q *Queries) GetScorerRecentScores(ctx context.Context, arg GetScorerRecent
 			&i.Offset,
 			&i.Rtt,
 			&i.Attributes,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -722,20 +724,21 @@ func (q *Queries) GetSystemSetting(ctx context.Context, key string) ([]byte, err
 
 const insertLogScore = `-- name: InsertLogScore :one
 INSERT INTO log_scores
-  (server_id, monitor_id, ts, score, step, "offset", rtt, attributes)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  (server_id, monitor_id, ts, score, step, "offset", rtt, attributes, status)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id
 `
 
 type InsertLogScoreParams struct {
-	ServerID   int64              `json:"server_id"`
-	MonitorID  pgtype.Int8        `json:"monitor_id"`
-	Ts         pgtype.Timestamptz `json:"ts"`
-	Score      float64            `json:"score"`
-	Step       float64            `json:"step"`
-	Offset     pgtype.Float8      `json:"offset"`
-	Rtt        pgtype.Int4        `json:"rtt"`
-	Attributes *json.RawMessage   `json:"attributes"`
+	ServerID   int64                  `json:"server_id"`
+	MonitorID  pgtype.Int8            `json:"monitor_id"`
+	Ts         pgtype.Timestamptz     `json:"ts"`
+	Score      float64                `json:"score"`
+	Step       float64                `json:"step"`
+	Offset     pgtype.Float8          `json:"offset"`
+	Rtt        pgtype.Int4            `json:"rtt"`
+	Attributes *json.RawMessage       `json:"attributes"`
+	Status     NullServerScoresStatus `json:"status"`
 }
 
 func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) (int64, error) {
@@ -748,6 +751,7 @@ func (q *Queries) InsertLogScore(ctx context.Context, arg InsertLogScoreParams) 
 		arg.Offset,
 		arg.Rtt,
 		arg.Attributes,
+		arg.Status,
 	)
 	var id int64
 	err := row.Scan(&id)

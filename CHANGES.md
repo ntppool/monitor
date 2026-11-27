@@ -5,6 +5,7 @@
 ### Upgrade notes
 - **Minimum agent version v4.0.5**: `monitor-api` refuses API calls from agents older than v4.0.5, with an error the agent logs telling the operator to upgrade. Those agents stop testing until they are upgraded. Agents before v4.0.5 republish their MQTT status only once an hour, so `monitor-api` would list them as offline most of the time.
 - **Agent metrics endpoints removed**: `monitor-api` no longer serves `/monitors/metrics` and `/monitors/metrics/discovery`. They let Prometheus scrape agents through MQTT, but agents since v4.0.0 send their metrics over OTLP and answered the scrape with an empty body. Remove any Prometheus job that uses them. The agent still answers the `metrics` MQTT request with an empty reply, so rolling `monitor-api` back to an older version keeps working.
+- **Needs api migration 051**: Run the api migration that adds `log_scores.status` before deploying `monitor-api` and `monitor-scorer`. Without the column `monitor-api` fails every result submit and the scorer fails to read scores.
 
 ### Server
 - Fix: `monitor-api` sends `info` when the merged config has no `otlp_log_level`. Clearing a debug override now returns the agent to `info` when there's no system-level setting.
@@ -12,6 +13,7 @@
 - `monitors_connected` is computed from the client list at scrape time, so it drops when an agent goes stale. The metric name and labels are unchanged.
 - Fix: After a restart or broker reconnect, `monitor-api` uses the age of each agent's retained status to decide if the agent is online. It takes the age from the MQTT message expiry the broker has left, so the agent's clock doesn't matter. Before, a stopped agent's last "online" status, kept by the broker for up to a day, listed it as online for another 15 minutes after each restart.
 - Fix: `monitor-api` exits with an error when the MQTT setup fails (for example the CA pool can't be loaded), instead of crashing with a nil pointer
+- `log_scores` records the status (`candidate`, `testing`, `active`) the monitor had for the server when it submitted the result. The scorer's own rows leave it empty.
 
 ### Agent
 - Fix: The agent reports itself offline when it stops. Before, a normal stop sent no "offline" status, so `monitor-api` listed the agent as online until the status went stale (15 minutes) and again after each `monitor-api` restart for up to a day.

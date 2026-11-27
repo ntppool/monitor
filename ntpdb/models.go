@@ -243,15 +243,16 @@ type Account struct {
 }
 
 type LogScore struct {
-	ID         int64              `json:"id"`
-	MonitorID  pgtype.Int8        `json:"monitor_id"`
-	ServerID   int64              `json:"server_id"`
-	Ts         pgtype.Timestamptz `json:"ts"`
-	Score      float64            `json:"score"`
-	Step       float64            `json:"step"`
-	Offset     pgtype.Float8      `json:"offset"`
-	Rtt        pgtype.Int4        `json:"rtt"`
-	Attributes *json.RawMessage   `json:"attributes"`
+	ID         int64                  `json:"id"`
+	MonitorID  pgtype.Int8            `json:"monitor_id"`
+	ServerID   int64                  `json:"server_id"`
+	Ts         pgtype.Timestamptz     `json:"ts"`
+	Score      float64                `json:"score"`
+	Step       float64                `json:"step"`
+	Offset     pgtype.Float8          `json:"offset"`
+	Rtt        pgtype.Int4            `json:"rtt"`
+	Attributes *json.RawMessage       `json:"attributes"`
+	Status     NullServerScoresStatus `json:"status"`
 }
 
 type Monitor struct {

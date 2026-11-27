@@ -36,6 +36,16 @@ type SubmitCounters struct {
 	BatchOrder *CounterOpt
 }
 
+func newSubmitCounters() *SubmitCounters {
+	return &SubmitCounters{
+		Ok:         &CounterOpt{"ok", 0},
+		Offset:     &CounterOpt{"offset", 0},
+		Timeout:    &CounterOpt{"timeout", 0},
+		Sig:        &CounterOpt{"signature_validation", 0},
+		BatchOrder: &CounterOpt{"batch_out_of_order", 0},
+	}
+}
+
 type SubmitResultsParam struct {
 	Version int32
 	List    []*apiv2.ServerStatus
@@ -71,13 +81,7 @@ func (srv *Server) SubmitResults(ctx context.Context, in SubmitResultsParam, mon
 	// 	features.Packets = true
 	// }
 
-	counters := &SubmitCounters{
-		Ok:         &CounterOpt{"ok", 0},
-		Offset:     &CounterOpt{"offset", 0},
-		Timeout:    &CounterOpt{"timeout", 0},
-		Sig:        &CounterOpt{"signature_validation", 0},
-		BatchOrder: &CounterOpt{"batch_out_of_order", 0},
-	}
+	counters := newSubmitCounters()
 
 	defer func() {
 		for _, c := range []*CounterOpt{
@@ -262,6 +266,7 @@ func (srv *Server) processStatus(ctx context.Context, monitor *ntpdb.Monitor, st
 			Rtt:        score.Rtt,
 			Score:      serverScore.ScoreRaw,
 			Attributes: score.Attributes,
+			Status:     ntpdb.NullServerScoresStatus{ServerScoresStatus: serverScore.Status, Valid: true},
 		}
 
 		_, err = db.InsertLogScore(ctx, ls)

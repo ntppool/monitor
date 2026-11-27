@@ -180,8 +180,8 @@ UPDATE monitors
 
 -- name: InsertLogScore :one
 INSERT INTO log_scores
-  (server_id, monitor_id, ts, score, step, "offset", rtt, attributes)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  (server_id, monitor_id, ts, score, step, "offset", rtt, attributes, status)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id;
 
 -- name: GetServers :many
